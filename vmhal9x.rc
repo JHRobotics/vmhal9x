@@ -1,0 +1,39 @@
+/* turn off some MinGW warnings */
+#define _XMMINTRIN_H_INCLUDED 
+
+#ifdef WINDRES
+#undef RC_INVOKED
+#endif
+#ifndef RC_INVOKED
+#include "winuser.h"
+
+#include "vmhal9x.h"
+
+1 VERSIONINFO
+FILEVERSION VMHAL9X_VERSION_NUM
+PRODUCTVERSION VMHAL9X_VERSION_NUM
+FILEOS 0x40004
+FILETYPE 0x2
+{
+BLOCK "StringFileInfo"
+{
+	BLOCK "040904b0"
+	{
+		VALUE "CompanyName", "JHRobotics"
+		VALUE "FileDescription", "Virtual Win9X DD driver"
+		VALUE "FileVersion", VMHAL9X_VERSION_STR
+		VALUE "InternalName", "vmhal9x.dll"
+		VALUE "LegalCopyright", "(C) 2023-2024 Jaroslav Hensl"
+		VALUE "OriginalFilename", "vmhal9x.dll"
+		VALUE "PrivateBuild", VMHAL9X_VERSION_STR
+		VALUE "ProductName", "Virtual Win9X DD driver"
+		VALUE "ProductVersion", VMHAL9X_VERSION_STR
+	}
+}
+
+BLOCK "VarFileInfo"
+{
+	VALUE "Translation", 0x0409, 0x04B0  
+}
+}
+#endif

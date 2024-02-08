@@ -1,0 +1,29 @@
+# this is sample configuration file
+
+# compiler for target (mingw)
+CC=gcc
+CXX=g++
+WINDRES=windres
+
+# compiler for host (for create makeshared binary)
+HOST_CC=$(CC)
+
+# optimize for release
+RELEASE=1
+
+# generate debug informations (not usable with RELEASE=1)
+#DEBUG=1
+
+# how much can be debuging information verbose, efective (not usable with RELEASE=1)
+#DDDEBUG=4
+
+# extra compiler option:
+# this should be used for targeting Windows 95
+TUNE=-march=pentium2 -mtune=core2
+# this is for Windows 98/Me only and Core2 (SSSE3) CPU (minimal HW for virtualization)
+#TUNE=-march=core2
+# this is the highest possible optimalization target (SSE4 and without AVX) for Windows 98/Me
+#TUNE=-march=westmere
+
+# faster code generation
+TUNE += -pipe
