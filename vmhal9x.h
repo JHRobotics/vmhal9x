@@ -65,6 +65,7 @@ void dbg_prefix_printf(const char *prefix, const char *file, int line, const cha
 #if DDDEBUG >= 3
 # define TRACE(_fmt, ...) dbg_prefix_printf("T|", __FILE__, __LINE__, _fmt __VA_OPT__(,) __VA_ARGS__)
 # define TRACE_ENTRY TRACE("%s", __FUNCTION__);
+# define TRACE_ON
 #else
 # define TRACE(_fmt, ...)
 # define TRACE_ENTRY
@@ -72,12 +73,14 @@ void dbg_prefix_printf(const char *prefix, const char *file, int line, const cha
 
 #if DDDEBUG >= 2
 # define WARN(_fmt, ...) dbg_prefix_printf("W|", __FILE__, __LINE__, _fmt __VA_OPT__(,) __VA_ARGS__)
+# define WARN_ON
 #else
 # define WARN(_fmt, ...)
 #endif
 
 #if DDDEBUG >= 1
 # define ERR(_fmt, ...) dbg_prefix_printf("E|", __FILE__, __LINE__, _fmt __VA_OPT__(,) __VA_ARGS__)
+# define ERR_ON
 #else
 # define ERR(_fmt, ...)
 #endif

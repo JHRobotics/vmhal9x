@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright (c) 2023 Jaroslav Hensl                                          *
+ * Copyright (c) 2024 Jaroslav Hensl                                          *
  *                                                                            *
  * Permission is hereby granted, free of charge, to any person                *
  * obtaining a copy of this software and associated documentation             *
@@ -23,16 +23,30 @@
  * OTHER DEALINGS IN THE SOFTWARE.                                            *
  *                                                                            *
  ******************************************************************************/
-#ifndef __ROP3_H__INCLUDED__
-#define __ROP3_H__INCLUDED__
+#ifndef __FILL_H__INCLUDED__
+#define __FILL_H__INCLUDED__
 
-#include <stdint.h>
-#include "stretchblt.h"
+void memcpy16(void *dst, const void *src, size_t size);
+void memcpy8(void *dst, const void *src, size_t size);
 
-void rop3(uint8_t bpp, uint8_t code, void *src, void *dst, uint32_t pattern,
-	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t spitch, uint32_t dpitch);
+void fill4(void *dst, size_t size, uint32_t bpp, uint32_t color);
+void fill8(void *dst, size_t size, uint32_t bpp, uint32_t color);
+void fill16(void *dst, size_t size, uint32_t bpp, uint32_t color);
 
-void stretchrop3(uint8_t bpp, uint8_t code, void *src, void *dst, uint32_t pattern,
-	stretchBltRect *rect);
+#if defined(__GNUC__) && defined(__SSE__)
+# define fill_memcpy memcpy16
+#elif defined(__GNUC__) && defined(__MMX__)
+# define fill_memcpy memcpy8
+#else
+# define fill_memcpy memcpy
+#endif
+
+#if defined(__GNUC__) && defined(__SSE__)
+# define fill fill16
+#elif defined(__GNUC__) && defined(__MMX__)
+# define fill fill8
+#else
+# define fill fill4
+#endif
 
 #endif

@@ -33,9 +33,9 @@
 #include "rop3op.h"
 #include "stretchblttf.h"
 
-typedef void (*rop32_h)(void *src, void *dst, uint32_t pattern, uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t pitch);
-typedef void (*rop16_h)(void *src, void *dst, uint16_t pattern, uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t pitch);
-typedef void (*rop8_h) (void *src, void *dst,  uint8_t pattern, uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t pitch);
+typedef void (*rop32_h)(void *src, void *dst, uint32_t pattern, uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t spitch, uint32_t dpitch);
+typedef void (*rop16_h)(void *src, void *dst, uint16_t pattern, uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t spitch, uint32_t dpitch);
+typedef void (*rop8_h) (void *src, void *dst,  uint8_t pattern, uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t spitch, uint32_t dpitch);
 
 typedef void (*stretchrop32_h)(void *src, void *dst, uint32_t pattern, stretchBltRect *rect);
 typedef void (*stretchrop16_h)(void *src, void *dst, uint16_t pattern, stretchBltRect *rect);
@@ -44,13 +44,13 @@ typedef void (*stretchrop8_h )(void *src, void *dst, uint8_t  pattern, stretchBl
 /*** ROP32 ***/
 #define ROP3ITEM(_n) \
 static void blt_ ## _n ## _32 (void *src, void *dst, uint32_t pattern, \
-	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t pitch){ \
+	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t spitch, uint32_t dpitch){ \
 	uint32_t x, y; \
-	uint8_t *psrc = (uint8_t *)src + pitch*sy + sx*sizeof(uint32_t); \
-	uint8_t *pdst = (uint8_t *)dst + pitch*dy + dx*sizeof(uint32_t); \
+	uint8_t *psrc = (uint8_t *)src + spitch*sy + sx*sizeof(uint32_t); \
+	uint8_t *pdst = (uint8_t *)dst + dpitch*dy + dx*sizeof(uint32_t); \
 	for(y = 0; y < h; y++){ \
-		uint32_t *ps = (uint32_t*)(psrc + pitch*y); \
-		uint32_t *ds = (uint32_t*)(pdst + pitch*y); \
+		uint32_t *ps = (uint32_t*)(psrc + spitch*y); \
+		uint32_t *ds = (uint32_t*)(pdst + dpitch*y); \
 		for(x = 0; x < w; x++){ \
 			*ds = _n (*ds, pattern, *ps); \
 			ps++; \
@@ -63,13 +63,13 @@ static void blt_ ## _n ## _32 (void *src, void *dst, uint32_t pattern, \
 /*** ROP16 ***/
 #define ROP3ITEM(_n) \
 static void blt_ ## _n ## _16 (void *src, void *dst, uint16_t pattern, \
-	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t pitch){ \
+	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t spitch, uint32_t dpitch){ \
 	uint32_t x, y; \
-	uint8_t *psrc = (uint8_t *)src + pitch*sy + sx*sizeof(uint16_t); \
-	uint8_t *pdst = (uint8_t *)dst + pitch*dy + dx*sizeof(uint16_t); \
+	uint8_t *psrc = (uint8_t *)src + spitch*sy + sx*sizeof(uint16_t); \
+	uint8_t *pdst = (uint8_t *)dst + dpitch*dy + dx*sizeof(uint16_t); \
 	for(y = 0; y < h; y++){ \
-		uint16_t *ps = (uint16_t*)(psrc + pitch*y); \
-		uint16_t *ds = (uint16_t*)(pdst + pitch*y); \
+		uint16_t *ps = (uint16_t*)(psrc + spitch*y); \
+		uint16_t *ds = (uint16_t*)(pdst + dpitch*y); \
 		for(x = 0; x < w; x++){ \
 			*ds = _n (*ds, pattern, *ps); \
 			ps++; \
@@ -82,13 +82,13 @@ static void blt_ ## _n ## _16 (void *src, void *dst, uint16_t pattern, \
 /*** ROP8 ***/
 #define ROP3ITEM(_n) \
 static void blt_ ## _n ## _8 (void *src, void *dst, uint8_t pattern, \
-	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t pitch){ \
+	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t spitch, uint32_t dpitch){ \
 	uint32_t x, y; \
-	uint8_t *psrc = (uint8_t *)src + pitch*sy + sx*sizeof(uint8_t); \
-	uint8_t *pdst = (uint8_t *)dst + pitch*dy + dx*sizeof(uint8_t); \
+	uint8_t *psrc = (uint8_t *)src + spitch*sy + sx*sizeof(uint8_t); \
+	uint8_t *pdst = (uint8_t *)dst + dpitch*dy + dx*sizeof(uint8_t); \
 	for(y = 0; y < h; y++){ \
-		uint8_t *ps = (psrc + pitch*y); \
-		uint8_t *ds = (pdst + pitch*y); \
+		uint8_t *ps = (psrc + spitch*y); \
+		uint8_t *ds = (pdst + dpitch*y); \
 		for(x = 0; x < w; x++){ \
 			*ds = _n (*ds, pattern, *ps); \
 			ps++; \
@@ -102,13 +102,13 @@ static void blt_ ## _n ## _8 (void *src, void *dst, uint8_t pattern, \
 // FIXME: slow, do more opts
 #define ROP3ITEM(_n) \
 static void blt_ ## _n ## _24 (void *src, void *dst, uint32_t pattern, \
-	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t pitch){ \
+	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t spitch, uint32_t dpitch){ \
 	uint32_t x, y; \
-	uint8_t *psrc = (uint8_t *)src + pitch*sy + sx*3*sizeof(uint8_t); \
-	uint8_t *pdst = (uint8_t *)dst + pitch*dy + dx*3*sizeof(uint8_t); \
+	uint8_t *psrc = (uint8_t *)src + spitch*sy + sx*3*sizeof(uint8_t); \
+	uint8_t *pdst = (uint8_t *)dst + dpitch*dy + dx*3*sizeof(uint8_t); \
 	for(y = 0; y < h; y++){ \
-		uint8_t *ps = (psrc + pitch*y); \
-		uint8_t *ds = (pdst + pitch*y); \
+		uint8_t *ps = (psrc + spitch*y); \
+		uint8_t *ds = (pdst + dpitch*y); \
 		for(x = 0; x < w; x++){ \
 			*ds = _n (*ds, ( pattern        & 0xFF), *ps); ps++; ds++; \
 			*ds = _n (*ds, ((pattern >>  8) & 0xFF), *ps); ps++; ds++; \
@@ -245,27 +245,27 @@ static const stretchrop32_h stretchrop24_table[] =
 // bitblt
 
 static void rop3_8(const uint8_t code, void *src, void *dst, uint8_t pattern,
-	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t pitch)
+	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t spitch, uint32_t dpitch)
 {
-	(rop8_table[code])(src, dst, pattern, sx, sy, dx, dy, w, h, pitch);
+	(rop8_table[code])(src, dst, pattern, sx, sy, dx, dy, w, h, spitch, dpitch);
 }
 
 static void rop3_16(const uint8_t code, void *src, void *dst, uint16_t pattern,
-	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t pitch)
+	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t spitch, uint32_t dpitch)
 {
-	(rop16_table[code])(src, dst, pattern, sx, sy, dx, dy, w, h, pitch);
+	(rop16_table[code])(src, dst, pattern, sx, sy, dx, dy, w, h, spitch, dpitch);
 }
 
 static void rop3_24(const uint8_t code, void *src, void *dst, uint32_t pattern,
-	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t pitch)
+	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t spitch, uint32_t dpitch)
 {
-	(rop24_table[code])(src, dst, pattern, sx, sy, dx, dy, w, h, pitch);
+	(rop24_table[code])(src, dst, pattern, sx, sy, dx, dy, w, h, spitch, dpitch);
 }
 
 static void rop3_32(const uint8_t code, void *src, void *dst, uint32_t pattern,
-	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t pitch)
+	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t spitch, uint32_t dpitch)
 {
-	(rop32_table[code])(src, dst, pattern, sx, sy, dx, dy, w, h, pitch);
+	(rop32_table[code])(src, dst, pattern, sx, sy, dx, dy, w, h, spitch, dpitch);
 }
 
 // stretchblt
@@ -290,21 +290,21 @@ static void stretchrop3_8(const uint8_t code, void *src, void *dst, uint8_t patt
 }
 
 void rop3(uint8_t bpp, uint8_t code, void *src, void *dst, uint32_t pattern,
-	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t pitch)
+	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t spitch, uint32_t dpitch)
 {
 	switch(bpp)
 	{
 		case 8:
-			rop3_8(code, src, dst, pattern, sx, sy, dx, dy, w, h, pitch);
+			rop3_8(code, src, dst, pattern, sx, sy, dx, dy, w, h, spitch, dpitch);
 			break;
 		case 16:
-			rop3_16(code, src, dst, pattern, sx, sy, dx, dy, w, h, pitch);
+			rop3_16(code, src, dst, pattern, sx, sy, dx, dy, w, h, spitch, dpitch);
 			break;
 		case 24:
-			rop3_24(code, src, dst, pattern, sx, sy, dx, dy, w, h, pitch);
+			rop3_24(code, src, dst, pattern, sx, sy, dx, dy, w, h, spitch, dpitch);
 			break;
 		case 32:
-			rop3_32(code, src, dst, pattern, sx, sy, dx, dy, w, h, pitch);
+			rop3_32(code, src, dst, pattern, sx, sy, dx, dy, w, h, spitch, dpitch);
 			break;
 	}
 }

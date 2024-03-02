@@ -30,7 +30,7 @@
 #include "stretchblt.h"
 
 void transblt(uint8_t bpp, void *src, void *dst, uint32_t transparent,
-	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t pitch);
+	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t spitch, uint32_t dpitch);
 
 void transstretchblt(uint8_t bpp, void *src, void *dst, uint32_t transparent, stretchBltRect *rect);
 

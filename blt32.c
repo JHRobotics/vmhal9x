@@ -33,6 +33,7 @@
 #include "vmhal9x.h"
 #include "rop3.h"
 #include "transblt.h"
+#include "fill.h"
 
 #include "nocrt.h"
 /*
@@ -50,12 +51,15 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 
 	DWORD dwFillColor;	  // Used to specify the RGB color to fill with
 	DWORD dwColorKey;	   // Holds our color key for a transparent blit
-
+#ifdef TRACE_ON
 	DWORD dwDstOffset;	  // offset to beginning of destination surface
+#endif
 	long  dwDstWidth;	   // width of destination surface (in pixels)
 	long  dwDstHeight;	  // height of destination surface (in rows)
 
+#ifdef TRACE_ON
 	DWORD dwSrcOffset;	  // offset to the beginning of source surface
+#endif
 	long  dwSrcWidth;	   // width of source surface (in pixels)
 	long  dwSrcHeight;	  // height of source surface (in rows)
 
@@ -65,7 +69,7 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 	LPDDRAWI_DDRAWSURFACE_GBL  dst;  // global pointer to destination surface
 	
 	BOOL isInFront = FALSE; // destination is front surface
-	
+
 	dstx = pbd->lpDDDestSurface;	   // destination surface
 	dst = dstx->lpGbl;			         // destination data
 	
@@ -108,7 +112,9 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 	/*
 	 * get offset, width, and height for destination
 	 */
+#ifdef TRACE_ON
 	dwDstOffset = GetOffset(ddhal, (void*)dst->fpVidMem);
+#endif
 	dwDstWidth  = pbd->rDest.right  - pbd->rDest.left;
 	dwDstHeight = pbd->rDest.bottom - pbd->rDest.top;
 
@@ -122,11 +128,19 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 		srcx = pbd->lpDDSrcSurface;   
 		src = srcx->lpGbl;
 
+#ifdef TRACE_ON
 		dwSrcOffset = GetOffset(ddhal, (void*)src->fpVidMem);
+#endif
 		dwSrcWidth  = pbd->rSrc.right  - pbd->rSrc.left;
 		dwSrcHeight = pbd->rSrc.bottom - pbd->rSrc.top;
 		
 		dwColorKey  = pbd->bltFX.ddckSrcColorkey.dwColorSpaceLowValue;
+		
+		if(IsInFront(ddhal, (void*)src->fpVidMem) && !isInFront)
+		{
+			FBHDA_access_begin(0);
+			isInFront = TRUE;
+		}
 		
 		/* check if need stretch */
 		if(dwDstWidth != dwSrcWidth ||
@@ -153,7 +167,7 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 			if(dwSrcHeight < 0)
 			{
 				srect.srh = -dwSrcHeight;
-				srect.mirrory = srect.mirrory ^ 1;
+				srect.mirrory ^= 1;
 			}
 			else
 			{
@@ -183,9 +197,17 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 				srect.drh = dwDstHeight;
 			}
 			
-			srect.spitch = srect.dpitch = ddhal->pFBHDA32->pitch;
+			srect.spitch = src->lPitch;
+			srect.dpitch = dst->lPitch;
+			
+			/*
 			srect.sw = srect.dw = ddhal->pFBHDA32->width;
 			srect.sh = srect.dh = ddhal->pFBHDA32->height;
+			*/
+			srect.sw = src->wWidth;
+			srect.dw = src->wHeight;
+			srect.sh = dst->wWidth;
+			srect.dh = dst->wHeight;
 			
 			if (rop3_code == (SRCCOPY >> 16) && (dwFlags & DDBLT_KEYSRCOVERRIDE))
 			{
@@ -207,24 +229,39 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 		}
 		else /* ROP 1:1 pixels */
 		{
+			DWORD spitch = src->lPitch;
+			DWORD dpitch = dst->lPitch;
+			
 			if (rop3_code == (SRCCOPY >> 16) && (dwFlags & DDBLT_KEYSRCOVERRIDE))
 			{
 				TRACE("Blt: transblt from %08X %dx%d -> %08X %dx%dx%d key=%08X",
 					dwSrcOffset, dwSrcWidth, dwSrcHeight, dwDstOffset, dwDstWidth, dwDstHeight, ddhal->pFBHDA32->bpp, dwColorKey);
 				
 				transblt(ddhal->pFBHDA32->bpp, (void*)src->fpVidMem, (void*)dst->fpVidMem, dwColorKey,
-							pbd->rSrc.left, pbd->rSrc.top, pbd->rDest.left, pbd->rDest.top, dwSrcWidth, dwSrcHeight, ddhal->pFBHDA32->pitch);
+							pbd->rSrc.left, pbd->rSrc.top, pbd->rDest.left, pbd->rDest.top, dwSrcWidth, dwSrcHeight, spitch, dpitch);
+			}
+			else if(rop3_code == (SRCCOPY >> 16) &&
+				spitch == dpitch &&
+				pbd->rSrc.left == 0 && pbd->rSrc.top  == 0 &&
+				pbd->rDest.left == 0 && pbd->rDest.top  == 0 &&
+				pbd->rSrc.right == dwSrcWidth &&
+				pbd->rSrc.bottom == dwSrcHeight
+			)
+			{
+				TRACE("Blt: full surface copy");
+				fill_memcpy((void*)dst->fpVidMem, (void*)src->fpVidMem, spitch*dwSrcHeight);
 			}
 			else
 			{
-				TRACE("Blt: rop3 (%02X) from %08X %dx%d -> %08X %dx%dx%d", 
-						rop3_code, dwSrcOffset, dwSrcWidth, dwSrcHeight, dwDstOffset, dwDstWidth, dwDstHeight, ddhal->pFBHDA32->bpp);
+				TRACE("Blt: rop3 (%02X) from %08X %dx%d (pitch: %d) -> %08X %dx%dx (pitch: %d)", 
+						rop3_code, dwSrcOffset, dwSrcWidth, dwSrcHeight, spitch, dwDstOffset, dwDstWidth, dwDstHeight, dpitch);
 				
-				TRACE("Rect: %dx%d (%dx%d) -> %dx%d|pitch %d|flags %X",
-						pbd->rSrc.left, pbd->rSrc.top, dwSrcWidth, dwSrcHeight, pbd->rDest.left, pbd->rDest.top, ddhal->pFBHDA32->pitch, dwFlags);
+				TRACE("Rect: %dx%d (%dx%d)|pitch %d -> %dx%d|pitch %d|flags %X",
+						pbd->rSrc.left, pbd->rSrc.top, dwSrcWidth, dwSrcHeight, spitch,
+						pbd->rDest.left, pbd->rDest.top, dpitch, dwFlags);
 				
 				rop3(ddhal->pFBHDA32->bpp, rop3_code, (void*)src->fpVidMem, (void*)dst->fpVidMem, dwColorKey,
-							pbd->rSrc.left, pbd->rSrc.top, pbd->rDest.left, pbd->rDest.top, dwSrcWidth, dwSrcHeight, ddhal->pFBHDA32->pitch);
+							pbd->rSrc.left, pbd->rSrc.top, pbd->rDest.left, pbd->rDest.top, dwSrcWidth, dwSrcHeight, spitch, dpitch);
 			}
 		}
 	}
@@ -238,8 +275,18 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 
 		TRACE("Blt: rop3 (F0) %08X %dx%d", dwFillColor, dwDstWidth, dwDstHeight);
 
-		rop3(ddhal->pFBHDA32->bpp, 0xF0, (void*)dst->fpVidMem, (void*)dst->fpVidMem, dwFillColor,
-				pbd->rDest.left, pbd->rDest.top, pbd->rDest.left, pbd->rDest.top, dwDstWidth, dwDstHeight, ddhal->pFBHDA32->pitch);
+		if(pbd->rDest.left == 0 && pbd->rDest.top  == 0 &&
+				pbd->rDest.right == dwDstWidth &&
+				pbd->rDest.bottom == dwDstHeight
+		)
+		{
+			fill((void*)dst->fpVidMem, dst->lPitch*dwDstHeight, ddhal->pFBHDA32->bpp, dwFillColor);
+		}
+		else
+		{
+			rop3(ddhal->pFBHDA32->bpp, 0xF0, (void*)dst->fpVidMem, (void*)dst->fpVidMem, dwFillColor,
+				pbd->rDest.left, pbd->rDest.top, pbd->rDest.left, pbd->rDest.top, dwDstWidth, dwDstHeight, dst->lPitch, dst->lPitch);
+		}
 	}
 	else
 	{

@@ -29,16 +29,16 @@
 #include "stretchblttf.h"
 
 static void transblt32(void *src, void *dst, uint32_t transparent,
-	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t pitch)
+	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t spitch, uint32_t dpitch)
 {
 	uint32_t x, y;
-	uint8_t *psrc = (uint8_t *)src + pitch*sy + sx*sizeof(uint32_t);
-	uint8_t *pdst = (uint8_t *)dst + pitch*dy + dx*sizeof(uint32_t);
+	uint8_t *psrc = (uint8_t *)src + spitch*sy + sx*sizeof(uint32_t);
+	uint8_t *pdst = (uint8_t *)dst + dpitch*dy + dx*sizeof(uint32_t);
 	
 	for(y = 0; y < h; y++)
 	{
-		uint32_t *ps = (uint32_t*)(psrc + pitch*y);
-		uint32_t *ds = (uint32_t*)(pdst + pitch*y);
+		uint32_t *ps = (uint32_t*)(psrc + spitch*y);
+		uint32_t *ds = (uint32_t*)(pdst + dpitch*y);
 		for(x = 0; x < w; x++)
 		{
 			if(*ps != transparent)
@@ -52,16 +52,16 @@ static void transblt32(void *src, void *dst, uint32_t transparent,
 }
 
 static void transblt16(void *src, void *dst, uint16_t transparent,
-	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t pitch)
+	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t spitch, uint32_t dpitch)
 {
 	uint32_t x, y;
-	uint8_t *psrc = (uint8_t *)src + pitch*sy + sx*sizeof(uint16_t);
-	uint8_t *pdst = (uint8_t *)dst + pitch*dy + dx*sizeof(uint16_t);
+	uint8_t *psrc = (uint8_t *)src + spitch*sy + sx*sizeof(uint16_t);
+	uint8_t *pdst = (uint8_t *)dst + dpitch*dy + dx*sizeof(uint16_t);
 	
 	for(y = 0; y < h; y++)
 	{
-		uint16_t *ps = (uint16_t*)(psrc + pitch*y);
-		uint16_t *ds = (uint16_t*)(pdst + pitch*y);
+		uint16_t *ps = (uint16_t*)(psrc + spitch*y);
+		uint16_t *ds = (uint16_t*)(pdst + dpitch*y);
 		for(x = 0; x < w; x++)
 		{
 			if(*ps != transparent)
@@ -75,16 +75,16 @@ static void transblt16(void *src, void *dst, uint16_t transparent,
 }
 
 static void transblt8(void *src, void *dst, uint8_t transparent,
-	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t pitch)
+	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t spitch, uint32_t dpitch)
 {
 	uint32_t x, y;
-	uint8_t *psrc = (uint8_t *)src + pitch*sy + sx*sizeof(uint8_t);
-	uint8_t *pdst = (uint8_t *)dst + pitch*dy + dx*sizeof(uint8_t);
+	uint8_t *psrc = (uint8_t *)src + spitch*sy + sx*sizeof(uint8_t);
+	uint8_t *pdst = (uint8_t *)dst + dpitch*dy + dx*sizeof(uint8_t);
 	
 	for(y = 0; y < h; y++)
 	{
-		uint8_t *ps = psrc + pitch*y;
-		uint8_t *ds = pdst + pitch*y;
+		uint8_t *ps = psrc + spitch*y;
+		uint8_t *ds = pdst + dpitch*y;
 		for(x = 0; x < w; x++)
 		{
 			if(*ps != transparent)
@@ -98,16 +98,16 @@ static void transblt8(void *src, void *dst, uint8_t transparent,
 }
 
 static void transblt24(void *src, void *dst, uint32_t transparent,
-	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t pitch)
+	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t spitch, uint32_t dpitch)
 {
 	uint32_t x, y;
-	uint8_t *psrc = (uint8_t *)src + pitch*sy + sx*3*sizeof(uint8_t);
-	uint8_t *pdst = (uint8_t *)dst + pitch*dy + dx*3*sizeof(uint8_t);
+	uint8_t *psrc = (uint8_t *)src + spitch*sy + sx*3*sizeof(uint8_t);
+	uint8_t *pdst = (uint8_t *)dst + dpitch*dy + dx*3*sizeof(uint8_t);
 	
 	for(y = 0; y < h; y++)
 	{
-		uint8_t *ps = psrc + pitch*y;
-		uint8_t *ds = pdst + pitch*y;
+		uint8_t *ps = psrc + spitch*y;
+		uint8_t *ds = pdst + dpitch*y;
 		for(x = 0; x < w; x++)
 		{
 			uint32_t test = (*ps) | ((*ps) << 8) | ((*ps) << 16);
@@ -212,21 +212,21 @@ static void transstretchblt24(void *src, void *dst, uint32_t transparent, stretc
 }
 
 void transblt(uint8_t bpp, void *src, void *dst, uint32_t transparent,
-	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t pitch)
+	uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w, uint32_t h, uint32_t spitch, uint32_t dpitch)
 {
 	switch(bpp)
 	{
 		case 8:
-			transblt8(src, dst, transparent, sx, sy, dx, dy, w, h, pitch);
+			transblt8(src, dst, transparent, sx, sy, dx, dy, w, h, spitch, dpitch);
 			break;
 		case 16:
-			transblt16(src, dst, transparent, sx, sy, dx, dy, w, h, pitch);
+			transblt16(src, dst, transparent, sx, sy, dx, dy, w, h, spitch, dpitch);
 			break;
 		case 24:
-			transblt24(src, dst, transparent, sx, sy, dx, dy, w, h, pitch);
+			transblt24(src, dst, transparent, sx, sy, dx, dy, w, h, spitch, dpitch);
 			break;
 		case 32:
-			transblt32(src, dst, transparent, sx, sy, dx, dy, w, h, pitch);
+			transblt32(src, dst, transparent, sx, sy, dx, dy, w, h, spitch, dpitch);
 			break;
 	}
 }

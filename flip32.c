@@ -33,6 +33,8 @@
 
 #include "vmhal9x.h"
 
+#include "fill.h"
+
 #include "nocrt.h"
 
 DWORD GetOffset(VMDAHAL_t *ddhal, void *ptr)
@@ -68,7 +70,7 @@ static void CopyFront(VMDAHAL_t *ddhal, void *src)
 	
 	FBHDA_access_begin(0);
 	
-	memcpy(ddhal->pFBHDA32->vram_pm32, src, ddhal->pFBHDA32->stride);
+	fill_memcpy(ddhal->pFBHDA32->vram_pm32, src, ddhal->pFBHDA32->stride);
 	
 	FBHDA_access_end(0);
 }
