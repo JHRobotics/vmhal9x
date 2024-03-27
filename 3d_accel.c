@@ -120,6 +120,12 @@ BOOL FBHDA_load_ex(VMDAHAL_t *pHal)
 		return FALSE;
 	}
 	
+	if(pHal->pFBHDA32->version != API_3DACCEL_VER)
+	{
+		ERR("Wrong FBHDA version: %d (header version is %d)", pHal->pFBHDA32->version, API_3DACCEL_VER);
+		return FALSE;
+	}
+	
 	hda = pHal->pFBHDA32;
 	hda_hal = pHal;
 	
