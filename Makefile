@@ -14,7 +14,7 @@
 #
 include config.mk
 
-CSTD=c99
+CSTD=gnu99
 
 NULLOUT=$(if $(filter $(OS),Windows_NT),NUL,/dev/null)
 
@@ -50,6 +50,11 @@ LDFLAGS = -static -nostdlib -nodefaultlibs
 
 ifdef RELEASE
   CFLAGS += -O3 -fomit-frame-pointer -DNDEBUG
+  
+  ifdef LTO
+    CFLAGS += -flto=auto -fno-fat-lto-objects -pipe -Werror=implicit-function-declaration
+    LDFLAGS := $(CFLAGS) $(LDFLAGS)
+  endif
 else
   CFLAGS += -O1 -DDDDEBUG=$(DDDEBUG)
   ifdef DEBUG

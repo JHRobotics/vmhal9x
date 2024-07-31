@@ -75,34 +75,56 @@ static void CopyFront(VMDAHAL_t *ddhal, void *src)
 	FBHDA_access_end(0);
 }
 
-static void DoFlipping(VMDAHAL_t *ddhal, void *from, void *to)
+static void CopyFrontByLines(VMDAHAL_t *ddhal, void *src, DWORD src_pitch)
 {
 	TRACE_ENTRY
 	
-	if(ddhal->pFBHDA32->flags & FB_SUPPORT_FLIPING) /* HW flip support */
+	FBHDA_access_begin(0);
+	
+	uint8_t *pdst = ddhal->pFBHDA32->vram_pm32;
+	uint8_t *psrc = src;
+	DWORD y;
+	
+	DWORD copy_size = src_pitch;
+	if(src_pitch > ddhal->pFBHDA32->pitch)
 	{
-		DWORD offFrom = GetOffset(ddhal, from);
-		if(offFrom == 0)
+		copy_size = ddhal->pFBHDA32->pitch;
+	}
+	
+	for(y = 0; y < ddhal->pFBHDA32->height; y++)
+	{
+		fill_memcpy(pdst, psrc, copy_size);
+		
+		pdst += ddhal->pFBHDA32->pitch;
+		psrc += src_pitch;
+	}
+	
+	FBHDA_access_end(0);
+}
+
+static void DoFlipping(VMDAHAL_t *ddhal, void *from, void *to, DWORD from_pitch, DWORD to_pitch)
+{
+	TRACE_ENTRY
+
+	DWORD offFrom = GetOffset(ddhal, from);
+	if(offFrom == 0)
+	{
+		uint32_t offTo = GetOffset(ddhal, to);
+		if(offTo != INVALID_OFFSET)
 		{
-			uint32_t offTo = GetOffset(ddhal, to);
-			if(offTo != INVALID_OFFSET)
+			if(from_pitch != to_pitch) /* surface is not same as screen */
+			{
+				CopyFrontByLines(ddhal, to, to_pitch);
+			}
+			else if(ddhal->pFBHDA32->flags & FB_SUPPORT_FLIPING) /* HW flip support */
 			{
 				FBHDA_swap(offTo);
 			}
-		}
-	}
-	else /* nope, copy it to fixed frame buffer surface */
-	{
-		DWORD offFrom = GetOffset(ddhal, from);
-		if(offFrom == 0)
-		{
-			uint32_t offTo = GetOffset(ddhal, to);
-			if(offTo != INVALID_OFFSET)
+			else /* nope, copy it to fixed frame buffer surface */
 			{
 				CopyFront(ddhal, to);
 			}
 		}
-		
 	}
 }
 
@@ -128,8 +150,9 @@ DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
 		(uint32_t)pfd->lpSurfTarg->lpGbl->fpVidMem - (uint32_t)ddhal->pFBHDA32->vram_pm32
 	);
 
-	DoFlipping(ddhal, (void*)pfd->lpSurfCurr->lpGbl->fpVidMem, (void*)pfd->lpSurfTarg->lpGbl->fpVidMem);
-	
+	DoFlipping(ddhal, (void*)pfd->lpSurfCurr->lpGbl->fpVidMem, (void*)pfd->lpSurfTarg->lpGbl->fpVidMem,
+		pfd->lpSurfCurr->lpGbl->lPitch, pfd->lpSurfTarg->lpGbl->lPitch);
+
 	pfd->ddRVal = DD_OK;
 	return DDHAL_DRIVER_HANDLED;
 } /* Flip32 */

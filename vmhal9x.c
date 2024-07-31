@@ -68,6 +68,7 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 	globalHal->cb32.Blt = Blt32;
 	globalHal->cb32.GetBltStatus = GetBltStatus32;
 	globalHal->cb32.SetExclusiveMode = SetExclusiveMode32;
+	//globalHal->cb32.SetMode = SetMode32; (not in use)
 	
 	globalHal->hInstance = (DWORD)dllHinst;
 	

@@ -101,6 +101,7 @@ DWORD __stdcall WaitForVerticalBlank32(LPDDHAL_WAITFORVERTICALBLANKDATA pwd);
 DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd);
 DWORD __stdcall GetBltStatus32(LPDDHAL_GETBLTSTATUSDATA pbd);
 DWORD __stdcall SetExclusiveMode32(LPDDHAL_SETEXCLUSIVEMODEDATA psem);
+DWORD __stdcall SetMode32(LPDDHAL_SETMODEDATA psmod);
 
 /* FBHDA */
 BOOL FBHDA_load_ex(VMDAHAL_t *pHal);

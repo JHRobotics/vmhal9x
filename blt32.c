@@ -36,6 +36,7 @@
 #include "fill.h"
 
 #include "nocrt.h"
+
 /*
  * Blt32
  *
@@ -231,7 +232,7 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 		{
 			DWORD spitch = src->lPitch;
 			DWORD dpitch = dst->lPitch;
-			
+
 			if (rop3_code == (SRCCOPY >> 16) && (dwFlags & DDBLT_KEYSRCOVERRIDE))
 			{
 				TRACE("Blt: transblt from %08X %dx%d -> %08X %dx%dx%d key=%08X",

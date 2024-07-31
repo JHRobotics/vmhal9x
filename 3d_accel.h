@@ -33,7 +33,7 @@ THE SOFTWARE.
 #endif
 #endif
 
-#define API_3DACCEL_VER 20240621
+#define API_3DACCEL_VER 20240724
 
 #define ESCAPE_DRV_NT         0x1103 /* (4355) */
 
@@ -181,6 +181,7 @@ typedef struct SVGA_region_info
 	DWORD   region_ppn;
 	void*   mob_address;
 	DWORD   mob_ppn;
+	DWORD   mob_pt_depth;
 	DWORD   is_mob;
 	DWORD   mobonly;
 } SVGA_region_info_t;
@@ -195,6 +196,7 @@ typedef struct SVGA_CMB_status
 
 #define SVGA_PROC_NONE         0
 #define SVGA_PROC_COMPLETED    1
+#define SVGA_PROC_QUEUED       2
 #define SVGA_PROC_ERROR        3
 #define SVGA_PROC_FENCE     0xFF
 
@@ -210,7 +212,7 @@ typedef struct SVGA_DB_context
 {
 	DWORD pid;
 	void *cotable;
-	DWORD pad1;
+	DWORD gmrId; /* mob id for context */
 	DWORD pad2;
 } SVGA_DB_context_t;
 
@@ -249,12 +251,14 @@ BOOL SVGA_init_hw();
 
 BOOL SVGA_valid();
 
-#define SVGA_CB_USE_CONTEXT_DEVICE 0x80000000UL
-#define SVGA_CB_SYNC               0x40000000UL
-#define SVGA_CB_FORCE_FIFO         0x20000000UL
-#define SVGA_CB_FORCE_FENCE        0x10000000UL
-#define SVGA_CB_PRESENT_ASYNC      0x08000000UL
-#define SVGA_CB_PRESENT_GPU        0x04000000UL
+#define SVGA_CB_USE_CONTEXT_DEVICE 0x80000000UL /* CB control command */
+#define SVGA_CB_SYNC               0x40000000UL /* wait to command complete */
+#define SVGA_CB_FORCE_FIFO         0x20000000UL /* insert this command to FIFO, event the CB is working */
+#define SVGA_CB_FORCE_FENCE        0x10000000UL /* force insert fence */
+#define SVGA_CB_PRESENT            0x08000000UL /* this is 'present' command: WAIT for previous 'present' and 'render' to complete */
+#define SVGA_CB_DIRTY_SURFACE      0x04000000UL /* need reread GPU SURFACE first, can combine with SVGA_CB_PRESENT */
+#define SVGA_CB_RENDER             0x02000000UL /* this is 'render' cmd, WAIT for 'present', 'update' */
+#define SVGA_CB_UPDATE             0x01000000UL /* this is 'update' cmd, updates screen on HOST, WAIT for 'update', 'present' */
 
 // SVGA_CB_FLAG_DX_CONTEXT
 
@@ -301,13 +305,15 @@ void SVGA_DB_unlock();
 
 #define SVGA_OT_FLAG_ALLOCATED 1
 #define SVGA_OT_FLAG_ACTIVE    2
+#define SVGA_OT_FLAG_DIRTY     4
 
 typedef struct SVGA_OT_info_entry
 {
-	DWORD   phy;
+	DWORD   ppn;
 	void   *lin;
 	DWORD   size;
 	DWORD   flags;
+	DWORD   pt_depth;
 } SVGA_OT_info_entry_t;
 
 SVGA_OT_info_entry_t *SVGA_OT_setup();
