@@ -38,6 +38,95 @@ static HINSTANCE dllHinst = NULL;
 
 VMDAHAL_t *globalHal;
 
+static DWORD calc_pitch(DWORD w, DWORD bpp)
+{
+	DWORD bp = (bpp+7) / 8;
+	
+	return ((w * bp) + 15) & (~((DWORD)15));
+}
+
+static BOOL FillModes(VMDAHAL_t *hal)
+{
+	DEVMODEA mode;
+	DWORD    id;
+	
+	memset(&mode, 0, sizeof(DEVMODEA));
+	mode.dmSize = sizeof(DEVMODEA);
+	
+	for(id = 0; ; id++)
+	{
+		if(EnumDisplaySettingsA(NULL, id, &mode))
+		{
+			DWORD idx = hal->modes_count;
+			if(idx >= DISP_MODES_MAX)
+			{
+				break;
+			}
+			
+			if(mode.dmBitsPerPel == 8 ||
+				mode.dmBitsPerPel == 16 ||
+				mode.dmBitsPerPel == 24 ||
+				mode.dmBitsPerPel == 32)
+			{
+				hal->modes[idx].dwWidth  = mode.dmPelsWidth;
+				hal->modes[idx].dwHeight = mode.dmPelsHeight;
+				hal->modes[idx].lPitch   = calc_pitch(mode.dmPelsWidth, mode.dmBitsPerPel);
+				hal->modes[idx].wRefreshRate = 0;
+				
+				switch(mode.dmBitsPerPel)
+				{
+					case 8:
+						hal->modes[idx].dwBPP  = 8;
+						hal->modes[idx].wFlags = DDMODEINFO_PALETTIZED;
+						hal->modes[idx].dwRBitMask = 0x00000000;
+						hal->modes[idx].dwGBitMask = 0x00000000;
+						hal->modes[idx].dwBBitMask = 0x00000000;
+						hal->modes[idx].dwAlphaBitMask = 0x00000000;
+						break;
+					case 16:
+						hal->modes[idx].dwBPP  = 16;
+						hal->modes[idx].wFlags = 0;
+						hal->modes[idx].dwRBitMask = 0x0000F800;
+						hal->modes[idx].dwGBitMask = 0x000007E0;
+						hal->modes[idx].dwBBitMask = 0x0000001F;
+						hal->modes[idx].dwAlphaBitMask = 0x00000000;
+						break;
+					case 24:
+						hal->modes[idx].dwBPP  = 24;
+						hal->modes[idx].wFlags = 0;
+						hal->modes[idx].dwRBitMask = 0x00FF0000;
+						hal->modes[idx].dwGBitMask = 0x0000FF00;
+						hal->modes[idx].dwBBitMask = 0x000000FF;
+						hal->modes[idx].dwAlphaBitMask = 0x00000000;
+						break;
+					case 32:
+						hal->modes[idx].dwBPP  = 32;
+						hal->modes[idx].wFlags = 0;
+						hal->modes[idx].dwRBitMask = 0x00FF0000;
+						hal->modes[idx].dwGBitMask = 0x0000FF00;
+						hal->modes[idx].dwBBitMask = 0x000000FF;
+						hal->modes[idx].dwAlphaBitMask = 0x00000000;
+						break;
+				}
+				
+				hal->modes_count++;
+			}
+		}
+		else
+		{
+			break;
+		}
+	}
+	
+	if(id == 0)
+	{
+		return FALSE;
+	}
+	
+	hal->custom_mode_id = hal->modes_count;
+	return TRUE;
+}
+
 //VMDAHAL_t __stdcall *DriverInit(LPVOID ptr)
 DWORD __stdcall DriverInit(LPVOID ptr)
 {
@@ -68,9 +157,14 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 	globalHal->cb32.Blt = Blt32;
 	globalHal->cb32.GetBltStatus = GetBltStatus32;
 	globalHal->cb32.SetExclusiveMode = SetExclusiveMode32;
-	//globalHal->cb32.SetMode = SetMode32; (not in use)
+	globalHal->cb32.SetMode = SetMode32;
 	
 	globalHal->hInstance = (DWORD)dllHinst;
+	
+	if(FillModes(globalHal))
+	{
+		return 1;
+	}
 	
 	if(FBHDA_load_ex(globalHal))
 	{

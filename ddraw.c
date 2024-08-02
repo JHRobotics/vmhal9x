@@ -181,59 +181,12 @@ DWORD __stdcall SetExclusiveMode32(LPDDHAL_SETEXCLUSIVEMODEDATA psem)
 	return DDHAL_DRIVER_HANDLED;
 }
 
-typedef struct _MODEINFO_t
-{
-	DWORD width;
-	DWORD height;
-	DWORD pitch;
-	DWORD bpp;
-} MODEINFO_t;
-
-/* please make this sync with modeInfo in dddrv.c line ~46 */
-static MODEINFO_t modeInfo[] = {
-	{ 640,  480,  640,  8},
-	{ 640,  480, 1280, 16},
-	{ 640,  480, 2560, 32},
-	{ 800,  600,  800,  8},
-	{ 800,  600, 1600, 16},
-	{ 800,  600, 3200, 32},
-	{1024,  768, 1024,  8},
-	{1024,  768, 2048, 16},
-	{1024,  768, 4096, 32},
-	{1280, 1024, 1280,  8},
-	{1280, 1024, 2560, 16},
-	{1280, 1024, 5120, 32},
-	{1600, 1200, 1600,  8},
-	{1600, 1200, 3200, 16},
-	{1600, 1200, 6400, 32},
-	{ 720,  480,  720,  8},
-	{ 720,  480, 1440, 16},
-	{ 720,  480, 2880, 32},
-	{1280,  720, 1280,  8},
-	{1280,  720, 2560, 16},
-	{1280,  720, 5120, 32},
-	{1366,  768, 1280,  8},
-	{1366,  768, 2732, 16},
-	{1366,  768, 5464, 32},
-	{1440,  900, 1440,  8},
-	{1440,  900, 2880, 16},
-	{1440,  900, 5760, 32},
-	{1920, 1080, 1920,  8},
-	{1920, 1080, 3840, 16},
-	{1920, 1080, 7680, 32},
-	{1920, 1200, 1920,  8},
-	{1920, 1200, 3840, 16},
-	{1920, 1200, 7680, 32},
-	{   0,    0,    0,  0}
-};
-
-#define MODEINFO_MAX (sizeof(modeInfo)/sizeof(MODEINFO_t))
-
 DWORD __stdcall SetMode32(LPDDHAL_SETMODEDATA psmod)
 {
+	VMDAHAL_t *ddhal = GetHAL(psmod->lpDD);
 	DWORD index = psmod->dwModeIndex;
 	
-	if(index < MODEINFO_MAX-1)
+	if(index < ddhal->modes_count)
 	{
 		DEVMODEA newmode;
 		memset(&newmode, 0, sizeof(DEVMODEA));
@@ -241,9 +194,9 @@ DWORD __stdcall SetMode32(LPDDHAL_SETMODEDATA psmod)
 		
 		TRACE("SetMode32: %u", index);
 	
-		newmode.dmBitsPerPel  = modeInfo[index].bpp;
-		newmode.dmPelsWidth   = modeInfo[index].width;
-		newmode.dmPelsHeight  = modeInfo[index].height;
+		newmode.dmBitsPerPel  = ddhal->modes[index].dwBPP;
+		newmode.dmPelsWidth   = ddhal->modes[index].dwWidth;
+		newmode.dmPelsHeight  = ddhal->modes[index].dwHeight;
 		newmode.dmFields      = DM_BITSPERPEL | DM_PELSWIDTH | DM_PELSHEIGHT;
 	
 		if(ChangeDisplaySettingsA(&newmode, CDS_RESET|CDS_FULLSCREEN) == DISP_CHANGE_SUCCESSFUL)
