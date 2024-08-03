@@ -55,6 +55,8 @@ DWORD __stdcall CanCreateSurface(LPDDHAL_CANCREATESURFACEDATA pccsd)
 
 	if(!pccsd->bIsDifferentPixelFormat)
 	{
+//		UpdateCustomMode(hal);
+		
 		pccsd->ddRVal = DD_OK;
 		return DDHAL_DRIVER_HANDLED;
 	}
@@ -185,6 +187,8 @@ DWORD __stdcall SetMode32(LPDDHAL_SETMODEDATA psmod)
 {
 	VMDAHAL_t *ddhal = GetHAL(psmod->lpDD);
 	DWORD index = psmod->dwModeIndex;
+	
+//	UpdateCustomMode(ddhal);
 	
 	if(index < ddhal->modes_count)
 	{

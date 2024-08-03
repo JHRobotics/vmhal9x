@@ -111,6 +111,9 @@ BOOL FBHDA_load_ex(VMDAHAL_t *pHal);
 BOOL IsInFront(VMDAHAL_t *ddhal, void *ptr);
 DWORD GetOffset(VMDAHAL_t *ddhal, void *ptr);
 
+/* modes */
+void UpdateCustomMode(VMDAHAL_t *hal);
+
 /* globals */
 extern VMDAHAL_t *globalHal;
 

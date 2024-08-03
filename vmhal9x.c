@@ -38,11 +38,64 @@ static HINSTANCE dllHinst = NULL;
 
 VMDAHAL_t *globalHal;
 
-static DWORD calc_pitch(DWORD w, DWORD bpp)
+static DWORD CalcPitch(DWORD w, DWORD bpp)
 {
 	DWORD bp = (bpp+7) / 8;
 	
 	return ((w * bp) + 15) & (~((DWORD)15));
+}
+
+static BOOL InsertMode(VMDAHAL_t *hal, DWORD idx, DWORD w, DWORD h, DWORD bpp)
+{
+	if(idx >= DISP_MODES_MAX)
+	{
+		return FALSE;
+	}
+	
+	TRACE("new mode %u = %ux%ux%u", idx, w, h, bpp);
+	
+	hal->modes[idx].dwWidth  = w;
+	hal->modes[idx].dwHeight = h;
+	hal->modes[idx].lPitch   = CalcPitch(w, bpp);
+	hal->modes[idx].wRefreshRate = 0;
+
+	switch(bpp)
+	{
+		case 8:
+			hal->modes[idx].dwBPP  = 8;
+			hal->modes[idx].wFlags = DDMODEINFO_PALETTIZED;
+			hal->modes[idx].dwRBitMask = 0x00000000;
+			hal->modes[idx].dwGBitMask = 0x00000000;
+			hal->modes[idx].dwBBitMask = 0x00000000;
+			hal->modes[idx].dwAlphaBitMask = 0x00000000;
+			return TRUE;
+		case 16:
+			hal->modes[idx].dwBPP  = 16;
+			hal->modes[idx].wFlags = 0;
+			hal->modes[idx].dwRBitMask = 0x0000F800;
+			hal->modes[idx].dwGBitMask = 0x000007E0;
+			hal->modes[idx].dwBBitMask = 0x0000001F;
+			hal->modes[idx].dwAlphaBitMask = 0x00000000;
+			return TRUE;
+		case 24:
+			hal->modes[idx].dwBPP  = 24;
+			hal->modes[idx].wFlags = 0;
+			hal->modes[idx].dwRBitMask = 0x00FF0000;
+			hal->modes[idx].dwGBitMask = 0x0000FF00;
+			hal->modes[idx].dwBBitMask = 0x000000FF;
+			hal->modes[idx].dwAlphaBitMask = 0x00000000;
+			return TRUE;
+		case 32:
+			hal->modes[idx].dwBPP  = 32;
+			hal->modes[idx].wFlags = 0;
+			hal->modes[idx].dwRBitMask = 0x00FF0000;
+			hal->modes[idx].dwGBitMask = 0x0000FF00;
+			hal->modes[idx].dwBBitMask = 0x000000FF;
+			hal->modes[idx].dwAlphaBitMask = 0x00000000;
+			return TRUE;
+	}
+	
+	return FALSE;
 }
 
 static BOOL FillModes(VMDAHAL_t *hal)
@@ -68,48 +121,10 @@ static BOOL FillModes(VMDAHAL_t *hal)
 				mode.dmBitsPerPel == 24 ||
 				mode.dmBitsPerPel == 32)
 			{
-				hal->modes[idx].dwWidth  = mode.dmPelsWidth;
-				hal->modes[idx].dwHeight = mode.dmPelsHeight;
-				hal->modes[idx].lPitch   = calc_pitch(mode.dmPelsWidth, mode.dmBitsPerPel);
-				hal->modes[idx].wRefreshRate = 0;
-				
-				switch(mode.dmBitsPerPel)
+				if(InsertMode(hal, idx, mode.dmPelsWidth, mode.dmPelsHeight, mode.dmBitsPerPel))
 				{
-					case 8:
-						hal->modes[idx].dwBPP  = 8;
-						hal->modes[idx].wFlags = DDMODEINFO_PALETTIZED;
-						hal->modes[idx].dwRBitMask = 0x00000000;
-						hal->modes[idx].dwGBitMask = 0x00000000;
-						hal->modes[idx].dwBBitMask = 0x00000000;
-						hal->modes[idx].dwAlphaBitMask = 0x00000000;
-						break;
-					case 16:
-						hal->modes[idx].dwBPP  = 16;
-						hal->modes[idx].wFlags = 0;
-						hal->modes[idx].dwRBitMask = 0x0000F800;
-						hal->modes[idx].dwGBitMask = 0x000007E0;
-						hal->modes[idx].dwBBitMask = 0x0000001F;
-						hal->modes[idx].dwAlphaBitMask = 0x00000000;
-						break;
-					case 24:
-						hal->modes[idx].dwBPP  = 24;
-						hal->modes[idx].wFlags = 0;
-						hal->modes[idx].dwRBitMask = 0x00FF0000;
-						hal->modes[idx].dwGBitMask = 0x0000FF00;
-						hal->modes[idx].dwBBitMask = 0x000000FF;
-						hal->modes[idx].dwAlphaBitMask = 0x00000000;
-						break;
-					case 32:
-						hal->modes[idx].dwBPP  = 32;
-						hal->modes[idx].wFlags = 0;
-						hal->modes[idx].dwRBitMask = 0x00FF0000;
-						hal->modes[idx].dwGBitMask = 0x0000FF00;
-						hal->modes[idx].dwBBitMask = 0x000000FF;
-						hal->modes[idx].dwAlphaBitMask = 0x00000000;
-						break;
+					hal->modes_count++;
 				}
-				
-				hal->modes_count++;
 			}
 		}
 		else
@@ -125,6 +140,42 @@ static BOOL FillModes(VMDAHAL_t *hal)
 	
 	hal->custom_mode_id = hal->modes_count;
 	return TRUE;
+}
+
+static DWORD FindMode(VMDAHAL_t *hal, DWORD w, DWORD h, DWORD bpp)
+{
+	DWORD idx;
+	for(idx = 0; idx < hal->modes_count; idx++)
+	{
+		if(hal->modes[idx].dwWidth == w &&
+			hal->modes[idx].dwHeight == h &&
+			hal->modes[idx].dwBPP == bpp)
+		{
+			return idx;
+		}
+	}
+	
+	return -1;
+}
+
+void UpdateCustomMode(VMDAHAL_t *hal)
+{
+	TRACE_ENTRY
+	
+	DWORD current = 0;
+	current = FindMode(hal, hal->pFBHDA32->width, hal->pFBHDA32->height, hal->pFBHDA32->bpp);
+	
+	if(current == -1)
+	{
+		if(InsertMode(hal, hal->custom_mode_id, hal->pFBHDA32->width, hal->pFBHDA32->height, hal->pFBHDA32->bpp))
+		{
+			TRACE("custom mode: %u %u %u", hal->pFBHDA32->width, hal->pFBHDA32->height, hal->pFBHDA32->bpp);
+			if(hal->custom_mode_id == hal->modes_count)
+			{
+				hal->modes_count++;
+			}
+		}
+	}
 }
 
 //VMDAHAL_t __stdcall *DriverInit(LPVOID ptr)
@@ -161,10 +212,15 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 	
 	globalHal->hInstance = (DWORD)dllHinst;
 	
-	if(FillModes(globalHal))
+	if(globalHal->modes_count == 0)
 	{
-		return 1;
+		if(!FillModes(globalHal))
+		{
+			return 1;
+		}
 	}
+	
+	UpdateCustomMode(globalHal);
 	
 	if(FBHDA_load_ex(globalHal))
 	{

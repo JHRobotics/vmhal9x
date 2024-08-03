@@ -104,6 +104,46 @@ static HANDLE FBHDA_get_vxd(VMDAHAL_t *pHal)
 	return h;
 }
 
+static BOOL process_exists(DWORD pid)
+{
+	BOOL rc = FALSE;
+	HANDLE proc = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, pid);
+	if(proc != NULL)
+	{
+		DWORD code;
+		
+		rc = TRUE;
+		if(GetExitCodeProcess(proc, &code))
+		{
+			if(code != STILL_ACTIVE)
+			{
+				rc = FALSE;
+			}
+		}
+
+		CloseHandle(proc);
+	}
+	
+	return rc;
+}
+
+static void FBHDA_clean_vxd_table(VMDAHAL_t *pHal)
+{
+	int i;
+	for(i = 0; i < VXD_PAIRS_CNT; i++)
+	{
+		if(pHal->vxd_table[i].pid != 0)
+		{
+			if(!process_exists(pHal->vxd_table[i].pid))
+			{
+				TRACE("cleaned pid=%X", pHal->vxd_table[i].pid);
+				pHal->vxd_table[i].pid = 0;
+				pHal->vxd_table[i].vxd = (DWORD)INVALID_HANDLE_VALUE;
+			}
+		}
+	}
+}
+
 BOOL FBHDA_load_ex(VMDAHAL_t *pHal)
 {
 	TRACE_ENTRY
@@ -125,6 +165,8 @@ BOOL FBHDA_load_ex(VMDAHAL_t *pHal)
 		ERR("Wrong FBHDA version: %d (header version is %d)", pHal->pFBHDA32->version, API_3DACCEL_VER);
 		return FALSE;
 	}
+	
+	FBHDA_clean_vxd_table(pHal);
 	
 	hda = pHal->pFBHDA32;
 	hda_hal = pHal;
