@@ -168,6 +168,10 @@ DWORD __stdcall SetExclusiveMode32(LPDDHAL_SETEXCLUSIVEMODEDATA psem)
 {
 	TRACE_ENTRY
 	
+#ifdef DEBUG
+	SetExceptionHandler();
+#endif
+
 	//VMDAHAL_t *ddhal = GetHAL(psem->lpDD);
 	
 	if(psem->dwEnterExcl)

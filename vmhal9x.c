@@ -222,6 +222,10 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 	
 	UpdateCustomMode(globalHal);
 	
+#ifdef DEBUG
+	SetExceptionHandler();
+#endif
+
 	if(FBHDA_load_ex(globalHal))
 	{
 		return 1;

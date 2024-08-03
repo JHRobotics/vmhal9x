@@ -117,4 +117,7 @@ void UpdateCustomMode(VMDAHAL_t *hal);
 /* globals */
 extern VMDAHAL_t *globalHal;
 
+/* debug */
+void SetExceptionHandler();
+
 #endif /* __VMHAL9X_H__INCLUDED__ */
