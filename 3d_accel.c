@@ -28,6 +28,7 @@
 #include <ddraw.h>
 #include <ddrawi.h>
 #include <stddef.h>
+#include <stdint.h>
 #include "vmdahal32.h"
 
 #include "vmhal9x.h"

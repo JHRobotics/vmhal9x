@@ -91,11 +91,16 @@ DWORD __stdcall DestroySurface( LPDDHAL_DESTROYSURFACEDATA lpd)
 /* return tenths of millisecionds */
 uint64_t GetTimeTMS()
 {
-	LARGE_INTEGER freq, stamp;
-	QueryPerformanceFrequency(&freq);
-	QueryPerformanceCounter(&stamp);
+	static LARGE_INTEGER freq = {0};
+	LARGE_INTEGER stamp;
 	
-	freq.QuadPart /= 10*1000;
+	if(freq.QuadPart == 0)
+	{
+		QueryPerformanceFrequency(&freq);
+		freq.QuadPart /= 10*1000;
+	}
+	
+	QueryPerformanceCounter(&stamp);
 	
 	return stamp.QuadPart / freq.QuadPart;
 }
@@ -112,7 +117,7 @@ DWORD __stdcall WaitForVerticalBlank32(LPDDHAL_WAITFORVERTICALBLANKDATA pwd)
 			       may waited in loop to vertical blank. Thats why I emulating VGA timing here.
 			 */
 			pwd->ddRVal = DD_OK;
-			DWORD period = 10000/600;
+			const DWORD period = 10000/60;
 			DWORD frame_pos = GetTimeTMS() % period;
 			DWORD visible_time = (period*4800)/5250;
 			if(frame_pos <= visible_time)
@@ -127,10 +132,12 @@ DWORD __stdcall WaitForVerticalBlank32(LPDDHAL_WAITFORVERTICALBLANKDATA pwd)
 			break;
 		case DDWAITVB_BLOCKBEGIN:
 			/* wait until vertical blank is over and wait display period to the end */
+			pwd->ddRVal = DD_OK;
 			return DDHAL_DRIVER_HANDLED;
 			break;
 		case DDWAITVB_BLOCKEND:
 			/* wait for blank end */
+			pwd->ddRVal = DD_OK;
 			return DDHAL_DRIVER_HANDLED;
 			break;
 	}

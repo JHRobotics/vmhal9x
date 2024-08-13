@@ -26,6 +26,7 @@
 #include <windows.h>
 #include <ddraw.h>
 #include <ddrawi.h>
+#include <stdint.h>
 #include "ddrawi_ddk.h"
 
 #include "vmdahal32.h"

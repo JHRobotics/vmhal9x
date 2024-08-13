@@ -107,7 +107,7 @@ static void DoFlipping(VMDAHAL_t *ddhal, void *from, void *to, DWORD from_pitch,
 	TRACE_ENTRY
 
 	DWORD offFrom = GetOffset(ddhal, from);
-	if(offFrom == 0)
+	if(offFrom == ddhal->pFBHDA32->surface)
 	{
 		uint32_t offTo = GetOffset(ddhal, to);
 		if(offTo != INVALID_OFFSET)
@@ -128,6 +128,9 @@ static void DoFlipping(VMDAHAL_t *ddhal, void *from, void *to, DWORD from_pitch,
 	}
 }
 
+const uint64_t screen_time = 10000/60;
+static uint64_t last_flip_time = 0;
+
 DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
 {
 	TRACE_ENTRY
@@ -144,6 +147,17 @@ DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
 	 * done being displayed
 	 */
 	VMDAHAL_t *ddhal = GetHAL(pfd->lpDD);	
+
+	uint64_t flip_time = GetTimeTMS();
+	
+	if(last_flip_time <= flip_time) /* not in overflow */
+	{
+		if(last_flip_time + screen_time > flip_time)
+		{
+			pfd->ddRVal = DDERR_WASSTILLDRAWING;
+			return DDHAL_DRIVER_HANDLED;
+		}
+	}
 	 
 	TRACE("Flip: %08lx -> %08lx",
 		(uint32_t)pfd->lpSurfCurr->lpGbl->fpVidMem - (uint32_t)ddhal->pFBHDA32->vram_pm32,
@@ -153,6 +167,7 @@ DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
 	DoFlipping(ddhal, (void*)pfd->lpSurfCurr->lpGbl->fpVidMem, (void*)pfd->lpSurfTarg->lpGbl->fpVidMem,
 		pfd->lpSurfCurr->lpGbl->lPitch, pfd->lpSurfTarg->lpGbl->lPitch);
 
+	last_flip_time = flip_time;
 	pfd->ddRVal = DD_OK;
 	return DDHAL_DRIVER_HANDLED;
 } /* Flip32 */
@@ -160,6 +175,19 @@ DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
 DWORD __stdcall GetFlipStatus32(LPDDHAL_GETFLIPSTATUSDATA pfd)
 {
 	TRACE_ENTRY
+	
+	if(pfd->dwFlags == DDGFS_CANFLIP)
+	{
+		uint64_t flip_time = GetTimeTMS();
+		if(last_flip_time <= flip_time) /* not in overflow */
+		{
+			if(last_flip_time + screen_time > flip_time)
+			{
+				pfd->ddRVal = DDERR_WASSTILLDRAWING;
+				return DDHAL_DRIVER_HANDLED;
+			}
+		}
+	}
 	
 	/* we do nothing async yet, so return always success */	
 	pfd->ddRVal = DD_OK;

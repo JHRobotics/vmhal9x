@@ -120,4 +120,7 @@ extern VMDAHAL_t *globalHal;
 /* debug */
 void SetExceptionHandler();
 
+/* timing */
+uint64_t GetTimeTMS();
+
 #endif /* __VMHAL9X_H__INCLUDED__ */
