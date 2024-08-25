@@ -116,6 +116,7 @@ void UpdateCustomMode(VMDAHAL_t *hal);
 
 /* globals */
 extern VMDAHAL_t *globalHal;
+extern BOOL halVSync;
 
 /* debug */
 void SetExceptionHandler();

@@ -39,6 +39,8 @@ static HINSTANCE dllHinst = NULL;
 
 VMDAHAL_t *globalHal;
 
+BOOL halVSync = FALSE;
+
 static DWORD CalcPitch(DWORD w, DWORD bpp)
 {
 	DWORD bp = (bpp+7) / 8;
@@ -230,6 +232,44 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 	if(FBHDA_load_ex(globalHal))
 	{
 		return 1;
+	}
+	
+	{
+		HKEY reg;
+		if(RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\vmdisp9x", 0, KEY_READ, &reg) == ERROR_SUCCESS)
+		{
+			DWORD type;
+			BYTE buf[128];
+			DWORD size = sizeof(buf);
+			if(RegQueryValueExA(reg, "HAL_VSYNC", NULL, &type, (LPBYTE)&buf[0], &size) == ERROR_SUCCESS)
+			{
+		  	switch(type)
+		   	{
+					case REG_SZ:
+					case REG_MULTI_SZ:
+					case REG_EXPAND_SZ:
+					{
+						int n = atoi((char*)buf);
+						if(n != 0)
+						{
+							halVSync = TRUE;
+						}
+						break;
+					}
+					case REG_DWORD:
+					{
+						DWORD dw = *((LPDWORD)buf);
+						if(dw != 0)
+						{
+							halVSync = TRUE;
+						}
+						break;
+					}
+				}
+			}
+			RegCloseKey(reg);
+		}
+		
 	}
 	
 	ERR("DriverInit FAILED!");

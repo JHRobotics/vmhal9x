@@ -44,7 +44,7 @@ endif
 
 DLLFLAGS = -o $@ -shared -Wl,--dll,--out-implib,lib$(@:dll=a),--exclude-all-symbols,--exclude-libs=pthread,--disable-dynamicbase,--disable-nxcompat,--subsystem,windows,--image-base,$(BASE_$@)$(TUNE_LD)
 
-LIBS = -luser32 -lkernel32 -lgcc -lgdi32
+LIBS = -luser32 -lkernel32 -lgcc -lgdi32 -ladvapi32
 CFLAGS = -std=$(CSTD) -Wall -ffreestanding -fno-exceptions -ffast-math -nostdlib -DNOCRT -DNOCRT_FILE -DNOCRT_FLOAT -DNOCRT_MEM -Inocrt $(TUNE) -DVMHAL9X_BUILD=$(VERSION_BUILD)
 LDFLAGS = -static -nostdlib -nodefaultlibs
 

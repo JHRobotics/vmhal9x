@@ -147,15 +147,19 @@ DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
 	 * done being displayed
 	 */
 	VMDAHAL_t *ddhal = GetHAL(pfd->lpDD);	
+	uint64_t flip_time = 0;
 
-	uint64_t flip_time = GetTimeTMS();
-	
-	if(last_flip_time <= flip_time) /* not in overflow */
+	if(halVSync)
 	{
-		if(last_flip_time + screen_time > flip_time)
+		flip_time = GetTimeTMS();
+		
+		if(last_flip_time <= flip_time) /* not in overflow */
 		{
-			pfd->ddRVal = DDERR_WASSTILLDRAWING;
-			return DDHAL_DRIVER_HANDLED;
+			if(last_flip_time + screen_time > flip_time)
+			{
+				pfd->ddRVal = DDERR_WASSTILLDRAWING;
+				return DDHAL_DRIVER_HANDLED;
+			}
 		}
 	}
 	 
@@ -176,7 +180,7 @@ DWORD __stdcall GetFlipStatus32(LPDDHAL_GETFLIPSTATUSDATA pfd)
 {
 	TRACE_ENTRY
 	
-	if(pfd->dwFlags == DDGFS_CANFLIP)
+	if(pfd->dwFlags == DDGFS_CANFLIP && halVSync)
 	{
 		uint64_t flip_time = GetTimeTMS();
 		if(last_flip_time <= flip_time) /* not in overflow */
