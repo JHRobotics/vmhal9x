@@ -32,6 +32,8 @@
 #include "vmdahal32.h"
 
 #include "vmhal9x.h"
+#include "mesa3d.h"
+
 #include "rop3.h"
 #include "transblt.h"
 #include "fill.h"
@@ -129,6 +131,9 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 		
 		srcx = pbd->lpDDSrcSurface;   
 		src = srcx->lpGbl;
+
+		//MESA_RASTER(src, FALSE);
+		//MESA_RASTER(dst, FALSE);
 
 #ifdef TRACE_ON
 		dwSrcOffset = GetOffset(ddhal, (void*)src->fpVidMem);
@@ -266,29 +271,45 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 							pbd->rSrc.left, pbd->rSrc.top, pbd->rDest.left, pbd->rDest.top, dwSrcWidth, dwSrcHeight, spitch, dpitch);
 			}
 		}
+
+#ifdef D3DHAL
+		SurfaceInfoMakeDirty(dst->fpVidMem);
+#endif
 	}
 	else if (dwFlags & (DDBLT_COLORFILL | DDBLT_DEPTHFILL))
 	{
+		DWORD bpp = ddhal->pFBHDA32->bpp;
+		if(dstx->dwFlags & DDRAWISURF_HASPIXELFORMAT)
+		{
+			bpp = dst->ddpfSurface.dwRGBBitCount;
+		}
+		TOPIC("GL", "Blt BPP: %d", bpp);
+		
 		dwFillColor = pbd->bltFX.dwFillColor;
 		if(dwFlags & DDBLT_DEPTHFILL)
 		{
 			dwFillColor = pbd->bltFX.dwFillDepth;
 		}
-
+		
+		TOPIC("GL", "Blt: rop3 (F0)");
 		TRACE("Blt: rop3 (F0) %08X %dx%d", dwFillColor, dwDstWidth, dwDstHeight);
 
 		if(pbd->rDest.left == 0 && pbd->rDest.top  == 0 &&
 				pbd->rDest.right == dwDstWidth &&
-				pbd->rDest.bottom == dwDstHeight
-		)
+				pbd->rDest.bottom == dwDstHeight)
 		{
-			fill((void*)dst->fpVidMem, dst->lPitch*dwDstHeight, ddhal->pFBHDA32->bpp, dwFillColor);
+			// we don't need read GL FB here - it'll be overwritten
+			fill((void*)dst->fpVidMem, dst->lPitch*dwDstHeight, bpp, dwFillColor);
 		}
 		else
 		{
-			rop3(ddhal->pFBHDA32->bpp, 0xF0, (void*)dst->fpVidMem, (void*)dst->fpVidMem, dwFillColor,
+			rop3(bpp, 0xF0, (void*)dst->fpVidMem, (void*)dst->fpVidMem, dwFillColor,
 				pbd->rDest.left, pbd->rDest.top, pbd->rDest.left, pbd->rDest.top, dwDstWidth, dwDstHeight, dst->lPitch, dst->lPitch);
 		}
+
+#ifdef D3DHAL
+		SurfaceInfoMakeDirty(dst->fpVidMem);
+#endif
 	}
 	else
 	{

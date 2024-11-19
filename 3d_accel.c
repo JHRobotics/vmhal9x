@@ -131,11 +131,17 @@ static BOOL process_exists(DWORD pid)
 static void FBHDA_clean_vxd_table(VMDAHAL_t *pHal)
 {
 	int i;
+	DWORD current_pid = GetCurrentProcessId();
+	
 	for(i = 0; i < VXD_PAIRS_CNT; i++)
 	{
 		if(pHal->vxd_table[i].pid != 0)
 		{
-			if(!process_exists(pHal->vxd_table[i].pid))
+			if((!process_exists(pHal->vxd_table[i].pid)) ||
+				(current_pid == pHal->vxd_table[i].pid))
+				/* NOTE: if is process in table with same PID as current, this is
+				 zombie and current proccess reuse its PID.
+				 */
 			{
 				TRACE("cleaned pid=%X", pHal->vxd_table[i].pid);
 				pHal->vxd_table[i].pid = 0;

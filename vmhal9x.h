@@ -54,37 +54,38 @@
 #define DDDEBUG 0
 #endif
 
-void dbg_prefix_printf(const char *prefix, const char *file, int line, const char *fmt, ...);
+void dbg_prefix_printf(const char *topic, const char *prefix, const char *file, int line, const char *fmt, ...);
 
 #if DDDEBUG >= 4
-# define dbg_printf(_fmt, ...) dbg_prefix_printf("D|", __FILE__, __LINE__, _fmt __VA_OPT__(,) __VA_ARGS__)
+# define dbg_printf(_fmt, ...) dbg_prefix_printf(NULL, "D|", __FILE__, __LINE__, _fmt __VA_OPT__(,) __VA_ARGS__)
 #else
 # define dbg_printf(_fmt, ...)
 #endif
 
 #if DDDEBUG >= 3
-# define TRACE(_fmt, ...) dbg_prefix_printf("T|", __FILE__, __LINE__, _fmt __VA_OPT__(,) __VA_ARGS__)
+# define TRACE(_fmt, ...) dbg_prefix_printf(NULL, "T|", __FILE__, __LINE__, _fmt __VA_OPT__(,) __VA_ARGS__)
 # define TRACE_ENTRY TRACE("%s", __FUNCTION__);
+# define TOPIC(_name, _fmt, ...) dbg_prefix_printf(_name, "T|", __FILE__, __LINE__, _fmt __VA_OPT__(,) __VA_ARGS__)
 # define TRACE_ON
 #else
 # define TRACE(_fmt, ...)
 # define TRACE_ENTRY
+# define TOPIC(_name, _fmt, ...)
 #endif
 
 #if DDDEBUG >= 2
-# define WARN(_fmt, ...) dbg_prefix_printf("W|", __FILE__, __LINE__, _fmt __VA_OPT__(,) __VA_ARGS__)
+# define WARN(_fmt, ...) dbg_prefix_printf(NULL, "W|", __FILE__, __LINE__, _fmt __VA_OPT__(,) __VA_ARGS__)
 # define WARN_ON
 #else
 # define WARN(_fmt, ...)
 #endif
 
 #if DDDEBUG >= 1
-# define ERR(_fmt, ...) dbg_prefix_printf("E|", __FILE__, __LINE__, _fmt __VA_OPT__(,) __VA_ARGS__)
+# define ERR(_fmt, ...) dbg_prefix_printf(NULL, "E|", __FILE__, __LINE__, _fmt __VA_OPT__(,) __VA_ARGS__)
 # define ERR_ON
 #else
 # define ERR(_fmt, ...)
 #endif
-
 
 /* calls */
 VMDAHAL_t *GetHAL(LPDDRAWI_DIRECTDRAW_GBL lpDD);
@@ -102,6 +103,11 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd);
 DWORD __stdcall GetBltStatus32(LPDDHAL_GETBLTSTATUSDATA pbd);
 DWORD __stdcall SetExclusiveMode32(LPDDHAL_SETEXCLUSIVEMODEDATA psem);
 DWORD __stdcall SetMode32(LPDDHAL_SETMODEDATA psmod);
+DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput);
+
+DWORD __stdcall DestroyDriver32(LPDDHAL_DESTROYDRIVERDATA pdstr);
+
+BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, VMDAHAL_D3DCAPS_t *lpHALFlags);
 
 /* FBHDA */
 BOOL FBHDA_load_ex(VMDAHAL_t *pHal);
@@ -123,5 +129,34 @@ void SetExceptionHandler();
 
 /* timing */
 uint64_t GetTimeTMS();
+
+/* mesa */
+void Mesa3DCleanProc();
+
+#define HAL3D_NONE  0
+#define HAL3D_COLOR 1
+#define HAL3D_DEPTH 2
+
+/* DDRAWI_DDRAWSURFACE_GBL -> dwReserved1 */
+typedef struct _SurfaceInfo
+{
+	FLATPTR lin_address;
+	BOOL texture_dirty;   /* when set, D3D needs reload texture */
+	DWORD width;
+	DWORD height;
+	DWORD bpp;
+	int internal_format;
+	unsigned int format;
+	unsigned int type;
+	struct _SurfaceInfo *next; /* text in list */
+} SurfaceInfo_t;
+
+SurfaceInfo_t *SurfaceInfoGet(FLATPTR lin_address, BOOL create);
+void SurfaceInfoErase(FLATPTR lin_address);
+void SurfaceInfoMakeDirty(FLATPTR lin_address);
+void SurfaceInfoMakeClean(FLATPTR lin_address);
+
+void SurfaceCtxLock();
+void SurfaceCtxUnlock();
 
 #endif /* __VMHAL9X_H__INCLUDED__ */

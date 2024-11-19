@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright (c) 2023 Jaroslav Hensl                                          *
+ * Copyright (c) 2024 Jaroslav Hensl                                          *
  *                                                                            *
  * Permission is hereby granted, free of charge, to any person                *
  * obtaining a copy of this software and associated documentation             *
@@ -24,47 +24,94 @@
  *                                                                            *
  ******************************************************************************/
 #include <windows.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <ddraw.h>
 #include <ddrawi.h>
 #include <stddef.h>
 #include <stdint.h>
 #include "vmdahal32.h"
-
 #include "vmhal9x.h"
+#include "mesa3d.h"
+#include "osmesa.h"
 
 #include "nocrt.h"
 
-#define _DSTR2(_x) #_x
-#define _DSTR(_x) _DSTR2(_x)
-
-void dbg_prefix_printf(const char *topic, const char *prefix, const char *file, int line, const char *fmt, ...)
+void MesaDrawTLVertex(mesa3d_ctx_t *ctx, LPD3DTLVERTEX vertex)
 {
-  va_list vl;
-  FILE *fa;  
-  
-#ifdef DEBUG_TOPIC
-	if(topic == NULL)
+	mesa3d_entry_t *entry = ctx->entry;
+	
+	if(ctx->state.tex)
 	{
-		return;
+		entry->proc.pglTexCoord2f(CONV_U_TO_S(vertex->tu), CONV_V_TO_T(vertex->tv));
+		TOPIC("TEX", "glTexCoord2f(%f, %f)", vertex->tu, vertex->tv);
 	}
-	if(strcmp(topic, _DSTR(DEBUG_TOPIC)) != 0)
-	{
-		return;
-	}
-#endif
 
-  fa = fopen("C:\\vmhal9x.log", "ab");
-  if(!fa) return;
-  fputs(prefix, fa);
-  
-#ifdef DEBUG_THREAD
-	fprintf(fa, "%08X|", GetCurrentThreadId());
-#endif
-  
-  va_start(vl, fmt);
-  vfprintf(fa, fmt, vl);
-  va_end(vl);
-  
-  fprintf(fa, "|%s:%d\r\n", file, line);
-  fclose(fa);
+	entry->proc.pglColor4ub(
+		RGBA_GETRED(vertex->color),
+		RGBA_GETGREEN(vertex->color),
+		RGBA_GETBLUE(vertex->color),
+		RGBA_GETALPHA(vertex->color)
+	);
+
+	if(ctx->state.specular)
+	{
+		entry->proc.pglSecondaryColor3ubEXT(
+			RGBA_GETRED(vertex->specular),
+			RGBA_GETGREEN(vertex->specular),
+			RGBA_GETBLUE(vertex->specular)
+		);
+	}
+
+	GLfloat x, y, z, w = 2.0;
+	MesaUnproject(ctx, vertex->sx, vertex->sy, vertex->sz, &x, &y, &z);
+	// w = (1.0/vertex->rhw) - 0.5; = currently best
+	if(vertex->rhw != 0)
+	{
+		w = 2.0/vertex->rhw;
+	}
+	
+	entry->proc.pglVertex4f(x*w, y*w, z*w, w);
+	TOPIC("TEX", "glVertex4f(%f, %f, %f, %f)", x, y, z, w);	
+}
+
+void MesaDrawLVertex(mesa3d_ctx_t *ctx, LPD3DLVERTEX vertex)
+{
+	mesa3d_entry_t *entry = ctx->entry;
+	
+	if(ctx->state.tex)
+	{
+		entry->proc.pglTexCoord2f(CONV_U_TO_S(vertex->tu), CONV_V_TO_T(vertex->tv));
+	}
+
+	entry->proc.pglColor4ub(
+		RGBA_GETRED(vertex->color),
+		RGBA_GETGREEN(vertex->color),
+		RGBA_GETBLUE(vertex->color),
+		RGBA_GETALPHA(vertex->color)
+	);
+	
+	if(ctx->state.specular)
+	{
+		entry->proc.pglSecondaryColor3ubEXT(
+			RGBA_GETRED(vertex->specular),
+			RGBA_GETGREEN(vertex->specular),
+			RGBA_GETBLUE(vertex->specular)
+		);
+	}
+	
+	entry->proc.pglVertex3f(vertex->x, vertex->y, vertex->z);
+}
+
+
+void MesaDrawVertex(mesa3d_ctx_t *ctx, LPD3DVERTEX vertex)
+{
+	mesa3d_entry_t *entry = ctx->entry;
+	
+	if(ctx->state.tex)
+	{
+		entry->proc.pglTexCoord2f(CONV_U_TO_S(vertex->tu), CONV_V_TO_T(vertex->tv));
+	}
+					
+	entry->proc.pglVertex3f(vertex->x, vertex->y, vertex->z);
 }

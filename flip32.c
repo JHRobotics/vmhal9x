@@ -33,6 +33,8 @@
 
 #include "vmhal9x.h"
 
+#include "mesa3d.h"
+
 #include "fill.h"
 
 #include "nocrt.h"
@@ -166,6 +168,11 @@ DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
 	TRACE("Flip: %08lx -> %08lx",
 		(uint32_t)pfd->lpSurfCurr->lpGbl->fpVidMem - (uint32_t)ddhal->pFBHDA32->vram_pm32,
 		(uint32_t)pfd->lpSurfTarg->lpGbl->fpVidMem - (uint32_t)ddhal->pFBHDA32->vram_pm32
+	);
+	
+	TOPIC("FLIP", "Flip: %08lx -> %08lx",
+		(uint32_t)pfd->lpSurfCurr->lpGbl->fpVidMem,
+		(uint32_t)pfd->lpSurfTarg->lpGbl->fpVidMem
 	);
 
 	DoFlipping(ddhal, (void*)pfd->lpSurfCurr->lpGbl->fpVidMem, (void*)pfd->lpSurfTarg->lpGbl->fpVidMem,

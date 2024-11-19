@@ -34,7 +34,7 @@ OBJ := .o
 LIBSUFFIX := .a
 LIBPREFIX := lib
 
-DEPS=Makefile config.mk
+DEPS=libddraw.a Makefile config.mk vmhal9x.h mesa3d.h mesa3d_api.h d3d_caps.h
 RUNPATH=$(if $(filter $(OS),Windows_NT),.\,./)
 
 HOST_SUFFIX=
@@ -44,9 +44,9 @@ endif
 
 DLLFLAGS = -o $@ -shared -Wl,--dll,--out-implib,lib$(@:dll=a),--exclude-all-symbols,--exclude-libs=pthread,--disable-dynamicbase,--disable-nxcompat,--subsystem,windows,--image-base,$(BASE_$@)$(TUNE_LD)
 
-LIBS = -luser32 -lkernel32 -lgcc -lgdi32 -ladvapi32
+LIBS = -luser32 -lkernel32 -lgcc -lgdi32 -ladvapi32 -lddraw
 CFLAGS = -std=$(CSTD) -Wall -ffreestanding -fno-exceptions -ffast-math -nostdlib -DNOCRT -DNOCRT_FILE -DNOCRT_FLOAT -DNOCRT_MEM -Inocrt $(TUNE) -DVMHAL9X_BUILD=$(VERSION_BUILD)
-LDFLAGS = -static -nostdlib -nodefaultlibs
+LDFLAGS = -static -nostdlib -nodefaultlibs -L.
 
 ifdef RELEASE
   CFLAGS += -O3 -fomit-frame-pointer -DNDEBUG
@@ -77,6 +77,11 @@ BASE_vmhal9x.dll := 0xB00B0000
 NOCRT_OBJS = nocrt/nocrt.c.o nocrt/nocrt_math.c.o nocrt/nocrt_file_win.c.o nocrt/nocrt_mem_win.c.o nocrt/nocrt_dll.c.o
 VMHAL9X_OBJS = $(NOCRT_OBJS) vmhal9x.c.o ddraw.c.o 3d_accel.c.o flip32.c.o blt32.c.o rop3.c.o transblt.c.o debug.c.o dump.c.o fill.c.o vmhal9x.res
 
+ifdef D3DHAL
+	VMHAL9X_OBJS += d3d.c.o mesa3d.c.o mesa3d_buffer.c.o mesa3d_draw.c.o mesa3d_chroma.c.o surface.c.o matrix.c.o
+	CFLAGS += -DD3DHAL
+endif
+
 fixlink$(HOST_SUFFIX):
 	$(HOST_CC) -std=$(CSTD) fixlink/fixlink.c -o fixlink$(HOST_SUFFIX)
 
@@ -84,8 +89,14 @@ vmhal9x.dll: $(VMHAL9X_OBJS) fixlink$(HOST_SUFFIX)
 	$(CC) $(LDFLAGS) $(VMHAL9X_OBJS) vmhal9x.def $(LIBS) $(DLLFLAGS)
 	$(RUNPATH)fixlink$(HOST_SUFFIX) -shared $@
 
+# generate win9x compatible ddraw import library
+libddraw.a: ddraw.def
+	$(DLLTOOL) -C -k -d $< -l $@
+
 clean:
 	-$(RM) fixlink$(HOST_SUFFIX)
 	-$(RM) $(VMHAL9X_OBJS)
 	-$(RM) vmhal9x.dll
 	-$(RM) libvmhal9x.a
+	-$(RM) libddraw.a
+

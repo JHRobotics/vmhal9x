@@ -1,9 +1,13 @@
 # this is sample configuration file
 
+# enable D3D support (in development)
+#D3DHAL=1
+
 # compiler for target (mingw)
 CC=gcc
 CXX=g++
 WINDRES=windres
+DLLTOOL=dlltool
 
 # compiler for host (for create makeshared binary)
 HOST_CC=$(CC)
@@ -16,6 +20,14 @@ RELEASE=1
 
 # how much can be debuging information verbose, efective (not usable with RELEASE=1)
 #DDDEBUG=4
+
+#
+# Some heavy debug options
+#
+# filter debug messages by topic:
+#TUNE += -DDEBUG_TOPIC=BLEND
+# outpu thread id in debug log
+#TUNE += -DDEBUG_THREAD
 
 # extra compiler option:
 # this should be used for targeting Windows 95

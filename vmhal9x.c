@@ -34,6 +34,11 @@
 
 #include "nocrt.h"
 
+#ifndef HEAP_SHARED
+/* undocumented heap behaviour for shared DLL (from D3_DD32.C) */
+#define HEAP_SHARED      0x04000000
+#endif
+
 HANDLE hSharedHeap;
 static HINSTANCE dllHinst = NULL;
 
@@ -186,7 +191,7 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 {
 	if(ptr == NULL)
 	{
-		return 0;
+		return 1;
 	}
 	TRACE_ENTRY
 	TRACE("HAL size %d (%d %d %d %d)",
@@ -212,6 +217,10 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 	globalHal->cb32.GetBltStatus = GetBltStatus32;
 	globalHal->cb32.SetExclusiveMode = SetExclusiveMode32;
 	globalHal->cb32.SetMode = SetMode32;
+#ifdef D3DHAL
+	globalHal->cb32.GetDriverInfo = GetDriverInfo32;
+#endif
+	globalHal->cb32.DestroyDriver = DestroyDriver32;
 	
 	globalHal->hInstance = (DWORD)dllHinst;
 	
@@ -219,7 +228,7 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 	{
 		if(!FillModes(globalHal))
 		{
-			return 1;
+			return 0;
 		}
 	}
 	
@@ -229,12 +238,15 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 	SetExceptionHandler();
 #endif
 
-	if(FBHDA_load_ex(globalHal))
 	{
-		return 1;
-	}
-	
-	{
+		/*
+		 TODO: same key in in S3V
+				HKEY_CURRENT_CONFIG
+				"Display\\Settings"
+				"WaitForVSync"
+				"OFF"
+		*/
+		
 		HKEY reg;
 		if(RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\vmdisp9x", 0, KEY_READ, &reg) == ERROR_SUCCESS)
 		{
@@ -269,7 +281,22 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 			}
 			RegCloseKey(reg);
 		}
-		
+	}
+	
+#ifdef D3DHAL
+	D3DHALCreateDriver(
+		&globalHal->d3dhal_global,
+		&globalHal->d3dhal_callbacks,
+		&globalHal->d3dhal_flags);
+#else
+	globalHal->d3dhal_global = 0;
+	globalHal->d3dhal_callbacks = 0;
+	memset(&globalHal->d3dhal_flags, 0, sizeof(VMDAHAL_D3DCAPS_t));
+#endif
+	
+	if(FBHDA_load_ex(globalHal))
+	{
+		return 1;
 	}
 	
 	ERR("DriverInit FAILED!");
@@ -294,7 +321,7 @@ BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpvReserved)
 
 			if(tmp == 0) // First process?
 			{
-				hSharedHeap = HeapCreate(/*HEAP_SHARED*/0, 2048, 0);
+				hSharedHeap = HeapCreate(HEAP_SHARED, 0x2000, 0);
 				TRACE("--- vmhal9x created ---");
 			}
 			tmp += 1;
@@ -305,6 +332,10 @@ BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpvReserved)
 			break;
 
     case DLL_PROCESS_DETACH:
+    	/* usually never calls */
+#ifdef D3DHAL
+    	Mesa3DCleanProc();
+#endif
     	FBHDA_free();
 			do
 			{

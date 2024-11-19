@@ -34,6 +34,12 @@
 
 #include "nocrt.h"
 
+extern HANDLE hSharedHeap;
+
+/* these are in DDRAW.DLL, very funny, very well documented... */
+FLATPTR WINAPI DDHAL32_VidMemAlloc(LPDDRAWI_DIRECTDRAW_GBL lpDD, int heap, DWORD dwWidth, DWORD dwHeight);
+void WINAPI DDHAL32_VidMemFree(LPDDRAWI_DIRECTDRAW_GBL lpDD, int heap, FLATPTR ptr);
+
 #define IS_GLOBAL_ADDR(_ptr) (((DWORD)_ptr) >= 0x80000000UL)
 
 VMDAHAL_t *GetHAL(LPDDRAWI_DIRECTDRAW_GBL lpDD)
@@ -52,11 +58,27 @@ DWORD __stdcall CanCreateSurface(LPDDHAL_CANCREATESURFACEDATA pccsd)
 	
 	VMDAHAL_t *hal = GetHAL(pccsd->lpDD);
 	if(!hal) return DDHAL_DRIVER_HANDLED;
+	
+	TOPIC("GL", "CanCreateSurface: 0x%X", pccsd->lpDDSurfaceDesc->ddsCaps.dwCaps);
+
+	/* no mitmap support (yet) */
+	if(pccsd->lpDDSurfaceDesc->ddsCaps.dwCaps & DDSCAPS_MIPMAP)
+	{
+		pccsd->ddRVal = DDERR_INVALIDPIXELFORMAT;
+		return DDHAL_DRIVER_HANDLED;
+	}
 
 	if(!pccsd->bIsDifferentPixelFormat)
 	{
-//		UpdateCustomMode(hal);
-		
+		pccsd->ddRVal = DD_OK;
+		return DDHAL_DRIVER_HANDLED;
+	}
+	
+	LPDDSURFACEDESC lpDDSurfaceDesc = pccsd->lpDDSurfaceDesc;
+	
+	if((lpDDSurfaceDesc->ddsCaps.dwCaps & 
+		(DDSCAPS_TEXTURE | DDSCAPS_EXECUTEBUFFER | DDSCAPS_EXECUTEBUFFER | DDSCAPS_ZBUFFER /*| DDSCAPS_OVERLAY*/)) != 0)
+	{
 		pccsd->ddRVal = DD_OK;
 		return DDHAL_DRIVER_HANDLED;
 	}
@@ -68,21 +90,56 @@ DWORD __stdcall CanCreateSurface(LPDDHAL_CANCREATESURFACEDATA pccsd)
 DWORD __stdcall CreateSurface(LPDDHAL_CREATESURFACEDATA pcsd)
 {
 	TRACE_ENTRY
-	
+
  	VMDAHAL_t *hal = GetHAL(pcsd->lpDD);
   if(!hal) return DDHAL_DRIVER_NOTHANDLED;
 
+#if 0
+	/* manual z-buffer creation */
+	if(pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps & DDSCAPS_ZBUFFER)
+	{
+		FLATPTR VidMem = 0;
+		int vHeap = 0;
+		LPDDRAWI_DDRAWSURFACE_LCL *lplpSList = pcsd->lplpSList;
+		LPDDRAWI_DDRAWSURFACE_LCL lpSurf = lplpSList[0];
+		
+		while(!VidMem && vHeap < 3)
+		{
+			VidMem = lpSurf->lpGbl->fpVidMem = DDHAL32_VidMemAlloc(pcsd->lpDD, vHeap, lpSurf->lpGbl->lPitch, lpSurf->lpGbl->wHeight);
+			vHeap++;
+		}
+		
+		if(!VidMem)
+		{
+			pcsd->ddRVal = DDERR_OUTOFVIDEOMEMORY;
+			TRACE("created ZBUF FAIL");
+			return DDHAL_DRIVER_HANDLED;
+		}
+		--vHeap;
+		
+		lpSurf->lpGbl->lpVidMemHeap = (LPVMEMHEAP)vHeap;
+		
+		TRACE("created ZBUF");
+		
+		pcsd->ddRVal = DD_OK;
+		return DDHAL_DRIVER_HANDLED;
+	}
+#endif
+
 	pcsd->ddRVal = DD_OK;
 	return DDHAL_DRIVER_NOTHANDLED;
-
 } /* CreateSurface32 */
 
-DWORD __stdcall DestroySurface( LPDDHAL_DESTROYSURFACEDATA lpd)
+DWORD __stdcall DestroySurface(LPDDHAL_DESTROYSURFACEDATA lpd)
 {
 	TRACE_ENTRY
 	
  	VMDAHAL_t *hal = GetHAL(lpd->lpDD);
   if(!hal) return DDHAL_DRIVER_NOTHANDLED;
+
+#ifdef D3DHAL
+	SurfaceInfoErase(lpd->lpDDSurface->lpGbl->fpVidMem);
+#endif
 	
 	lpd->ddRVal = DD_OK;
 	return DDHAL_DRIVER_NOTHANDLED;
@@ -160,14 +217,18 @@ DWORD __stdcall Lock32(LPDDHAL_LOCKDATA pld)
 }
 
 DWORD __stdcall Unlock32(LPDDHAL_UNLOCKDATA pld)
-{	
+{
 	TRACE_ENTRY
 	VMDAHAL_t *ddhal = GetHAL(pld->lpDD);
 	if(IsInFront(ddhal, (void*)pld->lpDDSurface->lpGbl->fpVidMem))
 	{
 		FBHDA_access_end(0);
 	}
-	
+
+#ifdef D3DHAL
+	SurfaceInfoMakeDirty(pld->lpDDSurface->lpGbl->fpVidMem);
+#endif
+
 	return DDHAL_DRIVER_NOTHANDLED; /* let the unlock processed */
 }
 
@@ -196,6 +257,8 @@ DWORD __stdcall SetExclusiveMode32(LPDDHAL_SETEXCLUSIVEMODEDATA psem)
 
 DWORD __stdcall SetMode32(LPDDHAL_SETMODEDATA psmod)
 {
+	TRACE_ENTRY
+	
 	VMDAHAL_t *ddhal = GetHAL(psmod->lpDD);
 	DWORD index = psmod->dwModeIndex;
 	
@@ -222,4 +285,28 @@ DWORD __stdcall SetMode32(LPDDHAL_SETMODEDATA psmod)
 	}
 	
 	return DDHAL_DRIVER_NOTHANDLED;
+}
+
+DWORD __stdcall DestroyDriver32(LPDDHAL_DESTROYDRIVERDATA pdstr)
+{
+	TRACE_ENTRY
+	
+	VMDAHAL_t *ddhal = GetHAL(pdstr->lpDD);
+	
+	if(ddhal)
+	{
+		/* switch to system furface */
+		FBHDA_swap(ddhal->pFBHDA32->system_surface);
+		
+		/* reset resolution when necessary */
+		ChangeDisplaySettingsA(NULL, 0);
+
+#ifdef D3DHAL
+		Mesa3DCleanProc();
+#endif
+		//FBHDA_free();
+	}
+	
+	pdstr->ddRVal = DD_OK;
+	return DDHAL_DRIVER_HANDLED;
 }

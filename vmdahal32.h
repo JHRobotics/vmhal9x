@@ -22,6 +22,7 @@ typedef struct DDHALMODEINFO2
 
 typedef struct VMDAHALCB32
 {
+	LPDDHAL_DESTROYDRIVER             DestroyDriver;
 	LPDDHAL_CREATESURFACE             CreateSurface;
 	LPDDHAL_CANCREATESURFACE          CanCreateSurface;
 	LPDDHALSURFCB_DESTROYSURFACE      DestroySurface;
@@ -40,6 +41,7 @@ typedef struct VMDAHALCB32
 	LPDDHAL_WAITFORVERTICALBLANK      WaitForVerticalBlank;
 	LPDDHAL_SETMODE		                SetMode;
 	LPDDHAL_SETEXCLUSIVEMODE          SetExclusiveMode;
+	LPDDHAL_FLIPTOGDISURFACE          FlipToGDISurface;
 } VMDAHALCB32_t;
 
 struct VXD_pair
@@ -50,6 +52,12 @@ struct VXD_pair
 
 #define VXD_PAIRS_CNT 32
 #define DISP_MODES_MAX 512
+
+typedef struct VMDAHAL_D3DCAPS
+{
+	DWORD ddscaps;
+	DWORD zcaps;
+} VMDAHAL_D3DCAPS_t;
 
 typedef struct VMDAHAL
 {
@@ -80,7 +88,10 @@ typedef struct VMDAHAL
   DDHALMODEINFO2_t modes[DISP_MODES_MAX];
   DWORD modes_count;
   DWORD custom_mode_id;
- 
+
+  DWORD d3dhal_global;
+  DWORD d3dhal_callbacks;
+  VMDAHAL_D3DCAPS_t d3dhal_flags;
 } VMDAHAL_t;
 #pragma pack(pop)
 

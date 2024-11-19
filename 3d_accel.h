@@ -105,7 +105,8 @@ THE SOFTWARE.
 # define FBPTR *
 #endif
 
-#define FBHA_OVERLAYS_MAX 16
+#define FBHDA_OVERLAYS_MAX 16
+#define FBHDA_ROW_ALIGN 8
 
 typedef struct FBHDA_overlay
 {
@@ -138,7 +139,7 @@ typedef struct FBHDA
 	         DWORD vram_size;
 	         char vxdname[16]; /* file name or "NT" */
 	         DWORD overlay;
-	         FBHDA_overlay_t overlays[FBHA_OVERLAYS_MAX];
+	         FBHDA_overlay_t overlays[FBHDA_OVERLAYS_MAX];
 	         DWORD overlays_size;
 	         DWORD gamma; /* fixed decimal point, 65536 = 1.0 */
 	         DWORD system_surface;
@@ -176,6 +177,7 @@ void FBHDA_free();
 
 #define FBHDA_ACCESS_RAW_BUFFERING 1
 #define FBHDA_ACCESS_MOUSE_MOVE 2
+#define FBHDA_ACCESS_SURFACE_DIRTY 4
 
 void FBHDA_access_begin(DWORD flags);
 void FBHDA_access_end(DWORD flags);
@@ -365,8 +367,9 @@ SVGA_OT_info_entry_t *SVGA_OT_setup();
 
 void SVGA_flushcache();
 
-BOOL SVGA_vxdcmd(DWORD cmd);
+BOOL SVGA_vxdcmd(DWORD cmd, DWORD arg);
 #define SVGA_CMD_INVALIDATE_FB 1
+#define SVGA_CMD_CLEANUP 2
 
 #endif /* SVGA */
 
