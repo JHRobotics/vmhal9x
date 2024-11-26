@@ -21,6 +21,9 @@ typedef OSMESAproc (APIENTRYP OSMesaGetProcAddress_h)(const char *funcName);
 #include "mesa3d_api.h"
 #undef MESA_API
 
+#define MESA3D_MAX_TEXS 65536
+#define MESA3D_MAX_CTXS 128
+#define MESA3D_MAX_MIPS 16
 
 typedef struct mesa3d_texture
 {
@@ -32,15 +35,14 @@ typedef struct mesa3d_texture
 	GLint   internalformat;
 	GLenum  format;
 	GLenum  type;
-	FLATPTR data_ptr;
+	FLATPTR data_ptr[MESA3D_MAX_MIPS];
 	struct mesa3d_ctx *ctx;
 	LPDDRAWI_DDRAWSURFACE_INT ddsurf;
 	BOOL mipmap;
+	int mipmap_level;
 	BOOL colorkey;
+	BOOL compressed;
 } mesa3d_texture_t;
-
-#define MESA3D_MAX_TEXS 1024
-#define MESA3D_MAX_CTXS 128
 
 typedef struct mesa3d_ctx
 {
@@ -52,15 +54,17 @@ typedef struct mesa3d_ctx
 	/* OS buffers (extra memory, don't map it directly to surfaces) */
 	void *osbuf;
 	DWORD ossize;
+	DWORD thread_id;
 	GLint front_bpp;
 	GLint depth_bpp;
 	LPDDRAWI_DDRAWSURFACE_INT front;
 	LPDDRAWI_DDRAWSURFACE_INT depth;
-	
+	LPDDRAWI_DIRECTDRAW_GBL dd;
+
 	/* render state */
 	struct {
 		mesa3d_texture_t *tex;
-		GLint last_tex;
+		//GLint last_tex;
 		// screen coordinates
 		GLint sw;
 		GLint sh;
@@ -88,8 +92,10 @@ typedef struct mesa3d_ctx
 			GLfloat color[4];
 			BOOL range;
 		} fog;
+		BOOL reload_tex;
+		BOOL reload_tex_par;
 	} state;
-	
+
 	/* fbo */
 	struct {
 		GLuint color_tex;
@@ -97,7 +103,7 @@ typedef struct mesa3d_ctx
 		GLuint depth_tex;
 		GLuint depth_fb;
 	} fbo;
-	
+
 	/* dimensions */
 	struct {
 		GLfloat model[16];
@@ -136,10 +142,15 @@ void Mesa3DFree(DWORD pid);
 	do{ \
 		mesa3d_ctx_t *ctx = MESA_HANDLE_TO_CTX(_ctx_h); \
 		mesa3d_entry_t *entry = ctx->entry; \
-		OSMesaContext *oldmesa = entry->proc.pOSMesaGetCurrentContext(); \
+		OSMesaContext *oldmesa = NULL; \
+		if(ctx->thread_id != GetCurrentThreadId()){ \
+			TOPIC("GL", "Thread switch %s:%d", __FILE__, __LINE__); \
+			if(!MesaSetCtx(ctx)){break;} \
+		}else{ \
+		oldmesa = entry->proc.pOSMesaGetCurrentContext(); \
 		if(oldmesa != ctx->mesactx){ \
 			TOPIC("GL", "Wrong context in %s:%d", __FILE__, __LINE__); \
-			if(!MesaSetCtx(ctx)){break;}}
+			if(!MesaSetCtx(ctx)){break;}}}
 
 #define GL_BLOCK_END \
 		if(oldmesa != ctx->mesactx && oldmesa != NULL){ \
@@ -156,10 +167,16 @@ void Mesa3DFree(DWORD pid);
 #define MESA_HANDLE_TO_MTX(_h) ((GLfloat*)(_h))
 
 #ifdef TRACE_ON
+# ifndef DEBUG_GL_TOPIC
+#  define GL_ERR_TOPIC "GL"
+# else
+#  define GL_ERR_TOPIC VMHAL_DSTR(DEBUG_GL_TOPIC)
+# endif
+
 #define GL_CHECK(_code) _code; \
 	do{ GLenum err; \
 		while((err = entry->proc.pglGetError()) != GL_NO_ERROR){ \
-			TOPIC("GL", "GL error: %s = %X", #_code, err); \
+			TOPIC(GL_ERR_TOPIC, "GL error: %s = %X", #_code, err); \
 			ERR("%s = %X", #_code, err); \
 	}}while(0)
 #else
@@ -200,14 +217,8 @@ void MesaBufferUploadColor(mesa3d_ctx_t *ctx, const void *src);
 void MesaBufferDownloadColor(mesa3d_ctx_t *ctx, void *dst);
 void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src);
 void MesaBufferDownloadDepth(mesa3d_ctx_t *ctx, void *dst);
-void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex);
-void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, DWORD chroma_lw, DWORD chroma_hi);
-
-inline static DWORD MesaPitch(DWORD width, DWORD bpp)
-{
-	DWORD bp = (bpp + 7) / 8;
-	return (bp * width + (FBHDA_ROW_ALIGN-1)) & (~((DWORD)FBHDA_ROW_ALIGN-1));
-}
+void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level);
+void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level, DWORD chroma_lw, DWORD chroma_hi);
 
 /* calculation */
 void MesaUnproject(mesa3d_ctx_t *ctx, GLfloat winx, GLfloat winy, GLfloat winz,

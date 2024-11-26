@@ -34,9 +34,6 @@
 
 #include "nocrt.h"
 
-#define _DSTR2(_x) #_x
-#define _DSTR(_x) _DSTR2(_x)
-
 void dbg_prefix_printf(const char *topic, const char *prefix, const char *file, int line, const char *fmt, ...)
 {
   va_list vl;
@@ -47,7 +44,7 @@ void dbg_prefix_printf(const char *topic, const char *prefix, const char *file, 
 	{
 		return;
 	}
-	if(strcmp(topic, _DSTR(DEBUG_TOPIC)) != 0)
+	if(strcmp(topic, VMHAL_DSTR(DEBUG_TOPIC)) != 0)
 	{
 		return;
 	}

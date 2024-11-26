@@ -57,9 +57,30 @@ enum DDRV_RETURN {
 
 extern HANDLE hSharedHeap;
 
+static BOOL ValidateCtx(DWORD dwhContext)
+{
+	if(dwhContext != 0)
+	{
+		mesa3d_ctx_t *ctx = MESA_HANDLE_TO_CTX(dwhContext);
+		VMDAHAL_t *dd = GetHAL(ctx->dd);
+		if(!dd->invalid)
+		{
+			return TRUE;
+		}
+	}
+	
+	return FALSE;
+}
+
+#define VALIDATE(_d3d) if(!ValidateCtx((_d3d)->dwhContext)){ \
+		(_d3d)->ddrval = D3DHAL_CONTEXT_BAD; \
+		return DDHAL_DRIVER_HANDLED;}
+
 DWORD __stdcall SetRenderTarget32(LPD3DHAL_SETRENDERTARGETDATA lpSetRenderData)
 {
 	TRACE_ENTRY
+	
+	VALIDATE(lpSetRenderData)
 	
 	TOPIC("GL", "SetRenderTarget32(0x%X, 0x%X)",
 		lpSetRenderData->lpDDS,
@@ -81,6 +102,8 @@ DWORD __stdcall SetRenderTarget32(LPD3DHAL_SETRENDERTARGETDATA lpSetRenderData)
 DWORD __stdcall Clear32(LPD3DHAL_CLEARDATA lpClearData)
 {
 	TRACE_ENTRY
+	
+	VALIDATE(lpClearData)
 
 	lpClearData->ddrval = DD_OK;
 
@@ -90,6 +113,8 @@ DWORD __stdcall Clear32(LPD3DHAL_CLEARDATA lpClearData)
 DWORD __stdcall DrawOnePrimitive32(LPD3DHAL_DRAWONEPRIMITIVEDATA lpDrawData)
 {
 	TRACE_ENTRY
+	
+	VALIDATE(lpDrawData)
 	
 	GL_BLOCK_BEGIN(lpDrawData->dwhContext)
 		MesaDraw(ctx, lpDrawData->PrimitiveType, lpDrawData->VertexType, lpDrawData->lpvVertices, lpDrawData->dwNumVertices);
@@ -103,6 +128,8 @@ DWORD __stdcall DrawOnePrimitive32(LPD3DHAL_DRAWONEPRIMITIVEDATA lpDrawData)
 DWORD __stdcall DrawOneIndexedPrimitive32(LPD3DHAL_DRAWONEINDEXEDPRIMITIVEDATA lpDrawData)
 {
 	TRACE_ENTRY
+	
+	VALIDATE(lpDrawData)
 
 	GL_BLOCK_BEGIN(lpDrawData->dwhContext)
 		MesaDrawIndex(ctx, lpDrawData->PrimitiveType, lpDrawData->VertexType,
@@ -147,6 +174,8 @@ DWORD __stdcall DrawOneIndexedPrimitive32(LPD3DHAL_DRAWONEINDEXEDPRIMITIVEDATA l
 DWORD __stdcall DrawPrimitives32(LPD3DHAL_DRAWPRIMITIVESDATA lpDrawData)
 {
 	TRACE_ENTRY
+	
+	VALIDATE(lpDrawData)
 	
 	LPBYTE lpData = (LPBYTE)lpDrawData->lpvData;
 	LPD3DHAL_DRAWPRIMCOUNTS	drawPrimitiveCounts;
@@ -257,8 +286,8 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 		dx5caps.dwMinTextureHeight = 1;
 		dx5caps.dwMaxTextureWidth  = 2048; // TODO: query by GL_MAX_TEXTURE_SIZE
 		dx5caps.dwMaxTextureHeight = 2048;
-		dx5caps.dwMinStippleWidth  = 1;
-		dx5caps.dwMinStippleHeight = 1;
+		dx5caps.dwMinStippleWidth  = 32;
+		dx5caps.dwMinStippleHeight = 32;
 		dx5caps.dwMaxStippleWidth  = 32;
 		dx5caps.dwMaxStippleHeight = 32;
 		
@@ -305,6 +334,7 @@ DWORD __stdcall ContextCreate32(LPD3DHAL_CONTEXTCREATEDATA pccd)
 			TOPIC("GL", "MesaCreateCtx(entry, %X, %X)", dss, dsz);
 			pccd->dwhContext = MESA_CTX_TO_HANDLE(ctx);
 			pccd->ddrval = DD_OK;
+			ctx->dd = pccd->lpDDGbl;
 		}
 	}
 
@@ -345,6 +375,9 @@ DWORD __stdcall ContextDestroyAll32(LPD3DHAL_CONTEXTDESTROYALLDATA pcdd)
 DWORD __stdcall RenderState32(LPD3DHAL_RENDERSTATEDATA prd)
 {
 	TRACE_ENTRY
+	
+	VALIDATE(prd)
+	
 	int i;
 
 	GL_BLOCK_BEGIN(prd->dwhContext)
@@ -365,6 +398,9 @@ DWORD __stdcall RenderState32(LPD3DHAL_RENDERSTATEDATA prd)
 DWORD __stdcall RenderPrimitive32(LPD3DHAL_RENDERPRIMITIVEDATA prd)
 {
 	TRACE_ENTRY
+	
+	VALIDATE(prd)
+	
 	GL_BLOCK_BEGIN(prd->dwhContext)
 		LPBYTE lpData = (LPBYTE)(((LPDDRAWI_DDRAWSURFACE_INT)prd->lpExeBuf)->lpLcl->lpGbl->fpVidMem);
   	LPD3DINSTRUCTION lpIns = &prd->diInstruction;
@@ -402,6 +438,9 @@ DWORD __stdcall RenderPrimitive32(LPD3DHAL_RENDERPRIMITIVEDATA prd)
 DWORD __stdcall TextureCreate32(LPD3DHAL_TEXTURECREATEDATA ptcd)
 {
 	TRACE_ENTRY
+	
+	VALIDATE(ptcd)
+	
 	ptcd->ddrval = DDERR_OUTOFVIDEOMEMORY;
 
 	GL_BLOCK_BEGIN(ptcd->dwhContext)
@@ -412,6 +451,12 @@ DWORD __stdcall TextureCreate32(LPD3DHAL_TEXTURECREATEDATA ptcd)
 			TRACE("new texture: %X", ptcd->dwHandle);
 			ptcd->ddrval = DD_OK;
 		}
+		else
+		{
+			/* set NULL handle */
+			ptcd->dwHandle = 0;
+			ptcd->ddrval = DDERR_GENERIC;
+		}
 	GL_BLOCK_END
 
 	return DDHAL_DRIVER_HANDLED;
@@ -420,7 +465,15 @@ DWORD __stdcall TextureCreate32(LPD3DHAL_TEXTURECREATEDATA ptcd)
 DWORD __stdcall TextureDestroy32(LPD3DHAL_TEXTUREDESTROYDATA ptcd)
 {
 	TRACE_ENTRY
-	
+
+	VALIDATE(ptcd)
+
+	if(!ptcd->dwHandle)
+	{
+		ptcd->ddrval = DDERR_GENERIC;
+		return DDHAL_DRIVER_HANDLED;
+	}
+
 	GL_BLOCK_BEGIN(ptcd->dwhContext)
 		MesaDestroyTexture(MESA_HANDLE_TO_TEX(ptcd->dwHandle));
 	GL_BLOCK_END
@@ -432,6 +485,8 @@ DWORD __stdcall TextureDestroy32(LPD3DHAL_TEXTUREDESTROYDATA ptcd)
 DWORD __stdcall TextureSwap32(LPD3DHAL_TEXTURESWAPDATA ptsd)
 {
 	TRACE_ENTRY
+	
+	VALIDATE(ptsd)
 	
 	mesa3d_texture_t *tex1 = MESA_HANDLE_TO_TEX(ptsd->dwHandle1);
 	mesa3d_texture_t *tex2 = MESA_HANDLE_TO_TEX(ptsd->dwHandle2);
@@ -455,6 +510,8 @@ DWORD __stdcall TextureSwap32(LPD3DHAL_TEXTURESWAPDATA ptsd)
 DWORD __stdcall TextureGetSurf32(LPD3DHAL_TEXTUREGETSURFDATA ptgd)
 {
 	TRACE_ENTRY
+	
+	VALIDATE(ptgd)
 	
 	mesa3d_texture_t *tex = MESA_HANDLE_TO_TEX(ptgd->dwHandle);
 	if(tex)
@@ -575,6 +632,8 @@ DWORD __stdcall MaterialGetData32(LPD3DHAL_MATERIALGETDATADATA pmgd)
 DWORD __stdcall GetState32(LPD3DHAL_GETSTATEDATA pgsd)
 {
 	TRACE_ENTRY
+	
+	VALIDATE(pgsd)
 
 	if (pgsd->dwWhich != D3DHALSTATE_GET_RENDER)
 	{
@@ -590,7 +649,8 @@ DWORD __stdcall SceneCapture32(LPD3DHAL_SCENECAPTUREDATA scdata)
 {
 	TRACE_ENTRY
 	
-	TOPIC("FLIP", "SceneCapture32: %d", scdata->dwFlag);
+	VALIDATE(scdata)
+	
 	TOPIC("GL", "SceneCapture32: %d", scdata->dwFlag);
 	TOPIC("TEX", "SceneCapture32: %d", scdata->dwFlag);
 	
@@ -599,7 +659,7 @@ DWORD __stdcall SceneCapture32(LPD3DHAL_SCENECAPTUREDATA scdata)
 	{
 		case D3DHAL_SCENE_CAPTURE_START:
 			// TODO: reload system memory surfaces here?
-			MesaReadback(ctx);
+			//MesaReadback(ctx);
 			break;
 		case D3DHAL_SCENE_CAPTURE_END:
 			MesaRender(ctx);
@@ -688,7 +748,7 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, VM
 	*lplpGlobal = (DWORD)&myGlobalD3DHal;
 	*lplpHALCallbacks = (DWORD)&myD3DHALCallbacks;
 	
-	lpHALFlags->ddscaps = DDSCAPS_3DDEVICE | DDSCAPS_TEXTURE | DDSCAPS_ZBUFFER /*| DDSCAPS_MIPMAP*/;
+	lpHALFlags->ddscaps = DDSCAPS_3DDEVICE | DDSCAPS_TEXTURE | DDSCAPS_ZBUFFER | DDSCAPS_MIPMAP;
  	lpHALFlags->zcaps = DDBD_16 | DDBD_24; // | DDBD_32;
 
 	return TRUE;

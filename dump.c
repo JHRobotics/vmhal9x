@@ -130,6 +130,8 @@ LONG WINAPI VmhalExceptionFilter(struct _EXCEPTION_POINTERS *ExceptionInfo)
 		fclose(f);
 	}
 	
+	ERR("EXCEPTION");
+	
 	return EXCEPTION_EXECUTE_HANDLER;
 }
 

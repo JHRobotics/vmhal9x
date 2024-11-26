@@ -293,6 +293,8 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 	globalHal->d3dhal_callbacks = 0;
 	memset(&globalHal->d3dhal_flags, 0, sizeof(VMDAHAL_D3DCAPS_t));
 #endif
+
+	globalHal->invalid = FALSE;
 	
 	if(FBHDA_load_ex(globalHal))
 	{
@@ -331,28 +333,27 @@ BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpvReserved)
 			
 			break;
 
-    case DLL_PROCESS_DETACH:
-    	/* usually never calls */
+		case DLL_PROCESS_DETACH:
+			/* usually never calls */
 #ifdef D3DHAL
-    	Mesa3DCleanProc();
+			Mesa3DCleanProc();
 #endif
-    	FBHDA_free();
+			FBHDA_free();
 			do
 			{
 				tmp = InterlockedExchange(&lProcessCount, -1);
 			} while (tmp == -1);
 			tmp -= 1;
 
-			if( tmp == 0)         // Last process?
+			if(tmp == 0)         // Last process?
 			{
 				HeapDestroy( hSharedHeap);
 				hSharedHeap = NULL;
 				TRACE("--- vmhal9x destroyed ---");
 			}
 			InterlockedExchange(&lProcessCount, tmp);
-			break;
-    }
+		break;
+	}
 
-    return TRUE;
-
+	return TRUE;
 }

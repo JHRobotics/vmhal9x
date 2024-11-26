@@ -65,7 +65,11 @@
 	| D3DPTEXTURECAPS_ALPHA,              \
 	/* textureFilterCaps */               \
 	D3DPTFILTERCAPS_NEAREST               \
-	| D3DPTFILTERCAPS_LINEAR,             \
+	| D3DPTFILTERCAPS_LINEAR              \
+	| D3DPTFILTERCAPS_MIPNEAREST          \
+	| D3DPTFILTERCAPS_MIPLINEAR           \
+	| D3DPTFILTERCAPS_LINEARMIPNEAREST    \
+	| D3DPTFILTERCAPS_LINEARMIPLINEAR,    \
 	/* textureBlendCaps */                \
 	D3DPTBLENDCAPS_DECAL                  \
 	| D3DPTBLENDCAPS_MODULATE             \
@@ -163,7 +167,33 @@ static D3DDEVICEDESC_V1 myCaps = {
 		{0}, \
 		{0}, \
 		{_bits} \
-	}, {DDSCAPS_ZBUFFER}                     /* ddscaps.dwCaps */ \
+	}, {DDSCAPS_ZBUFFER}                /* ddscaps.dwCaps */ \
+}
+
+#define TEXFORMAT_FOURCC(ch0, ch1, ch2, ch3) \
+{ sizeof(DDSURFACEDESC),              /* dwSize */ \
+	DDSD_CAPS | DDSD_PIXELFORMAT,       /* dwFlags */ \
+	0,                                  /* dwHeight */ \
+	0,                                  /* dwWidth */ \
+	{0},                                /* lPitch */ \
+	0,                                  /* dwBackBufferCount */ \
+	{0},                                /* dwZBufferBitDepth */ \
+	0,                                  /* dwAlphaBitDepth */ \
+	0,                                  /* dwReserved */ \
+	NULL,                               /* lpSurface */ \
+	{ 0, 0 },                           /* ddckCKDestOverlay */ \
+	{ 0, 0 },                           /* ddckCKDestBlt */ \
+	{ 0, 0 },                           /* ddckCKSrcOverlay */ \
+	{ 0, 0 },                           /* ddckCKSrcBlt */ \
+	{ sizeof(DDPIXELFORMAT),            /* ddpfPixelFormat.dwSize */ \
+		DDPF_FOURCC,                      /* ddpfPixelFormat.dwFlags */ \
+		MAKEFOURCC(ch0, ch1, ch2, ch3),   /* FOURCC code */ \
+		{0},                              /* ddpfPixelFormat.dwRGBBitCount */ \
+		{0}, \
+		{0}, \
+		{0}, \
+		{0}  \
+	}, {DDSCAPS_TEXTURE}                /* ddscaps.dwCaps */ \
 }
 
 
@@ -181,7 +211,11 @@ static DDSURFACEDESC myTextureFormats[] = {
 	TEXFORMAT_RGB(16, 0x0F00, 0x00F0, 0x000F), /* RGBX 4444 */
 	TEXFORMAT_RGB( 8, 0xE0, 0x1C, 0x03),       /* RGB 332 */
 	TEXFORMAT_ZBUF(16),
-
+	TEXFORMAT_FOURCC('D', 'X', 'T', '1'),
+	TEXFORMAT_FOURCC('D', 'X', 'T', '2'),
+	TEXFORMAT_FOURCC('D', 'X', 'T', '3'),
+	TEXFORMAT_FOURCC('D', 'X', 'T', '4'),
+	TEXFORMAT_FOURCC('D', 'X', 'T', '5'),
 //	TEXFORMAT_RGB(32, 0x000000FF, 0x0000FF00, 0x00FF0000), /* RGBX 8888 */
 //	TEXFORMAT_RGB(24, 0x000000FF, 0x0000FF00, 0x00FF0000), /* RGB 888 */	
 //	TEXFORMAT_RGB(16, 0x001F, 0x07E0, 0xF800), /* RGB 565 */
@@ -189,7 +223,6 @@ static DDSURFACEDESC myTextureFormats[] = {
 	TEXFORMAT_RGBA(16, 0x001F, 0x03E0, 0x7C00, 0x0001), /* RGBA 5551 */
 	TEXFORMAT_RGBA(16, 0x000F, 0x00F0, 0x0F00, 0x000F), /* RGBA 4444 */
 //	TEXFORMAT_RGB(16, 0x001F, 0x03E0, 0x7C00), /* RGBX 5551 */
-
 //	TEXFORMAT_RGB(16, 0x000F, 0x00F0, 0x0F00), /* RGBX 4444 */
 //	TEXFORMAT_RGB( 8, 0x03, 0x1C, 0xE0)        /* RGB 332 */
 };

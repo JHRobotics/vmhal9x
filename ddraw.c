@@ -36,6 +36,9 @@
 
 extern HANDLE hSharedHeap;
 
+/* Display mode should by controled by system/HEL all time */
+//#define SETMODE_BY_HAL
+
 /* these are in DDRAW.DLL, very funny, very well documented... */
 FLATPTR WINAPI DDHAL32_VidMemAlloc(LPDDRAWI_DIRECTDRAW_GBL lpDD, int heap, DWORD dwWidth, DWORD dwHeight);
 void WINAPI DDHAL32_VidMemFree(LPDDRAWI_DIRECTDRAW_GBL lpDD, int heap, FLATPTR ptr);
@@ -60,13 +63,6 @@ DWORD __stdcall CanCreateSurface(LPDDHAL_CANCREATESURFACEDATA pccsd)
 	if(!hal) return DDHAL_DRIVER_HANDLED;
 	
 	TOPIC("GL", "CanCreateSurface: 0x%X", pccsd->lpDDSurfaceDesc->ddsCaps.dwCaps);
-
-	/* no mitmap support (yet) */
-	if(pccsd->lpDDSurfaceDesc->ddsCaps.dwCaps & DDSCAPS_MIPMAP)
-	{
-		pccsd->ddRVal = DDERR_INVALIDPIXELFORMAT;
-		return DDHAL_DRIVER_HANDLED;
-	}
 
 	if(!pccsd->bIsDifferentPixelFormat)
 	{
@@ -94,37 +90,87 @@ DWORD __stdcall CreateSurface(LPDDHAL_CREATESURFACEDATA pcsd)
  	VMDAHAL_t *hal = GetHAL(pcsd->lpDD);
   if(!hal) return DDHAL_DRIVER_NOTHANDLED;
 
-#if 0
-	/* manual z-buffer creation */
-	if(pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps & DDSCAPS_ZBUFFER)
+#ifdef D3DHAL
+	if(pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps & (DDSCAPS_TEXTURE | DDSCAPS_ZBUFFER))
 	{
-		FLATPTR VidMem = 0;
-		int vHeap = 0;
 		LPDDRAWI_DDRAWSURFACE_LCL *lplpSList = pcsd->lplpSList;
-		LPDDRAWI_DDRAWSURFACE_LCL lpSurf = lplpSList[0];
-		
-		while(!VidMem && vHeap < 3)
+		int i;
+
+		for(i = 0; i < (int)pcsd->dwSCnt; i++)
 		{
-			VidMem = lpSurf->lpGbl->fpVidMem = DDHAL32_VidMemAlloc(pcsd->lpDD, vHeap, lpSurf->lpGbl->lPitch, lpSurf->lpGbl->wHeight);
-			vHeap++;
+			LPDDRAWI_DDRAWSURFACE_LCL lpSurf = lplpSList[i];
+
+			if(lpSurf->lpGbl->ddpfSurface.dwFlags & DDPF_FOURCC)
+			{
+				DWORD blksize = 0;
+
+				switch(lpSurf->lpGbl->ddpfSurface.dwFourCC)
+				{
+					case MAKEFOURCC('D', 'X', 'T', '1'):
+						blksize = 8;
+						break;
+					case MAKEFOURCC('D', 'X', 'T', '2'):
+					case MAKEFOURCC('D', 'X', 'T', '3'):
+						blksize = 16;
+						break;
+					case MAKEFOURCC('D', 'X', 'T', '4'):
+					case MAKEFOURCC('D', 'X', 'T', '5'):
+						blksize = 16;
+						break;
+					default:
+						pcsd->ddRVal = DD_OK;
+						return DDHAL_DRIVER_NOTHANDLED;
+						break;
+				}
+
+				DWORD dx = (lpSurf->lpGbl->wWidth  + 3) >> 2;
+				DWORD dy = (lpSurf->lpGbl->wHeight + 3) >> 2;
+
+				lpSurf->lpGbl->dwBlockSizeX = dx * dy *  blksize;
+				lpSurf->lpGbl->dwBlockSizeY = 1;
+				lpSurf->lpGbl->fpVidMem     = DDHAL_PLEASEALLOC_BLOCKSIZE;
+				
+				TOPIC("ALLOC", "FourCC %d x %d = %d", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX);
+			}
+			else if(lpSurf->lpGbl->ddpfSurface.dwFlags & DDPF_RGB)
+			{
+				lpSurf->lpGbl->dwBlockSizeX = (DWORD)lpSurf->lpGbl->wHeight * lpSurf->lpGbl->lPitch;
+				lpSurf->lpGbl->dwBlockSizeY = 1;
+				lpSurf->lpGbl->fpVidMem     = DDHAL_PLEASEALLOC_BLOCKSIZE;
+
+				TOPIC("ALLOC", "RGB %d x %d = %d (pitch %d)", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->lPitch);
+			}
+			else if(lpSurf->lpGbl->ddpfSurface.dwFlags & DDPF_ZBUFFER)
+			{
+				lpSurf->lpGbl->dwBlockSizeX = (DWORD)lpSurf->lpGbl->wHeight * lpSurf->lpGbl->lPitch;
+				lpSurf->lpGbl->dwBlockSizeY = 1;
+				lpSurf->lpGbl->fpVidMem     = DDHAL_PLEASEALLOC_BLOCKSIZE;
+
+				TOPIC("ALLOC", "ZBUF %d x %d = %d (pitch %d)", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->lPitch);
+			}
+			else
+			{
+				DWORD s = (DWORD)lpSurf->lpGbl->wHeight * lpSurf->lpGbl->lPitch;
+
+				lpSurf->lpGbl->dwBlockSizeX = s;
+				lpSurf->lpGbl->dwBlockSizeY = 1;
+				lpSurf->lpGbl->fpVidMem     = DDHAL_PLEASEALLOC_BLOCKSIZE;
+
+				TOPIC("ALLOC", "Unknown format %X, allocated primary surface (%d x %d) = %d",
+					lpSurf->lpGbl->ddpfSurface.dwFlags,
+					lpSurf->lpGbl->wWidth,
+					lpSurf->lpGbl->wHeight, s);
+			}
+			
+			TOPIC("GL", "Mipmam %d/%d created", i+1, pcsd->dwSCnt);
 		}
-		
-		if(!VidMem)
-		{
-			pcsd->ddRVal = DDERR_OUTOFVIDEOMEMORY;
-			TRACE("created ZBUF FAIL");
-			return DDHAL_DRIVER_HANDLED;
-		}
-		--vHeap;
-		
-		lpSurf->lpGbl->lpVidMemHeap = (LPVMEMHEAP)vHeap;
-		
-		TRACE("created ZBUF");
 		
 		pcsd->ddRVal = DD_OK;
+		TOPIC("GL", "Texture created");
 		return DDHAL_DRIVER_HANDLED;
 	}
 #endif
+	TOPIC("ALLOC", "Alloc by HEL, type 0x%X", pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps);
 
 	pcsd->ddRVal = DD_OK;
 	return DDHAL_DRIVER_NOTHANDLED;
@@ -137,11 +183,12 @@ DWORD __stdcall DestroySurface(LPDDHAL_DESTROYSURFACEDATA lpd)
  	VMDAHAL_t *hal = GetHAL(lpd->lpDD);
   if(!hal) return DDHAL_DRIVER_NOTHANDLED;
 
+	TRACE("Detroying surface caps: 0x%X", lpd->lpDDSurface->ddsCaps.dwCaps);
+
 #ifdef D3DHAL
 	SurfaceInfoErase(lpd->lpDDSurface->lpGbl->fpVidMem);
 #endif
 	
-	lpd->ddRVal = DD_OK;
 	return DDHAL_DRIVER_NOTHANDLED;
 }
 
@@ -261,9 +308,9 @@ DWORD __stdcall SetMode32(LPDDHAL_SETMODEDATA psmod)
 	
 	VMDAHAL_t *ddhal = GetHAL(psmod->lpDD);
 	DWORD index = psmod->dwModeIndex;
+	DWORD rc = DDHAL_DRIVER_NOTHANDLED;
 	
-//	UpdateCustomMode(ddhal);
-	
+#ifdef SETMODE_BY_HAL
 	if(index < ddhal->modes_count)
 	{
 		DEVMODEA newmode;
@@ -280,11 +327,22 @@ DWORD __stdcall SetMode32(LPDDHAL_SETMODEDATA psmod)
 		if(ChangeDisplaySettingsA(&newmode, CDS_RESET|CDS_FULLSCREEN) == DISP_CHANGE_SUCCESSFUL)
 		{
 			psmod->ddRVal = DD_OK;
-			return DDHAL_DRIVER_HANDLED;
+			rc = DDHAL_DRIVER_HANDLED;
+		}
+	}
+#endif
+
+	if(index < ddhal->modes_count)
+	{
+		if(ddhal->modes[index].dwBPP   != ddhal->pFBHDA32->bpp ||
+			ddhal->modes[index].dwWidth  != ddhal->pFBHDA32->width ||
+			ddhal->modes[index].dwHeight != ddhal->pFBHDA32->height)
+		{
+			ddhal->invalid = TRUE;
 		}
 	}
 	
-	return DDHAL_DRIVER_NOTHANDLED;
+	return rc;
 }
 
 DWORD __stdcall DestroyDriver32(LPDDHAL_DESTROYDRIVERDATA pdstr)
@@ -295,11 +353,13 @@ DWORD __stdcall DestroyDriver32(LPDDHAL_DESTROYDRIVERDATA pdstr)
 	
 	if(ddhal)
 	{
+#ifdef SETMODE_BY_HAL	
 		/* switch to system furface */
 		FBHDA_swap(ddhal->pFBHDA32->system_surface);
-		
+
 		/* reset resolution when necessary */
 		ChangeDisplaySettingsA(NULL, 0);
+#endif
 
 #ifdef D3DHAL
 		Mesa3DCleanProc();

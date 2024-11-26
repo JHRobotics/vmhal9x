@@ -42,7 +42,7 @@ extern HANDLE hSharedHeap;
 void *MesaChroma32(const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey)
 {
 	const DWORD *ptr = buf;
-	DWORD pitch4 = MesaPitch(w, 32)/4;
+	DWORD pitch4 = SurfacePitch(w, 32)/4;
 	DWORD *mem = HeapAlloc(hSharedHeap, 0, pitch4*4*h);
 	DWORD *out = mem;
 
@@ -73,8 +73,8 @@ void *MesaChroma32(const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey)
 void *MesaChroma24(const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey)
 {
 	const BYTE *ptr = buf;
-	DWORD pitch_src = MesaPitch(w, 24);
-	DWORD pitch4 = MesaPitch(w, 32)/4;
+	DWORD pitch_src = SurfacePitch(w, 24);
+	DWORD pitch4 = SurfacePitch(w, 32)/4;
 	DWORD *mem = HeapAlloc(hSharedHeap, 0, pitch4*4*h);
 	DWORD *out = mem;
 
@@ -105,8 +105,8 @@ void *MesaChroma24(const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey)
 void *MesaChroma16(const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey)
 {
 	const WORD *ptr = buf;
-	DWORD pitch2 = MesaPitch(w, 16)/2;
-	DWORD pitch4 = MesaPitch(w, 32)/4;
+	DWORD pitch2 = SurfacePitch(w, 16)/2;
+	DWORD pitch4 = SurfacePitch(w, 32)/4;
 	DWORD *mem = HeapAlloc(hSharedHeap, 0, pitch4*4*h);
 	DWORD *out = mem;
 
@@ -141,8 +141,8 @@ void *MesaChroma16(const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey)
 void *MesaChroma15(const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey)
 {
 	const WORD *ptr = buf;
-	DWORD pitch2 = MesaPitch(w, 16)/2;
-	DWORD pitch4 = MesaPitch(w, 32)/4;
+	DWORD pitch2 = SurfacePitch(w, 16)/2;
+	DWORD pitch4 = SurfacePitch(w, 32)/4;
 	DWORD *mem = HeapAlloc(hSharedHeap, 0, pitch4*4*h);
 	DWORD *out = mem;
 
@@ -177,8 +177,8 @@ void *MesaChroma15(const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey)
 void *MesaChroma12(const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey)
 {
 	const WORD *ptr = buf;
-	DWORD pitch2 = MesaPitch(w, 16)/2;
-	DWORD pitch4 = MesaPitch(w, 32)/4;
+	DWORD pitch2 = SurfacePitch(w, 16)/2;
+	DWORD pitch4 = SurfacePitch(w, 32)/4;
 	DWORD *mem = HeapAlloc(hSharedHeap, 0, pitch4*4*h);
 	DWORD *out = mem;
 

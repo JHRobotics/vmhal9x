@@ -107,9 +107,12 @@ static void CopyFrontByLines(VMDAHAL_t *ddhal, void *src, DWORD src_pitch)
 static void DoFlipping(VMDAHAL_t *ddhal, void *from, void *to, DWORD from_pitch, DWORD to_pitch)
 {
 	TRACE_ENTRY
+	
+	TOPIC("ENTRY", "DoFlipping(ddhal, %X, %X, %d, %d)", from, to, from_pitch, to_pitch);
 
-	DWORD offFrom = GetOffset(ddhal, from);
-	if(offFrom == ddhal->pFBHDA32->surface)
+	//DWORD offFrom = GetOffset(ddhal, from);
+	//if(offFrom == ddhal->pFBHDA32->surface)
+	if(1)
 	{
 		uint32_t offTo = GetOffset(ddhal, to);
 		if(offTo != INVALID_OFFSET)
@@ -170,13 +173,22 @@ DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
 		(uint32_t)pfd->lpSurfTarg->lpGbl->fpVidMem - (uint32_t)ddhal->pFBHDA32->vram_pm32
 	);
 	
-	TOPIC("FLIP", "Flip: %08lx -> %08lx",
-		(uint32_t)pfd->lpSurfCurr->lpGbl->fpVidMem,
-		(uint32_t)pfd->lpSurfTarg->lpGbl->fpVidMem
+	TOPIC("FLIP", "Flip: 0x%08X -> 0x%08X [0x%08X]",
+		(uint32_t)pfd->lpSurfCurr->lpGbl->fpVidMem - (uint32_t)ddhal->pFBHDA32->vram_pm32,
+		(uint32_t)pfd->lpSurfTarg->lpGbl->fpVidMem - (uint32_t)ddhal->pFBHDA32->vram_pm32,
+		16*1024*1024
 	);
 
-	DoFlipping(ddhal, (void*)pfd->lpSurfCurr->lpGbl->fpVidMem, (void*)pfd->lpSurfTarg->lpGbl->fpVidMem,
-		pfd->lpSurfCurr->lpGbl->lPitch, pfd->lpSurfTarg->lpGbl->lPitch);
+	if(GetOffset(ddhal, (void*)pfd->lpSurfTarg->lpGbl->fpVidMem) == ddhal->pFBHDA32->surface)
+	{
+		DoFlipping(ddhal, (void*)pfd->lpSurfTarg->lpGbl->fpVidMem, (void*)pfd->lpSurfCurr->lpGbl->fpVidMem,
+			pfd->lpSurfTarg->lpGbl->lPitch, pfd->lpSurfCurr->lpGbl->lPitch);
+	}
+	else
+	{
+		DoFlipping(ddhal, (void*)pfd->lpSurfCurr->lpGbl->fpVidMem, (void*)pfd->lpSurfTarg->lpGbl->fpVidMem,
+			pfd->lpSurfCurr->lpGbl->lPitch, pfd->lpSurfTarg->lpGbl->lPitch);
+	}
 
 	last_flip_time = flip_time;
 	pfd->ddRVal = DD_OK;

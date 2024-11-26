@@ -64,7 +64,7 @@ void dbg_prefix_printf(const char *topic, const char *prefix, const char *file, 
 
 #if DDDEBUG >= 3
 # define TRACE(_fmt, ...) dbg_prefix_printf(NULL, "T|", __FILE__, __LINE__, _fmt __VA_OPT__(,) __VA_ARGS__)
-# define TRACE_ENTRY TRACE("%s", __FUNCTION__);
+# define TRACE_ENTRY TOPIC("ENTRY", "%s", __FUNCTION__);
 # define TOPIC(_name, _fmt, ...) dbg_prefix_printf(_name, "T|", __FILE__, __LINE__, _fmt __VA_OPT__(,) __VA_ARGS__)
 # define TRACE_ON
 #else
@@ -148,6 +148,7 @@ typedef struct _SurfaceInfo
 	int internal_format;
 	unsigned int format;
 	unsigned int type;
+	BOOL compressed;
 	struct _SurfaceInfo *next; /* text in list */
 } SurfaceInfo_t;
 
@@ -158,5 +159,14 @@ void SurfaceInfoMakeClean(FLATPTR lin_address);
 
 void SurfaceCtxLock();
 void SurfaceCtxUnlock();
+
+inline static DWORD SurfacePitch(DWORD width, DWORD bpp)
+{
+	DWORD bp = (bpp + 7) / 8;
+	return (bp * width + (FBHDA_ROW_ALIGN-1)) & (~((DWORD)FBHDA_ROW_ALIGN-1));
+}
+
+#define VMHAL_DSTR2(_x) #_x
+#define VMHAL_DSTR(_x) VMHAL_DSTR2(_x)
 
 #endif /* __VMHAL9X_H__INCLUDED__ */

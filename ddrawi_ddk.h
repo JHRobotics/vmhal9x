@@ -45,4 +45,16 @@ typedef struct _DDHAL_GETBLTSTATUSDATA
     LPDDHALSURFCB_GETBLTSTATUS	GetBltStatus;	// PRIVATE: ptr to callback
 } DDHAL_GETBLTSTATUSDATA;
 
+/*
+ * value in the fpVidMem; indicates dwBlockSize is valid (surface object)
+ */
+#define DDHAL_PLEASEALLOC_BLOCKSIZE	0x00000002l
+
+/*
+ * Values in fpVidMem: Indicates dwLinearSizde is valid.
+ * THIS VALUE CAN ONLY BE USED BY A D3D Optimize DRIVER FUNCTION
+ * IT IS INVALID FOR A DRIVER TO RETURN THIS VALUE FROM CreateSurface32.
+ */
+#define DDHAL_PLEASEALLOC_LINEARSIZE	0x00000003l
+
 #endif /* __DDRAWI_DDK_H__INCLUDED__ */
