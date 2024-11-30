@@ -27,6 +27,7 @@
 #include <initguid.h> /* this is only one file using GUID */
 #include <ddraw.h>
 #include <ddrawi.h>
+#include "ddrawi_ddk.h"
 #include "d3dhal_ddk.h"
 #include <stddef.h>
 #include <stdint.h>
@@ -233,6 +234,93 @@ DWORD __stdcall DrawPrimitives32(LPD3DHAL_DRAWPRIMITIVESDATA lpDrawData)
 	return DDHAL_DRIVER_HANDLED;
 }
 
+DWORD __stdcall ValidateTextureStageState32(LPD3DHAL_VALIDATETEXTURESTAGESTATEDATA lpvtssd)
+{
+	TRACE_ENTRY
+	
+	VALIDATE(lpvtssd)
+
+	lpvtssd->dwNumPasses = 1;
+	lpvtssd->ddrval = DD_OK;
+	
+	return DDHAL_DRIVER_HANDLED;
+}
+
+DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
+{
+	TRACE_ENTRY
+
+	VALIDATE(pd)
+
+	LPBYTE insStart;
+	LPBYTE vertices = NULL;
+	
+	insStart = (LPBYTE)(pd->lpDDCommands->lpGbl->fpVidMem);
+	if (insStart == NULL)
+	{
+		pd->dwErrorOffset   = 0;
+		pd->ddrval          = DDERR_INVALIDPARAMS;
+		return DDHAL_DRIVER_HANDLED;
+	}
+
+	if(pd->lpVertices)
+	{
+		if(pd->dwFlags & D3DHALDP2_USERMEMVERTICES)
+		{
+			vertices = ((LPBYTE)pd->lpVertices) + pd->dwVertexOffset;
+		}
+		else
+		{
+			vertices = ((LPBYTE)pd->lpDDVertex->lpGbl->fpVidMem) + pd->dwVertexOffset;
+		}
+  }
+  
+	LPBYTE cmdBufferStart    = insStart + pd->dwCommandOffset;
+	LPBYTE cmdBufferEnd      = cmdBufferStart + pd->dwCommandLength;
+	BOOL rc = FALSE;
+
+	GL_BLOCK_BEGIN(pd->dwhContext)
+		MesaFVFSet(ctx, pd->dwVertexType);
+		rc = MesaDraw6(ctx, cmdBufferStart, cmdBufferEnd, vertices, &pd->dwErrorOffset);
+	GL_BLOCK_END
+	
+	if(rc)
+	{
+		pd->ddrval = DD_OK;
+	}
+	else
+	{
+		pd->ddrval = D3DERR_COMMAND_UNPARSED;
+	}
+	TRACE("MesaDraw6(...) = %d", rc);
+	
+	return DDHAL_DRIVER_HANDLED;
+}
+
+DWORD __stdcall Clear2_32(LPD3DHAL_CLEAR2DATA cd)
+{
+	TRACE_ENTRY
+	
+	VALIDATE(cd)
+	
+	GL_BLOCK_BEGIN(cd->dwhContext)
+		MesaClear(ctx, cd->dwFlags,
+			cd->dwFillColor, cd->dvFillDepth, cd->dwFillStencil,
+			cd->dwNumRects, (LPRECT)cd->lpRects);
+	GL_BLOCK_END
+	
+	cd->ddrval = DD_OK;
+	return DDHAL_DRIVER_HANDLED;
+}
+
+#define COPY_INFO(_in, _s, _t) do{ \
+	DWORD size = min(_in->dwExpectedSize, sizeof(_t)); \
+	_in->dwActualSize = sizeof(_t); \
+	memcpy(_in->lpvData, &_s, size); \
+	_in->ddRVal = DD_OK; \
+	}while(0)
+
+
 /**
  * From DDK98:
  *  DESCRIPTION: DirectDraw has had many compatability problems
@@ -244,7 +332,7 @@ DWORD __stdcall DrawPrimitives32(LPD3DHAL_DRAWPRIMITIVESDATA lpDrawData)
  *               extension.  If the driver recognises and supports this extension,
  *               it fills out the required data and returns.
  *
- **/
+ **/ 
 DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 {
 	TRACE_ENTRY
@@ -253,16 +341,11 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 
 	if(IsEqualIID(&lpInput->guidInfo, &GUID_D3DCallbacks2))
 	{
-		DWORD dwSize;		
+		/* DX5 */
 		D3DHAL_CALLBACKS2 D3DCallbacks2;
-		TRACE("D3DHAL_CALLBACKS2 size %d/%d", lpInput->dwExpectedSize, sizeof(D3DHAL_CALLBACKS2));
-
 		memset(&D3DCallbacks2, 0, sizeof(D3DHAL_CALLBACKS2));
 
-		dwSize = min(lpInput->dwExpectedSize, sizeof(D3DHAL_CALLBACKS2));
-		lpInput->dwActualSize = sizeof(D3DHAL_CALLBACKS2);
-
-		D3DCallbacks2.dwSize = dwSize;
+		D3DCallbacks2.dwSize = sizeof(D3DHAL_CALLBACKS2);
 		D3DCallbacks2.dwFlags = D3DHAL2_CB32_SETRENDERTARGET  | D3DHAL2_CB32_DRAWONEPRIMITIVE | D3DHAL2_CB32_DRAWONEINDEXEDPRIMITIVE | D3DHAL2_CB32_DRAWPRIMITIVES;
 		D3DCallbacks2.SetRenderTarget = SetRenderTarget32;
 		D3DCallbacks2.DrawOnePrimitive = DrawOnePrimitive32;
@@ -270,32 +353,171 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 		D3DCallbacks2.DrawPrimitives = DrawPrimitives32;
 		//D3DCallbacks2.Clear = Clear32;
 
-		memcpy(lpInput->lpvData, &D3DCallbacks2, dwSize);
-		lpInput->ddRVal = DD_OK;
+		COPY_INFO(lpInput, D3DCallbacks2, D3DHAL_CALLBACKS2);
 		TRACE("GUID_D3DCallbacks2 success");
+	}
+	else if(IsEqualIID(&lpInput->guidInfo, &GUID_D3DCallbacks3))
+	{
+		/* DX6 */
+		D3DHAL_CALLBACKS3 D3DCallbacks3;
+  	memset(&D3DCallbacks3, 0, sizeof(D3DHAL_CALLBACKS3));
+
+		D3DCallbacks3.dwSize = sizeof(D3DHAL_CALLBACKS3);
+		D3DCallbacks3.dwFlags = D3DHAL3_CB32_DRAWPRIMITIVES2 | D3DHAL3_CB32_VALIDATETEXTURESTAGESTATE | D3DHAL3_CB32_CLEAR2;
+    D3DCallbacks3.ValidateTextureStageState = ValidateTextureStageState32;
+		D3DCallbacks3.DrawPrimitives2           = DrawPrimitives2_32;
+		D3DCallbacks3.Clear2                    = Clear2_32;
+
+  	COPY_INFO(lpInput, D3DCallbacks3, D3DHAL_CALLBACKS3);
+    TRACE("GUID_D3DCallbacks3 success");
+	}
+	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_MiscellaneousCallbacks))
+	{
+		/* DX5 */
+		DDHAL_DDMISCELLANEOUSCALLBACKS misccb;
+		memset(&misccb, 0, sizeof(DDHAL_DDMISCELLANEOUSCALLBACKS));
+		misccb.dwSize = sizeof(DDHAL_DDMISCELLANEOUSCALLBACKS);
+		misccb.dwFlags = DDHAL_MISCCB32_GETSYSMEMBLTSTATUS;
+		misccb.GetSysmemBltStatus = GetBltStatus32;
+		
+		COPY_INFO(lpInput, misccb, DDHAL_DDMISCELLANEOUSCALLBACKS);
+		TRACE("GUID_MiscellaneousCallbacks success");
+	}
+	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_Miscellaneous2Callbacks))
+	{
+#if 0
+		/* DX7 */
+		DDHAL_DDMISCELLANEOUS2CALLBACKS misccb2;
+		memset(&misccb2, 0, sizeof(DDHAL_DDMISCELLANEOUS2CALLBACKS));
+		misccb2.dwSize = sizeof(DDHAL_DDMISCELLANEOUS2CALLBACKS);
+		misccb2.dwFlags =
+			| DDHAL_MISC2CB32_CREATESURFACEEX 
+			| DDHAL_MISC2CB32_GETDRIVERSTATE
+			| DDHAL_MISC2CB32_DESTROYDDLOCAL;
+
+		misccb2.GetDriverState  = GetDriverState32;
+		misccb2.CreateSurfaceEx = CreateSurfaceEx32;
+		misccb2.DestroyDDLocal  = DDestroyDDLocal32;
+		
+		COPY_INFO(lpInput, misccb2, DDHAL_DDMISCELLANEOUS2CALLBACKS);
+		TRACE("GUID_Miscellaneous2Callbacks success");
+#else
+		TRACE("GUID_Miscellaneous2Callbacks not set");
+#endif
+	}
+	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_DDMoreSurfaceCaps))
+	{
+#pragma pack(push)
+#pragma pack(1)
+		struct
+		{
+			DDMORESURFACECAPS  DDMoreSurfaceCaps;
+			DDSCAPSEX          ddsCapsEx;
+			DDSCAPSEX          ddsCapsExAlt;
+		} morecaps;
+#pragma pack(pop)
+		
+		memset(&morecaps, 0, sizeof(morecaps));
+		morecaps.DDMoreSurfaceCaps.dwSize = sizeof(morecaps);
+		
+		COPY_INFO(lpInput, morecaps, morecaps);
 	}
 	else if(IsEqualIID(&lpInput->guidInfo, &GUID_D3DExtendedCaps))
 	{
-		D3DHAL_D3DEXTENDEDCAPS dx5caps;
-		DWORD dwSize = sizeof(D3DHAL_D3DEXTENDEDCAPS);
+		D3DHAL_D3DEXTENDEDCAPS7 dxcaps;
 		
-		memset(&dx5caps, 0, dwSize);
+		memset(&dxcaps, 0, sizeof(D3DHAL_D3DEXTENDEDCAPS7));
+		dxcaps.dwSize = sizeof(D3DHAL_D3DEXTENDEDCAPS6); // 5, 6, 7 switch here!
+		dxcaps.dwMinTextureWidth  = 1;
+		dxcaps.dwMinTextureHeight = 1;
+		dxcaps.dwMaxTextureWidth  = 2048; // TODO: query by GL_MAX_TEXTURE_SIZE
+		dxcaps.dwMaxTextureHeight = 2048;
+		dxcaps.dwMinStippleWidth  = 32;
+		dxcaps.dwMinStippleHeight = 32;
+		dxcaps.dwMaxStippleWidth  = 32;
+		dxcaps.dwMaxStippleHeight = 32;
 		
-		dx5caps.dwSize = dwSize;
-		dx5caps.dwMinTextureWidth  = 1;
-		dx5caps.dwMinTextureHeight = 1;
-		dx5caps.dwMaxTextureWidth  = 2048; // TODO: query by GL_MAX_TEXTURE_SIZE
-		dx5caps.dwMaxTextureHeight = 2048;
-		dx5caps.dwMinStippleWidth  = 32;
-		dx5caps.dwMinStippleHeight = 32;
-		dx5caps.dwMaxStippleWidth  = 32;
-		dx5caps.dwMaxStippleHeight = 32;
-		
-		memcpy(lpInput->lpvData, &dx5caps, dwSize);
-		lpInput->ddRVal = DD_OK;
+		dxcaps.dwFVFCaps           = 1;
+    dxcaps.wMaxTextureBlendStages      = 1;
+    dxcaps.wMaxSimultaneousTextures    = 1;
+    dxcaps.dwMaxTextureRepeat          = 2048;
+    dxcaps.dwTextureOpCaps = D3DTEXOPCAPS_DISABLE
+			| D3DTEXOPCAPS_SELECTARG1
+			| D3DTEXOPCAPS_SELECTARG2
+			| D3DTEXOPCAPS_MODULATE
+			| D3DTEXOPCAPS_ADD
+			| D3DTEXOPCAPS_BLENDDIFFUSEALPHA
+			| D3DTEXOPCAPS_BLENDTEXTUREALPHA;
+    
+  	dxcaps.wMaxTextureBlendStages      = 1;
+    dxcaps.wMaxSimultaneousTextures    = 1;
+    
+    /*
+    Stencil:
+		dxcaps.dwStencilCaps = D3DSTENCILCAPS_KEEP
+			| D3DSTENCILCAPS_ZERO
+			| D3DSTENCILCAPS_REPLACE
+			| D3DSTENCILCAPS_INCRSAT
+			| D3DSTENCILCAPS_DECRSAT
+			| D3DSTENCILCAPS_INVERT;
+
+    T&L:
+    dxcaps.dwMaxActiveLights = 0;
+    */
+    
+    COPY_INFO(lpInput, dxcaps, D3DHAL_D3DEXTENDEDCAPS6);
 		TRACE("GUID_D3DExtendedCaps success");
 	}
-	
+	else if(IsEqualIID(&lpInput->guidInfo, &GUID_ZPixelFormats))
+	{
+#pragma pack(push)
+#pragma pack(1)
+		struct {
+			DWORD cnt;
+			DDPIXELFORMAT pixfmt[2];
+		} zformats;
+#pragma pack(pop)
+		
+		memset(&zformats, 0, sizeof(zformats));
+		
+		zformats.pixfmt[0].dwSize             = sizeof(DDPIXELFORMAT);
+		zformats.pixfmt[0].dwFlags            = DDPF_ZBUFFER;
+		zformats.pixfmt[0].dwFourCC           = 0;
+		zformats.pixfmt[0].dwZBufferBitDepth  = 16;
+		zformats.pixfmt[0].dwStencilBitDepth  = 0;
+		zformats.pixfmt[0].dwZBitMask         = 0xFFFF;
+		zformats.pixfmt[0].dwStencilBitMask   = 0x0000;
+		zformats.pixfmt[0].dwRGBZBitMask      = 0;
+
+		zformats.pixfmt[1].dwSize             = sizeof(DDPIXELFORMAT);
+		zformats.pixfmt[1].dwFlags            = DDPF_ZBUFFER | DDPF_STENCILBUFFER;
+		zformats.pixfmt[1].dwFourCC           = 0;
+		// The sum of the z buffer bit depth AND the stencil depth 
+		// should be included here
+		zformats.pixfmt[1].dwZBufferBitDepth  = 16;
+		zformats.pixfmt[1].dwStencilBitDepth  = 1;
+		zformats.pixfmt[1].dwZBitMask         = 0x7FFF;
+		zformats.pixfmt[1].dwStencilBitMask   = 0x8000;
+		zformats.pixfmt[1].dwRGBZBitMask      = 0;
+
+		zformats.cnt = 1;
+		DWORD real_size = sizeof(DWORD) + sizeof(DDPIXELFORMAT)*zformats.cnt;
+		lpInput->dwActualSize = real_size;
+		memcpy(lpInput->lpvData, &zformats, min(lpInput->dwExpectedSize, real_size));
+		
+		lpInput->ddRVal = DD_OK;
+		TRACE("GUID_ZPixelFormats success");
+	}
+	else if (IsEqualIID(&(lpInput->guidInfo), &GUID_D3DParseUnknownCommandCallback)) 
+	{
+		mesa3d_entry_t *entry = Mesa3DGet(GetCurrentProcessId());
+		if(entry)
+		{
+			entry->D3DParseUnknownCommand = (DWORD)(lpInput->lpvData);
+			lpInput->ddRVal = DD_OK;
+			TRACE("GUID_D3DParseUnknownCommandCallback loaded");
+		}
+	}
 	else
 	{
 		TRACE("Not handled GUID: %08X-%04X-%04X-%02X%02X%02X%02X%02X%02X%02X%02X",
@@ -467,12 +689,17 @@ DWORD __stdcall TextureDestroy32(LPD3DHAL_TEXTUREDESTROYDATA ptcd)
 	TRACE_ENTRY
 
 	VALIDATE(ptcd)
-
+	
 	if(!ptcd->dwHandle)
 	{
 		ptcd->ddrval = DDERR_GENERIC;
 		return DDHAL_DRIVER_HANDLED;
 	}
+
+	#ifdef TRACE_ON
+	mesa3d_texture_t *tex = MESA_HANDLE_TO_TEX(ptcd->dwHandle);
+	TOPIC("DESTROY", "Destroy tex, base %X", tex->data_ptr[0]);
+	#endif
 
 	GL_BLOCK_BEGIN(ptcd->dwhContext)
 		MesaDestroyTexture(MESA_HANDLE_TO_TEX(ptcd->dwHandle));
@@ -662,7 +889,10 @@ DWORD __stdcall SceneCapture32(LPD3DHAL_SCENECAPTUREDATA scdata)
 			//MesaReadback(ctx);
 			break;
 		case D3DHAL_SCENE_CAPTURE_END:
-			MesaRender(ctx);
+			if(ctx->render.dirty)
+			{
+				MesaRender(ctx);
+			}
 			break;
 	}
 	GL_BLOCK_END
@@ -682,7 +912,7 @@ static D3DHAL_CALLBACKS myD3DHALCallbacks = {
 	ContextDestroyAll32,	// Required.
 
 	// Scene capture
-	SceneCapture32,			// Optional. (JH: required when driver or HW do some buffering)
+	SceneCapture32,			// Optional. (JH: required when driver or HW do some buffering. ... JH #2: Not work for DX6+)
 	// Execution
 #ifdef IMPLEMENT_EXECUTE
 	Execute32,

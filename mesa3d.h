@@ -44,6 +44,44 @@ typedef struct mesa3d_texture
 	BOOL compressed;
 } mesa3d_texture_t;
 
+#define MESA_ACTIVE_TEX_TOTAL 8
+
+struct mesa3d_texstate
+{
+	mesa3d_texture_t *image;
+	// texture address DX5 DX6 DX7
+	D3DTEXTUREADDRESS texaddr_u; // wrap, mirror, clamp, border
+	D3DTEXTUREADDRESS texaddr_v;
+
+	// blend DX5
+	D3DTEXTUREBLEND   texblend;
+	
+	// blend DX6 DX7
+	BOOL dx6_blend; // latch for DX6 and DX7 interface
+	DWORD color_op; // D3DTEXTUREOP
+	DWORD color_arg1; // D3DTA_*
+	DWORD color_arg2;
+	DWORD alpha_op; // D3DTEXTUREOP
+	DWORD alpha_arg1;
+	DWORD alpha_arg2;
+	
+	// filter DX5
+	GLenum texmin;
+	GLenum texmag;
+	
+	// filter DX6 DX7
+	BOOL dx6_filter;
+	D3DTEXTUREMAGFILTER dx_mag;
+	D3DTEXTUREMINFILTER dx_min;
+	D3DTEXTUREMIPFILTER dx_mip;
+	
+	GLfloat border[4];
+	BOOL colorkey;
+	int coordindex;
+	BOOL reload; // reload texture data (surface -> GPU)
+	BOOL update; // update texture params
+};
+
 typedef struct mesa3d_ctx
 {
 	mesa3d_texture_t tex[MESA3D_MAX_TEXS];
@@ -60,26 +98,19 @@ typedef struct mesa3d_ctx
 	LPDDRAWI_DDRAWSURFACE_INT front;
 	LPDDRAWI_DDRAWSURFACE_INT depth;
 	LPDDRAWI_DIRECTDRAW_GBL dd;
+	int texunits;
 
 	/* render state */
 	struct {
-		mesa3d_texture_t *tex;
-		//GLint last_tex;
 		// screen coordinates
 		GLint sw;
 		GLint sh;
+		BOOL zvisible; // Z-visibility testing
+		BOOL specular;
 		GLenum blend_sfactor;
 		GLenum blend_dfactor;
-		D3DTEXTUREADDRESS texaddr_u; // wrap, mirror, clamp, border
-		D3DTEXTUREADDRESS texaddr_v;
-		D3DTEXTUREBLEND   texblend;
-		BOOL zvisible; // Z-visibility testing
-		GLenum texmin;
-		GLenum texmag;
 		GLenum alphafunc;
 		GLclampf alpharef;
-		BOOL specular;
-		BOOL colorkey;
 		DWORD overrides[4]; // 128 bit set
 		DWORD stipple[32];
 		struct {
@@ -92,8 +123,15 @@ typedef struct mesa3d_ctx
 			GLfloat color[4];
 			BOOL range;
 		} fog;
-		BOOL reload_tex;
-		BOOL reload_tex_par;
+		struct {
+			DWORD stride;
+			DWORD type;
+			int pos_normal;
+			int pos_diffuse;
+			int pos_specular;
+			int pos_tex[MESA_ACTIVE_TEX_TOTAL];
+		} fvf;
+		struct mesa3d_texstate tex[MESA_ACTIVE_TEX_TOTAL];
 	} state;
 
 	/* fbo */
@@ -103,6 +141,11 @@ typedef struct mesa3d_ctx
 		GLuint depth_tex;
 		GLuint depth_fb;
 	} fbo;
+	
+	/* rendering state */
+	struct {
+		BOOL dirty;
+	} render;
 
 	/* dimensions */
 	struct {
@@ -130,6 +173,7 @@ typedef struct mesa3d_entry
 	struct {
 #include "mesa3d_api.h"
 	} proc;
+	DWORD D3DParseUnknownCommand;
 } mesa3d_entry_t;
 #undef MESA_API
 
@@ -196,7 +240,7 @@ void MesaUpdateSurface(SurfaceInfo_t *info);
 
 /* needs GL_BLOCK */
 mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_INT surf);
-void MesaReloadTexture(mesa3d_texture_t *tex);
+void MesaReloadTexture(mesa3d_texture_t *tex, int unit);
 void MesaDestroyTexture(mesa3d_texture_t *tex);
 
 void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state);
@@ -208,8 +252,13 @@ void MesaDrawIndex(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE v
 void MesaRender(mesa3d_ctx_t *ctx);
 void MesaReadback(mesa3d_ctx_t *ctx);
 BOOL MesaSetTarget(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_INT dss, LPDDRAWI_DDRAWSURFACE_INT dsz);
+void MesaSetTextureState(mesa3d_ctx_t *ctx, int unit, DWORD state, void *value);
 
-void MesaBufferClear(LPDDRAWI_DDRAWSURFACE_GBL buf, DWORD d3d_color);
+void MesaDrawRefreshState(mesa3d_ctx_t *ctx);
+void MesaDrawSetSurfaces(mesa3d_ctx_t *ctx);
+BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LPBYTE vertices, DWORD *error_offset);
+
+void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, DWORD stencil, int rects_cnt, RECT *rects);
 DWORD DDSurf_GetBPP(LPDDRAWI_DDRAWSURFACE_INT surf);
 
 /* buffer (needs GL_BLOCK) */
@@ -229,6 +278,13 @@ void MesaUnprojectCalc(mesa3d_ctx_t *ctx);
 void MesaDrawVertex(mesa3d_ctx_t *ctx, LPD3DVERTEX vertex);
 void MesaDrawLVertex(mesa3d_ctx_t *ctx, LPD3DLVERTEX vertex);
 void MesaDrawTLVertex(mesa3d_ctx_t *ctx, LPD3DTLVERTEX vertex);
+/* DX6 */
+void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD type);
+void MesaDrawFVF(mesa3d_ctx_t *ctx, void *vertex);
+void MesaDrawFVFIndex(mesa3d_ctx_t *ctx, void *vertices, int index);
+
+/* drawing sequence (needs GL_BLOCK) */
+void MesaDrawFVFs(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vertices, DWORD start, DWORD cnt);
 
 /* chroma to alpha conversion */
 void *MesaChroma32(const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);

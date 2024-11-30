@@ -30,6 +30,7 @@
 #include <ddrawi.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "d3dhal_ddk.h"
 #include "vmdahal32.h"
 #include "vmhal9x.h"
 #include "mesa3d.h"
@@ -636,11 +637,14 @@ void MesaDestroyAllCtx(mesa3d_entry_t *entry)
 void MesaInitCtx(mesa3d_ctx_t *ctx)
 {
 	mesa3d_entry_t *entry = ctx->entry;
+	int i = 0;
 	
 	entry->proc.pglClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 	
-	entry->proc.pglActiveTexture(GL_TEXTURE0 + 0);
-
+	ctx->texunits = 1;
+	
+	entry->proc.pglEnable(GL_TEXTURE_2D);
+	
 	entry->proc.pglPixelStorei(GL_UNPACK_ALIGNMENT, FBHDA_ROW_ALIGN);
 	entry->proc.pglPixelStorei(GL_PACK_ALIGNMENT, FBHDA_ROW_ALIGN);
 
@@ -653,6 +657,13 @@ void MesaInitCtx(mesa3d_ctx_t *ctx)
   
 	entry->proc.pglDisable(GL_LIGHTING);
 
+	for(i = 0; i < ctx->texunits; i++)
+	{
+		entry->proc.pglActiveTexture(GL_TEXTURE0 + i);
+		ctx->state.tex[i].reload= TRUE;
+		ctx->state.tex[i].update = TRUE;
+	}
+
 	entry->proc.pglEnable(GL_BLEND);
 	entry->proc.pglBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
@@ -662,9 +673,6 @@ void MesaInitCtx(mesa3d_ctx_t *ctx)
 	
 	MesaDepthReeval(ctx);
 	entry->proc.pglDepthFunc(GL_LESS);
-	
-	ctx->state.reload_tex = TRUE;
-	ctx->state.reload_tex_par = TRUE;
 }
 
 BOOL MesaSetCtx(mesa3d_ctx_t *ctx)
@@ -764,7 +772,7 @@ mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_INT
 				
 				GL_CHECK(entry->proc.pglGenTextures(1, &tex->gltex));
 				
-				if((surf->lpLcl->dwFlags & DDRAWISURF_HASCKEYSRCBLT) && ctx->state.colorkey)
+				if((surf->lpLcl->dwFlags & DDRAWISURF_HASCKEYSRCBLT) && ctx->state.tex[0].colorkey)
 				{
 					if(!tex->compressed)
 					{
@@ -827,7 +835,7 @@ mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_INT
 					TOPIC("RELOAD", "Loaded %d without mipmap", tex->gltex);
 				}
 				
-				ctx->state.reload_tex_par = TRUE;
+				//ctx->state.reload_tex_par = TRUE;
 				tex->alloc = TRUE;
 			}
 			else
@@ -843,7 +851,7 @@ mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_INT
 	return tex;
 }
 
-void MesaReloadTexture(mesa3d_texture_t *tex)
+void MesaReloadTexture(mesa3d_texture_t *tex, int unit)
 {
 	BOOL reload = FALSE;
 	BOOL reload_done = FALSE;
@@ -867,7 +875,7 @@ void MesaReloadTexture(mesa3d_texture_t *tex)
 		reload = TRUE;
 	}
 	
-	if(tex->ctx->state.colorkey != tex->colorkey)
+	if(tex->ctx->state.tex[unit].colorkey != tex->colorkey)
 	{
 		reload = TRUE;
 	}
@@ -879,7 +887,7 @@ void MesaReloadTexture(mesa3d_texture_t *tex)
 		SurfaceInfo_t *info = SurfaceInfoGet(tex->data_ptr[level], TRUE);
 		if(reload || info->texture_dirty)
 		{
-			if(tex->ctx->state.colorkey && 
+			if(tex->ctx->state.tex[unit].colorkey && 
 				(tex->ddsurf->lpLcl->dwFlags & DDRAWISURF_HASCKEYSRCBLT))
 			{
 				MesaBufferUploadTextureChroma(tex->ctx, tex, level,
@@ -900,7 +908,7 @@ void MesaReloadTexture(mesa3d_texture_t *tex)
 	
 	if(reload_done)
 	{
-		tex->colorkey = tex->ctx->state.colorkey;
+		tex->colorkey = tex->ctx->state.tex[unit].colorkey;
 	}
 }
 
@@ -910,22 +918,21 @@ void MesaDestroyTexture(mesa3d_texture_t *tex)
 	
 	if(tex->alloc)
 	{
+		int i;
 		tex->ctx->entry->proc.pglDeleteTextures(1, &tex->gltex);
 		tex->alloc = FALSE;
 		
-		if(tex->ctx->state.tex == tex)
+		for(i = 0; i < tex->ctx->texunits; i++)
 		{
-			tex->ctx->state.tex = NULL;
-			tex->ctx->state.reload_tex = TRUE;
+			if(tex->ctx->state.tex[i].image == tex)
+			{
+				tex->ctx->state.tex[i].image  = NULL;
+				tex->ctx->state.tex[i].reload = TRUE;
+			}
 		}
 	}
 	
 	SurfaceCtxUnlock();
-}
-
-void MesaBufferClear(LPDDRAWI_DDRAWSURFACE_GBL buf, DWORD d3d_color)
-{
-	//
 }
 
 static GLenum GetBlendFactor(D3DBLEND dxfactor)
@@ -1060,6 +1067,138 @@ static void MesaSetFog(mesa3d_ctx_t *ctx)
 	TOPIC("FOG", "pglDisable(GL_FOG)");
 }
 
+#define TSS_DWORD (*((DWORD*)value))
+#define TSS_FLOAT (*((D3DVALUE*)value))
+
+void MesaSetTextureState(mesa3d_ctx_t *ctx, int unit, DWORD state, void *value)
+{
+	if(unit >= ctx->texunits)
+	{
+		return;
+	}
+	
+	switch(state)
+	{
+		/* texture resource */
+		case D3DTSS_TEXTUREMAP: 
+			ctx->state.tex[unit].image = MESA_HANDLE_TO_TEX(TSS_DWORD);
+			ctx->state.tex[unit].reload = TRUE;
+			break;
+		/* D3DTEXTUREOP - per-stage blending controls for color channels */
+		case D3DTSS_COLOROP:
+			ctx->state.tex[unit].color_op = TSS_DWORD;
+			ctx->state.tex[unit].dx6_blend = TRUE;
+			ctx->state.tex[unit].reload = TRUE;
+			break;
+		/* D3DTA_* (texture arg) */
+		case D3DTSS_COLORARG1:
+			ctx->state.tex[unit].color_arg1 = TSS_DWORD;
+			ctx->state.tex[unit].dx6_blend = TRUE;
+			ctx->state.tex[unit].reload = TRUE;
+			break;
+		/* D3DTA_* (texture arg) */
+		case D3DTSS_COLORARG2:
+			ctx->state.tex[unit].color_arg2 = TSS_DWORD;
+			ctx->state.tex[unit].dx6_blend = TRUE;
+			ctx->state.tex[unit].reload = TRUE;
+			break;
+		/* D3DTEXTUREOP - per-stage blending controls for alpha channel */
+		case D3DTSS_ALPHAOP:
+			ctx->state.tex[unit].alpha_op = TSS_DWORD;
+			ctx->state.tex[unit].dx6_blend = TRUE;
+			ctx->state.tex[unit].reload = TRUE;
+			break;
+		/* D3DTA_* (texture arg) */
+		case D3DTSS_ALPHAARG1:
+			ctx->state.tex[unit].alpha_arg1 = TSS_DWORD;
+			ctx->state.tex[unit].dx6_blend = TRUE;
+			ctx->state.tex[unit].reload = TRUE;
+			break;
+		/* D3DTA_* (texture arg) */
+		case D3DTSS_ALPHAARG2:
+			ctx->state.tex[unit].alpha_arg2 = TSS_DWORD;
+			ctx->state.tex[unit].dx6_blend = TRUE;
+			ctx->state.tex[unit].reload = TRUE;
+			break;
+		/* D3DVALUE (bump mapping matrix) */
+		case D3DTSS_BUMPENVMAT00:
+			break;
+		/* D3DVALUE (bump mapping matrix) */
+		case D3DTSS_BUMPENVMAT01:
+			break;
+		/* D3DVALUE (bump mapping matrix) */
+		case D3DTSS_BUMPENVMAT10:
+			break;
+		/* D3DVALUE (bump mapping matrix) */
+		case D3DTSS_BUMPENVMAT11:
+			break;
+		/* identifies which set of texture coordinates index this texture */
+		case D3DTSS_TEXCOORDINDEX:
+			ctx->state.tex[unit].coordindex = TSS_DWORD;
+			break;
+		/* D3DTEXTUREADDRESS for both coordinates */
+		case D3DTSS_ADDRESS:
+			ctx->state.tex[unit].texaddr_u = (D3DTEXTUREADDRESS)TSS_DWORD;
+			ctx->state.tex[unit].texaddr_v = (D3DTEXTUREADDRESS)TSS_DWORD;
+			ctx->state.tex[unit].update = TRUE;
+			break;
+		/* D3DTEXTUREADDRESS for U coordinate */
+		case D3DTSS_ADDRESSU:
+			ctx->state.tex[unit].texaddr_u = (D3DTEXTUREADDRESS)TSS_DWORD;
+			ctx->state.tex[unit].update = TRUE;
+			break;
+		/* D3DTEXTUREADDRESS for V coordinate */
+		case D3DTSS_ADDRESSV:
+			ctx->state.tex[unit].texaddr_v = (D3DTEXTUREADDRESS)TSS_DWORD;
+			ctx->state.tex[unit].update = TRUE;
+			break;
+		/* D3DCOLOR */
+		case D3DTSS_BORDERCOLOR:
+		{
+			D3DCOLOR c = TSS_DWORD;
+			MESA_D3DCOLOR_TO_FV(c, ctx->state.tex[unit].border);
+			ctx->state.tex[unit].update = TRUE;
+			break;
+		}
+		/* D3DTEXTUREMAGFILTER filter to use for magnification */
+		case D3DTSS_MAGFILTER:
+			ctx->state.tex[unit].dx_mag = (D3DTEXTUREMAGFILTER)TSS_DWORD;
+			ctx->state.tex[unit].dx6_filter = TRUE;
+			ctx->state.tex[unit].update = TRUE;
+			break;
+		/* D3DTEXTUREMINFILTER filter to use for minification */
+		case D3DTSS_MINFILTER:
+			ctx->state.tex[unit].dx_min = (D3DTEXTUREMINFILTER)TSS_DWORD;
+			ctx->state.tex[unit].dx6_filter = TRUE;
+			ctx->state.tex[unit].update = TRUE;
+			break;
+		/* D3DTEXTUREMIPFILTER filter to use between mipmaps during minification */
+		case D3DTSS_MIPFILTER:
+			ctx->state.tex[unit].dx_mip = (D3DTEXTUREMIPFILTER)TSS_DWORD;
+			ctx->state.tex[unit].dx6_filter = TRUE;
+			ctx->state.tex[unit].update = TRUE;
+			break;
+		/* D3DVALUE Mipmap LOD bias */
+		case D3DTSS_MIPMAPLODBIAS:
+			break;
+		/* DWORD 0..(n-1) LOD index of largest map to use (0 == largest) */
+		case D3DTSS_MAXMIPLEVEL:
+			break;
+		/* DWORD maximum anisotropy */
+		case D3DTSS_MAXANISOTROPY:
+			break;
+		/* D3DVALUE scale for bump map luminance */
+		case D3DTSS_BUMPENVLSCALE:
+			break;
+		/* D3DVALUE offset for bump map luminance */
+		case D3DTSS_BUMPENVLOFFSET:
+			break;
+		/* D3DTEXTURETRANSFORMFLAGS controls texture transform (DX7) */
+		case D3DTSS_TEXTURETRANSFORMFLAGS:
+			break;
+	} // switch
+}
+
 /* from DDK */
 #define IS_OVERRIDE(type)       ((DWORD)(type) > D3DSTATE_OVERRIDE_BIAS)
 #define GET_OVERRIDE(type)      ((DWORD)(type) - D3DSTATE_OVERRIDE_BIAS)
@@ -1110,22 +1249,22 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state)
 		case D3DRENDERSTATE_TEXTUREHANDLE: /* Texture handle */
 			if(state->dwArg[0] != 0)
 			{
-				ctx->state.tex = MESA_HANDLE_TO_TEX(state->dwArg[0]);
+				ctx->state.tex[0].image = MESA_HANDLE_TO_TEX(state->dwArg[0]);
 			}
 			else
 			{
-				ctx->state.tex = NULL;
+				ctx->state.tex[0].image = NULL;
 			}
 			TRACE("D3DRENDERSTATE_TEXTUREHANDLE = %X", state->dwArg[0]);
-			ctx->state.reload_tex = TRUE;
+			ctx->state.tex[0].reload = TRUE;
 			break;
 		case D3DRENDERSTATE_ANTIALIAS: /* D3DANTIALIASMODE */
 			// !
 			break;
 		case D3DRENDERSTATE_TEXTUREADDRESS: /* D3DTEXTUREADDRESS	*/
-			ctx->state.texaddr_u = state->dwArg[0];
-			ctx->state.texaddr_v = state->dwArg[0];
-			ctx->state.reload_tex_par = TRUE;
+			ctx->state.tex[0].texaddr_u = state->dwArg[0];
+			ctx->state.tex[0].texaddr_v = state->dwArg[0];
+			ctx->state.tex[0].update = TRUE;
 			break;
 		case D3DRENDERSTATE_TEXTUREPERSPECTIVE: /* TRUE for perspective correction */
 			/* nop */
@@ -1218,12 +1357,12 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state)
 			/* nop */
 			break;
 		case D3DRENDERSTATE_TEXTUREMAG: /* D3DTEXTUREFILTER */
-			ctx->state.texmag = GetGLTexFilter((D3DTEXTUREFILTER)state->dwArg[0]);
-			ctx->state.reload_tex_par = TRUE;
+			ctx->state.tex[0].texmag = GetGLTexFilter((D3DTEXTUREFILTER)state->dwArg[0]);
+			ctx->state.tex[0].update = TRUE;
 			break;
 		case D3DRENDERSTATE_TEXTUREMIN: /* D3DTEXTUREFILTER */
-			ctx->state.texmin = GetGLTexFilter((D3DTEXTUREFILTER)state->dwArg[0]);
-			ctx->state.reload_tex_par = TRUE;
+			ctx->state.tex[0].texmin = GetGLTexFilter((D3DTEXTUREFILTER)state->dwArg[0]);
+			ctx->state.tex[0].update = TRUE;
 			break;
 		case D3DRENDERSTATE_SRCBLEND: /* D3DBLEND */
 		{
@@ -1257,8 +1396,8 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state)
 			ctx->entry->proc.pglBlendFunc(ctx->state.blend_sfactor, ctx->state.blend_dfactor);
 			break;
 		case D3DRENDERSTATE_TEXTUREMAPBLEND: /* D3DTEXTUREBLEND */
-			ctx->state.texblend = (D3DTEXTUREBLEND)state->dwArg[0];
-			ctx->state.reload_tex_par = TRUE;
+			ctx->state.tex[0].texblend = (D3DTEXTUREBLEND)state->dwArg[0];
+			ctx->state.tex[0].update = TRUE;
 			break;
 		case D3DRENDERSTATE_CULLMODE: /* D3DCULL */
 			switch(state->dwArg[0])
@@ -1395,24 +1534,22 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state)
 		case D3DRENDERSTATE_EDGEANTIALIAS: /* TRUE to enable edge antialiasing */
 			break;
 		case D3DRENDERSTATE_COLORKEYENABLE: /* TRUE to enable source colorkeyed textures */
-			ctx->state.colorkey = (state->dwArg[0] == 0) ? FALSE : TRUE;
-				ctx->state.reload_tex = TRUE;
+			ctx->state.tex[0].colorkey = (state->dwArg[0] == 0) ? FALSE : TRUE;
+			ctx->state.tex[0].reload = TRUE;
 			break;
 		case D3DRENDERSTATE_BORDERCOLOR: /* Border color for texturing w/border */
 		{
 			D3DCOLOR c = (D3DCOLOR)state->dwArg[0];
-			GLfloat v[4];
-			MESA_D3DCOLOR_TO_FV(c, v);
-			ctx->entry->proc.pglTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, &v[0]);
+			MESA_D3DCOLOR_TO_FV(c, ctx->state.tex[0].border);
 			break;
 		}
 		case D3DRENDERSTATE_TEXTUREADDRESSU: /* Texture addressing mode for U coordinate */
-			ctx->state.texaddr_u = state->dwArg[0];
-			ctx->state.reload_tex_par = TRUE;
+			ctx->state.tex[0].texaddr_u = state->dwArg[0];
+			ctx->state.tex[0].update = TRUE;
 			break;
 		case D3DRENDERSTATE_TEXTUREADDRESSV: /* Texture addressing mode for V coordinate */
-			ctx->state.texaddr_v = state->dwArg[0];
-			ctx->state.reload_tex_par = TRUE;
+			ctx->state.tex[0].texaddr_v = state->dwArg[0];
+			ctx->state.tex[0].update = TRUE;
 			break;
 		case D3DRENDERSTATE_MIPMAPLODBIAS: /* D3DVALUE Mipmap LOD bias */
 			break;
@@ -1537,67 +1674,311 @@ static GLenum nonMipFilter(GLenum filter)
 	return GL_NEAREST;
 }
 
-static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx)
+static void D3DTA2GL(DWORD dxarg, GLint *gl_src, GLint *gl_op)
 {
-	GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
-	GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->state.tex->gltex));
-	
-	if(ctx->state.tex->mipmap)
+	switch(dxarg & D3DTA_SELECTMASK)
 	{
-		entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, ctx->state.tex->mipmap_level);
-		entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, ctx->state.texmag);
-		entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, ctx->state.texmin);
+		case D3DTA_CURRENT:
+			*gl_src = GL_PREVIOUS;
+			break;
+		case D3DTA_TEXTURE:
+			*gl_src = GL_TEXTURE;
+			break;
+		case D3DTA_DIFFUSE:
+		case D3DTA_SPECULAR:
+		default:
+			*gl_src = GL_PRIMARY_COLOR;
+			break;
+	}
+	
+	if((dxarg & (D3DTA_COMPLEMENT | D3DTA_ALPHAREPLICATE)) ==
+		(D3DTA_COMPLEMENT | D3DTA_ALPHAREPLICATE))
+	{
+		 *gl_op = GL_ONE_MINUS_SRC_ALPHA;
+	}
+	else if(dxarg & D3DTA_ALPHAREPLICATE)
+	{
+		*gl_op = GL_SRC_ALPHA;
+	}
+	else if(dxarg & D3DTA_COMPLEMENT)
+	{
+		*gl_op = GL_ONE_MINUS_SRC_COLOR;
 	}
 	else
 	{
-		entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, nonMipFilter(ctx->state.texmag));
-		entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, nonMipFilter(ctx->state.texmin));
+		*gl_op = GL_SRC_COLOR;
 	}
+}
+
+static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int unit)
+{
+	GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0+unit));
 	
-	switch(ctx->state.texblend)
+	struct mesa3d_texstate *ts = &ctx->state.tex[unit];
+	
+	if(ts->image)	
 	{
-		case D3DTBLEND_DECAL:
-		case D3DTBLEND_COPY:
-			/* 
-			 * cPix = cTex
-			 * aPix = aTex
-			 */
-			entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
-			TOPIC("BLEND", "D3DTBLEND_DECAL");
-			break;
-		case D3DTBLEND_MODULATE:
-			/*
-			 * cPix = cSrc * cTex
-			 * aPix = aTex
-			 */
-			entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-			TOPIC("BLEND", "D3DTBLEND_MODULATE");
-			break;
-		case D3DTBLEND_MODULATEALPHA:
-			/*
-			 * cPix = cSrc * cTex
-			 * aPix = aSrc * aTex
-			 */
-			entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE);
-			entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB, GL_MODULATE);
-			entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_ALPHA, GL_MODULATE);			
-			TOPIC("BLEND", "D3DTBLEND_MODULATEALPHA");
-			break;
-		case D3DTBLEND_ADD:
-			/*
-			 * cPix = cSrc + cTex
-			 * aPix = aSrc + aTex
-			 */
-			entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_ADD);
-			TOPIC("BLEND", "D3DTBLEND_ADD");
-			break;
-		default:
-			TOPIC("BLEND", "Wrong state: %d", ctx->state.texblend);
-			/* NOP */
-			break;
+		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ts->image->gltex));
+		
+		/*
+		 * texture filtering
+		 */
+		if(ts->dx6_filter)
+		{
+			if(ts->image->mipmap)
+			{
+				entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, ts->image->mipmap_level);
+
+				switch(ts->dx_min)
+				{
+					case D3DTFN_LINEAR:
+						switch(ts->dx_mip)
+						{
+							case D3DTFP_LINEAR:
+								entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+								break;
+							case D3DTFP_POINT:
+							default:
+								entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);
+								break;
+						}
+						
+						break;
+					case D3DTFN_POINT:
+					default:
+						switch(ts->dx_mip)
+						{
+							case D3DTFP_LINEAR:
+								entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_LINEAR);
+								break;
+							case D3DTFP_POINT:
+							default:
+								entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
+								break;
+						}
+						break;
+				}
+			}
+			else /* non mipmap */
+			{
+				switch(ts->dx_min)
+				{
+					case D3DTFN_LINEAR:
+						entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+						break;
+					case D3DTFN_POINT:
+					default:
+						entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+						break;
+				}
+			}
+			
+			switch(ts->dx_mag)
+			{
+				case D3DTFG_LINEAR:
+					entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+					break;
+				case D3DTFG_POINT:
+				default:
+					entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+					break;
+			}
+		}
+		else
+		{
+			if(ts->image->mipmap)
+			{
+				entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, ts->image->mipmap_level);
+				entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, ts->texmag);
+				entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, ts->texmin);
+			}
+			else
+			{
+				entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, nonMipFilter(ts->texmag));
+				entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, nonMipFilter(ts->texmin));
+			}
+		}
+	}
+	else
+	{
+		entry->proc.pglBindTexture(GL_TEXTURE_2D, 0);
 	}
 	
-	switch(ctx->state.texaddr_u)
+	/*
+	 * Texture blend
+	 */
+	if(ts->dx6_blend)
+	{
+		GLint color_fn = GL_REPLACE;
+		GLint color_arg1_source = GL_TEXTURE;
+		GLint color_arg1_op = GL_SRC_COLOR;
+		GLint color_arg2_source = GL_PREVIOUS;
+		GLint color_arg2_op = GL_SRC_COLOR;
+
+		GLint alpha_fn = GL_REPLACE;
+		GLint alpha_arg1_source = GL_TEXTURE;
+		GLint alpha_arg1_op = GL_SRC_COLOR;
+		GLint alpha_arg2_source = GL_PREVIOUS;
+		GLint alpha_arg2_op = GL_SRC_COLOR;
+		
+		D3DTA2GL(ts->color_arg1, &color_arg1_source, &color_arg1_op);
+		D3DTA2GL(ts->color_arg2, &color_arg2_source, &color_arg2_op);
+		D3DTA2GL(ts->alpha_arg1|D3DTA_ALPHAREPLICATE, &alpha_arg1_source, &alpha_arg1_op);
+		D3DTA2GL(ts->alpha_arg2|D3DTA_ALPHAREPLICATE, &alpha_arg2_source, &alpha_arg2_op);
+		
+		GLfloat color_mult = 1.0f;
+		GLfloat alpha_mult = 1.0f;
+		
+		switch(ts->color_op)
+		{
+			case D3DTOP_DISABLE:
+				color_fn = GL_REPLACE;
+				color_arg1_source = GL_CONSTANT;
+				color_arg1_op = GL_SRC_COLOR;
+				break;
+			case D3DTOP_SELECTARG1:
+				color_fn = GL_REPLACE;
+				break;
+			case D3DTOP_SELECTARG2:
+				color_fn = GL_REPLACE;
+				color_arg1_source = color_arg2_source;
+				color_arg1_op = color_arg2_op;
+				break;
+			case D3DTOP_MODULATE:
+				color_fn = GL_MODULATE;
+				break;
+			case D3DTOP_MODULATE2X:
+				color_fn = GL_MODULATE;
+				color_mult = 2.0f;
+				break;
+			case D3DTOP_MODULATE4X:
+				color_fn = GL_MODULATE;
+				color_mult = 4.0f;
+				break;
+			case D3DTOP_ADD:
+				color_fn = GL_ADD;
+				break;
+			case D3DTOP_ADDSIGNED:
+				color_fn = D3DTOP_ADDSIGNED;
+				break;
+			case D3DTOP_ADDSIGNED2X:
+				color_fn = D3DTOP_ADDSIGNED;
+				color_mult = 2.0f;
+				break;
+		}
+		
+		switch(ts->alpha_op)
+		{
+			case D3DTOP_DISABLE:
+				alpha_fn = GL_REPLACE;
+				alpha_arg1_source = GL_CONSTANT;
+				alpha_arg1_op = GL_SRC_COLOR;
+				break;
+			case D3DTOP_SELECTARG1:
+				alpha_fn = GL_REPLACE;
+				break;
+			case D3DTOP_SELECTARG2:
+				alpha_fn = GL_REPLACE;
+				alpha_arg1_source = color_arg2_source;
+				alpha_arg1_op = color_arg2_op;
+				break;
+			case D3DTOP_MODULATE:
+				alpha_fn = GL_MODULATE;
+				break;
+			case D3DTOP_MODULATE2X:
+				alpha_fn = GL_MODULATE;
+				alpha_mult = 2.0f;
+				break;
+			case D3DTOP_MODULATE4X:
+				alpha_fn = GL_MODULATE;
+				alpha_mult = 4.0f;
+				break;
+			case D3DTOP_ADD:
+				alpha_fn = GL_ADD;
+				break;
+			case D3DTOP_ADDSIGNED:
+				alpha_fn = D3DTOP_ADDSIGNED;
+				break;
+			case D3DTOP_ADDSIGNED2X:
+				alpha_fn = D3DTOP_ADDSIGNED;
+				alpha_mult = 2.0f;
+				break;
+		}
+		
+    entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE);
+
+    entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB, color_fn);
+    entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC0_RGB, color_arg1_source);
+    entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_RGB, color_arg1_op);
+    entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC1_RGB, color_arg2_source);
+    entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_RGB, color_arg2_op);
+    
+    entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_ALPHA, alpha_fn);
+    entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC0_ALPHA, alpha_arg1_source);
+    entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_ALPHA, alpha_arg1_op);
+    entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC1_ALPHA, alpha_arg2_source);
+    entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_ALPHA, alpha_arg2_op);
+    
+    entry->proc.pglTexEnvf(GL_TEXTURE_ENV, GL_RGB_SCALE,   color_mult);
+    entry->proc.pglTexEnvf(GL_TEXTURE_ENV, GL_ALPHA_SCALE, alpha_mult);
+	}
+	else
+	{
+		switch(ts->texblend)
+		{
+			case D3DTBLEND_DECAL:
+			case D3DTBLEND_COPY:
+				/* 
+				 * cPix = cTex
+				 * aPix = aTex
+				 */
+				entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+				TOPIC("BLEND", "D3DTBLEND_DECAL");
+				break;
+			case D3DTBLEND_MODULATE:
+				/*
+				 * cPix = cSrc * cTex
+				 * aPix = aTex
+				 */
+				entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+				TOPIC("BLEND", "D3DTBLEND_MODULATE");
+				break;
+			case D3DTBLEND_MODULATEALPHA:
+				/*
+				 * cPix = cSrc * cTex
+				 * aPix = aSrc * aTex
+				 */
+				entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE);
+				entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB, GL_MODULATE);
+				entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_ALPHA, GL_MODULATE);			
+				TOPIC("BLEND", "D3DTBLEND_MODULATEALPHA");
+				break;
+			case D3DTBLEND_ADD:
+				/*
+				 * cPix = cSrc + cTex
+				 * aPix = aSrc + aTex
+				 */
+				entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_ADD);
+				TOPIC("BLEND", "D3DTBLEND_ADD");
+				break;
+			default:
+				TOPIC("BLEND", "Wrong state: %d", ts->texblend);
+				/* NOP */
+				break;
+		}
+	} // !dx6_blend
+	
+	/*
+	 * Texture addressing
+	 */
+	if(ts->texaddr_u == D3DTADDRESS_BORDER ||
+		ts->texaddr_v == D3DTADDRESS_BORDER)
+	{
+		entry->proc.pglTexParameterfv(GL_TEXTURE_2D,
+			GL_TEXTURE_BORDER_COLOR, &(ts->border[0]));
+	}
+	
+	switch(ts->texaddr_u)
 	{
 		case D3DTADDRESS_MIRROR:
 			entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
@@ -1606,7 +1987,6 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx)
 			entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 			break;
 		case D3DTADDRESS_BORDER:
-			// glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);  
 			entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
 			break;
 			break;
@@ -1616,7 +1996,7 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx)
 			break;
 	}
 	
-	switch(ctx->state.texaddr_v)
+	switch(ts->texaddr_v)
 	{
 		case D3DTADDRESS_MIRROR:
 			entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
@@ -1634,11 +2014,14 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx)
 
 void MesaRender(mesa3d_ctx_t *ctx)
 {
+	int i;
 	mesa3d_entry_t *entry = ctx->entry;
 	
 	FLATPTR front_addr = ctx->front->lpLcl->lpGbl->fpVidMem;
 	
 	TOPIC("ENTRY", "DRAW to %X", front_addr);
+	
+	entry->proc.pglFinish();
 	
 	MesaBufferDownloadColor(ctx, (void*)front_addr);
 	SurfaceInfoMakeClean(front_addr);
@@ -1651,10 +2034,14 @@ void MesaRender(mesa3d_ctx_t *ctx)
 		SurfaceInfoMakeClean(depth_addr);
 	}
 	
-	entry->proc.pglFinish();
+	ctx->render.dirty = FALSE;
 	
-	/* reload texture at next run */
-	ctx->state.reload_tex = TRUE;
+	/* reload textures at next run */
+	// FIXME: sure need this?
+	for(i = 0; i < ctx->texunits; i++)
+	{
+		ctx->state.tex[i].reload = TRUE;
+	}
 }
 
 void MesaReadback(mesa3d_ctx_t *ctx)
@@ -1686,39 +2073,41 @@ void MesaReadback(mesa3d_ctx_t *ctx)
 	}
 }
 
-static void DrawSetSurfaces(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx)
+void MesaDrawRefreshState(mesa3d_ctx_t *ctx)
 {
-	MesaReadback(ctx); 
+	int i;
 
-	if(ctx->state.reload_tex)
+	for(i = 0; i < ctx->texunits; i++)
 	{
-		if(ctx->state.tex != NULL)
+		if(ctx->state.tex[i].reload)
 		{
-			MesaReloadTexture(ctx->state.tex);
+			if(ctx->state.tex[i].image != NULL)
+			{
+				MesaReloadTexture(ctx->state.tex[i].image, i);
+			}
+			ctx->state.tex[i].update = TRUE;
+			ctx->state.tex[i].reload = FALSE;
 		}
-		ctx->state.reload_tex_par = TRUE;
-		ctx->state.reload_tex = FALSE;
-	}
-	
-	if(ctx->state.reload_tex_par)
-	{
-		if(ctx->state.tex != NULL)
+		
+		if(ctx->state.tex[i].update)
 		{
-			ApplyTextureState(entry, ctx);
+			ApplyTextureState(ctx->entry, ctx, i);
+			ctx->state.tex[i].update = FALSE;
 		}
-		else
-		{
-			GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_2D));
-		}
-		ctx->state.reload_tex_par = FALSE;
 	}
 }
 
+void MesaDrawSetSurfaces(mesa3d_ctx_t *ctx)
+{
+	MesaReadback(ctx); 
+	MesaDrawRefreshState(ctx);
+}
+
 void MesaDraw(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype, LPVOID vertices, DWORD verticesCnt)
-{	
+{
 	mesa3d_entry_t *entry = ctx->entry;
 
-	DrawSetSurfaces(entry, ctx);
+	MesaDrawSetSurfaces(ctx);
 
 	GLenum gl_ptype = DX2GLPrimitive(dx_ptype);
 
@@ -1761,6 +2150,8 @@ void MesaDraw(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype,
 			}
 		}
 		GL_CHECK(entry->proc.pglEnd());
+		
+		ctx->render.dirty = TRUE;
 	}
 }
 
@@ -1771,7 +2162,7 @@ void MesaDrawIndex(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE v
 	mesa3d_entry_t *entry = ctx->entry;
 	DWORD i;
 	
-	DrawSetSurfaces(entry, ctx);
+	MesaDrawSetSurfaces(ctx);
 
 	GLenum gl_ptype = DX2GLPrimitive(dx_ptype);
 
@@ -1806,5 +2197,46 @@ void MesaDrawIndex(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE v
     		break;
 		} // switch
 		entry->proc.pglEnd();
+		
+		ctx->render.dirty = TRUE;
 	}
 }
+
+void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, DWORD stencil, int rects_cnt, RECT *rects)
+{
+	GLfloat cv[4];
+	int i;
+	mesa3d_entry_t *entry = ctx->entry;
+	
+	MesaReadback(ctx);
+	// FIXME: ^when is done full clear, is not needed to readback the surface! 
+
+	MESA_D3DCOLOR_TO_FV(color, cv);
+	
+	TRACE("Clear Z: %f", depth);
+	
+	entry->proc.pglClearColor(cv[0], cv[1], cv[2], cv[3]);
+	entry->proc.pglClearDepth(depth);
+	entry->proc.pglClearStencil(stencil);
+
+	GLbitfield mask = 0;
+	if(flags & D3DCLEAR_TARGET)  mask |= GL_COLOR_BUFFER_BIT;
+	if(flags & D3DCLEAR_ZBUFFER) mask |= GL_DEPTH_BUFFER_BIT;
+	if(flags & D3DCLEAR_STENCIL) mask |= GL_STENCIL_BUFFER_BIT;
+
+	for(i = 0; i < rects_cnt; i++)
+	{
+		entry->proc.pglEnable(GL_SCISSOR_TEST);
+		entry->proc.pglScissor(
+			rects[i].left, rects[i].top,
+			rects[i].right - rects[i].left,
+			rects[i].bottom - rects[i].top);
+		entry->proc.pglClear(mask);
+		entry->proc.pglDisable(GL_SCISSOR_TEST);
+	}
+	
+	ctx->render.dirty = FALSE;
+	
+	MesaDrawRefreshState(ctx);
+}
+

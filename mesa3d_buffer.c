@@ -60,6 +60,7 @@ void MesaBufferUploadColor(mesa3d_ctx_t *ctx, const void *src)
 			break;
 	}
 	
+	GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0));
 	GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.color_fb));
 	GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.color_tex));
 	GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, ctx->state.sw, ctx->state.sh, 0, format, type, src));
@@ -74,7 +75,7 @@ void MesaBufferUploadColor(mesa3d_ctx_t *ctx, const void *src)
 	
 	GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, 0));
 	//ctx->state.last_tex = ctx->fbo.color_tex;
-	ctx->state.reload_tex_par = TRUE;
+	ctx->state.tex[0].update = TRUE;
 	
 	TOPIC("GL", "upload color!");
 }
@@ -134,6 +135,7 @@ void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 			break;
 	}
 	
+	GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0));
 	GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.depth_fb));
 	GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.depth_tex));
 	GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, ctx->state.sw, ctx->state.sh, 0, format, type, src));
@@ -154,7 +156,7 @@ void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 	
 	GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, 0));
 	//ctx->state.last_tex = ctx->fbo.depth_tex;
-	ctx->state.reload_tex_par = TRUE;
+	ctx->state.tex[0].update = TRUE;
 	
 	TOPIC("GL", "upload depth!");
 }
@@ -212,7 +214,8 @@ void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level
 		level, tex->internalformat, w, h, tex->format, tex->type, tex->data_ptr[level]
 	);
 	
-	GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
+	//GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
+	GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0));
 	GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, tex->gltex));
 	
 	if(tex->compressed)
@@ -230,7 +233,7 @@ void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level
 			w, h, 0, tex->format, tex->type, (void*)tex->data_ptr[level]));
 	}
 	
-	ctx->state.reload_tex_par = TRUE;
+	ctx->state.tex[0].update = TRUE;
 }
 
 static void *chroma_convert(
@@ -287,7 +290,8 @@ void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int
 	
 	mesa3d_entry_t *entry = ctx->entry;
 
-	GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
+	//GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
+	GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0));
 	GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, tex->gltex));
 
 	TRACE("FORMAT", "Chroma key (0x%08X 0x%08X)", chroma_lw, chroma_hi);
@@ -302,5 +306,5 @@ void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int
 		
 		MesaChromaFree(data);
 	}
-	ctx->state.reload_tex_par = TRUE;
+	ctx->state.tex[0].update = TRUE;
 }

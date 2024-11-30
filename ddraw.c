@@ -183,7 +183,14 @@ DWORD __stdcall DestroySurface(LPDDHAL_DESTROYSURFACEDATA lpd)
  	VMDAHAL_t *hal = GetHAL(lpd->lpDD);
   if(!hal) return DDHAL_DRIVER_NOTHANDLED;
 
-	TRACE("Detroying surface caps: 0x%X", lpd->lpDDSurface->ddsCaps.dwCaps);
+	TOPIC("DESTROY", "Detroying surface caps:  0x%X", lpd->lpDDSurface->ddsCaps.dwCaps);
+	TOPIC("DESTROY", "Detroying surface flags: 0x%X, refs: %d", lpd->lpDDSurface->dwFlags, lpd->lpDDSurface->dwLocalRefCnt);
+	TOPIC("DESTROY", "Detroying surface dim:  %d x %d (pitch: %d), global flags: 0x%X",
+		lpd->lpDDSurface->lpGbl->wWidth,
+		lpd->lpDDSurface->lpGbl->wHeight,
+		lpd->lpDDSurface->lpGbl->lPitch,
+		lpd->lpDDSurface->lpGbl->ddpfSurface.dwFlags);
+	TOPIC("DESTROY", "VRAM ptr: 0x%X", lpd->lpDDSurface->lpGbl->fpVidMem);
 
 #ifdef D3DHAL
 	SurfaceInfoErase(lpd->lpDDSurface->lpGbl->fpVidMem);

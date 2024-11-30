@@ -80,18 +80,76 @@ typedef D3DHAL_GLOBALDRIVERDATA *LPD3DHAL_GLOBALDRIVERDATA;
  * Extended caps introduced with DX5 and queried with
  * GetDriverInfo (GUID_D3DExtendedCaps).
  */
-typedef struct _D3DHAL_D3DEXTENDEDCAPS {
+typedef struct _D3DHAL_D3DEXTENDEDCAPS5 {
     DWORD		dwSize;			// Size of this structure
     DWORD       dwMinTextureWidth, dwMaxTextureWidth;
     DWORD       dwMinTextureHeight, dwMaxTextureHeight;
     DWORD       dwMinStippleWidth, dwMaxStippleWidth;
     DWORD       dwMinStippleHeight, dwMaxStippleHeight;
-} D3DHAL_D3DEXTENDEDCAPS;
+} D3DHAL_D3DEXTENDEDCAPS5;
 
-typedef D3DHAL_D3DEXTENDEDCAPS *LPD3DHAL_D3DEXTENDEDCAPS;
+typedef struct _D3DHAL_D3DEXTENDEDCAPS6 {
+    DWORD       dwSize;         // Size of this structure
 
-#define D3DHAL_D3DEXTENDEDCAPSSIZE (sizeof(D3DHAL_D3DEXTENDEDCAPS))
+    DWORD       dwMinTextureWidth, dwMaxTextureWidth;
+    DWORD       dwMinTextureHeight, dwMaxTextureHeight;
+    DWORD       dwMinStippleWidth, dwMaxStippleWidth;
+    DWORD       dwMinStippleHeight, dwMaxStippleHeight;
 
+    /* fields added for DX6 */
+    DWORD       dwMaxTextureRepeat;
+    DWORD       dwMaxTextureAspectRatio;
+    DWORD       dwMaxAnisotropy;
+    D3DVALUE    dvGuardBandLeft;
+    D3DVALUE    dvGuardBandTop;
+    D3DVALUE    dvGuardBandRight;
+    D3DVALUE    dvGuardBandBottom;
+    D3DVALUE    dvExtentsAdjust;
+    DWORD       dwStencilCaps;
+    DWORD       dwFVFCaps;  /* low 4 bits: 0 implies TLVERTEX only, 1..8 imply FVF aware */
+    DWORD       dwTextureOpCaps;
+    WORD        wMaxTextureBlendStages;
+    WORD        wMaxSimultaneousTextures;
+
+} D3DHAL_D3DEXTENDEDCAPS6;
+
+typedef struct _D3DHAL_D3DEXTENDEDCAPS7 {
+    DWORD       dwSize;         // Size of this structure
+
+    DWORD       dwMinTextureWidth, dwMaxTextureWidth;
+    DWORD       dwMinTextureHeight, dwMaxTextureHeight;
+    DWORD       dwMinStippleWidth, dwMaxStippleWidth;
+    DWORD       dwMinStippleHeight, dwMaxStippleHeight;
+
+    /* fields added for DX6 */
+    DWORD       dwMaxTextureRepeat;
+    DWORD       dwMaxTextureAspectRatio;
+    DWORD       dwMaxAnisotropy;
+    D3DVALUE    dvGuardBandLeft;
+    D3DVALUE    dvGuardBandTop;
+    D3DVALUE    dvGuardBandRight;
+    D3DVALUE    dvGuardBandBottom;
+    D3DVALUE    dvExtentsAdjust;
+    DWORD       dwStencilCaps;
+    DWORD       dwFVFCaps;  /* low 4 bits: 0 implies TLVERTEX only, 1..8 imply FVF aware */
+    DWORD       dwTextureOpCaps;
+    WORD        wMaxTextureBlendStages;
+    WORD        wMaxSimultaneousTextures;
+
+    /* fields added for DX7 */
+    DWORD       dwMaxActiveLights;
+    D3DVALUE    dvMaxVertexW;
+
+    WORD        wMaxUserClipPlanes;
+    WORD        wMaxVertexBlendMatrices;
+
+    DWORD       dwVertexProcessingCaps;
+
+    DWORD       dwReserved1;
+    DWORD       dwReserved2;
+    DWORD       dwReserved3;
+    DWORD       dwReserved4;
+} D3DHAL_D3DEXTENDEDCAPS7;
 
 
 /* --------------------------------------------------------------
@@ -663,5 +721,442 @@ typedef D3DHAL_CALLBACKS2 *LPD3DHAL_CALLBACKS2;
  * Only valid from Execute()
  */
 #define D3DHAL_EXECUTE_UNHANDLED	0x00000211L
+
+
+
+/*************** DX6/7 ****************/
+
+
+/* --------------------------------------------------------------
+ * D3DCallbacks3 - queried with GetDriverInfo (GUID_D3DCallbacks3).
+ *
+ * Clear2 - enables stencil clears (exposed to the API in
+ *      IDirect3DViewport3::Clear2
+ * ValidateTextureStageState - evaluates the context's current state (including
+ *      multitexture) and returns an error if the hardware cannot
+ *      accelerate the current state vector.
+ * DrawPrimitives2 - Renders primitives, and changes device state specified
+ *                   in the command buffer.
+ *
+ * Multitexture-aware drivers must implement both ValidateTextureStageState.
+ */
+
+typedef struct _D3DHAL_CLEAR2DATA
+{
+    ULONG_PTR               dwhContext;     // in:  Context handle
+
+  // dwFlags can contain D3DCLEAR_TARGET, D3DCLEAR_ZBUFFER, and/or D3DCLEAR_STENCIL
+    DWORD               dwFlags;        // in:  surfaces to clear
+
+    DWORD               dwFillColor;    // in:  Color value for rtarget
+    D3DVALUE            dvFillDepth;    // in:  Depth value for Z buffer (0.0-1.0)
+    DWORD               dwFillStencil;  // in:  value used to clear stencil buffer
+
+    LPD3DRECT           lpRects;        // in:  Rectangles to clear
+    DWORD               dwNumRects;     // in:  Number of rectangles
+
+    HRESULT             ddrval;         // out: Return value
+} D3DHAL_CLEAR2DATA;
+typedef D3DHAL_CLEAR2DATA FAR *LPD3DHAL_CLEAR2DATA;
+
+typedef struct _D3DHAL_VALIDATETEXTURESTAGESTATEDATA
+{
+    ULONG_PTR           dwhContext; // in:  Context handle
+    DWORD           dwFlags;    // in:  Flags, currently set to 0
+    DWORD           dwReserved; //
+    DWORD           dwNumPasses;// out: Number of passes the hardware
+                                //      can perform the operation in
+    HRESULT         ddrval;     // out: return value
+} D3DHAL_VALIDATETEXTURESTAGESTATEDATA;
+typedef D3DHAL_VALIDATETEXTURESTAGESTATEDATA *LPD3DHAL_VALIDATETEXTURESTAGESTATEDATA;
+
+
+typedef struct _D3DHAL_DRAWPRIMITIVES2DATA {
+    ULONG_PTR             dwhContext;           // in: Context handle
+    DWORD             dwFlags;              // in: flags
+    DWORD             dwVertexType;         // in: vertex type
+    LPDDRAWI_DDRAWSURFACE_LCL lpDDCommands; // in: vertex buffer command data
+    DWORD             dwCommandOffset;      // in: offset to start of vertex buffer commands
+    DWORD             dwCommandLength;      // in: number of bytes of command data
+    union
+    { // based on D3DHALDP2_USERMEMVERTICES flag
+       LPDDRAWI_DDRAWSURFACE_LCL lpDDVertex;// in: surface containing vertex data
+       LPVOID lpVertices;                   // in: User mode pointer to vertices
+    };
+    DWORD             dwVertexOffset;       // in: offset to start of vertex data
+    DWORD             dwVertexLength;       // in: number of vertices of vertex data
+    DWORD             dwReqVertexBufSize;   // in: number of bytes required for the next vertex buffer
+    DWORD             dwReqCommandBufSize;  // in: number of bytes required for the next commnand buffer
+    LPDWORD           lpdwRStates;          // in: Pointer to the array where render states are updated
+    union 
+    {
+       DWORD          dwVertexSize;         // in: Size of each vertex in bytes
+       HRESULT        ddrval;               // out: return value
+    };
+    DWORD             dwErrorOffset;        // out: offset in lpDDCommands to
+                                            //      first D3DHAL_COMMAND not handled
+} D3DHAL_DRAWPRIMITIVES2DATA, *LPD3DHAL_DRAWPRIMITIVES2DATA;
+
+// Indicates that the lpVertices field in the DrawPrimitives2 data is
+// valid, i.e. user allocated memory.
+#define D3DHALDP2_USERMEMVERTICES   0x00000001L
+// Indicates that the command buffer and vertex buffer are a system memory execute buffer
+// resulting from the use of the Execute buffer API.
+#define D3DHALDP2_EXECUTEBUFFER     0x00000002L
+// The swap flags indicate if it is OK for the driver to swap the submitted buffers with new
+// buffers and asyncronously work on the submitted buffers.
+#define D3DHALDP2_SWAPVERTEXBUFFER  0x00000004L
+#define D3DHALDP2_SWAPCOMMANDBUFFER 0x00000008L
+// The requested flags are present if the new buffers which the driver can allocate need to be
+// of atleast a given size. If any of these flags are set, the corresponding dwReq* field in
+// D3DHAL_DRAWPRIMITIVES2DATA will also be set with the requested size in bytes.
+#define D3DHALDP2_REQVERTEXBUFSIZE  0x00000010L
+#define D3DHALDP2_REQCOMMANDBUFSIZE 0x00000020L
+// These flags are set by the driver upon return from DrawPrimitives2 indicating if the new
+// buffers are not in system memory.
+#define D3DHALDP2_VIDMEMVERTEXBUF   0x00000040L
+#define D3DHALDP2_VIDMEMCOMMANDBUF  0x00000080L
+
+
+// Used by the driver to ask runtime to parse the execute buffer
+#define D3DERR_COMMAND_UNPARSED              MAKE_DDHRESULT(3000)
+
+typedef DWORD (__stdcall *LPD3DHAL_CLEAR2CB)        (LPD3DHAL_CLEAR2DATA);
+typedef DWORD (__stdcall *LPD3DHAL_VALIDATETEXTURESTAGESTATECB)(LPD3DHAL_VALIDATETEXTURESTAGESTATEDATA);
+typedef DWORD (__stdcall *LPD3DHAL_DRAWPRIMITIVES2CB)  (LPD3DHAL_DRAWPRIMITIVES2DATA);
+
+typedef struct _D3DHAL_CALLBACKS3
+{
+    DWORD   dwSize;         // size of struct
+    DWORD   dwFlags;        // flags for callbacks
+    LPD3DHAL_CLEAR2CB                       Clear2;
+    LPVOID                                  lpvReserved;
+    LPD3DHAL_VALIDATETEXTURESTAGESTATECB    ValidateTextureStageState;
+    LPD3DHAL_DRAWPRIMITIVES2CB              DrawPrimitives2;
+} D3DHAL_CALLBACKS3;
+typedef D3DHAL_CALLBACKS3 *LPD3DHAL_CALLBACKS3;
+#define D3DHAL_CALLBACKS3SIZE       sizeof(D3DHAL_CALLBACKS3)
+
+//  bit definitions for D3DHAL
+#define D3DHAL3_CB32_CLEAR2                      0x00000001L
+#define D3DHAL3_CB32_RESERVED                    0x00000002L
+#define D3DHAL3_CB32_VALIDATETEXTURESTAGESTATE   0x00000004L
+#define D3DHAL3_CB32_DRAWPRIMITIVES2             0x00000008L
+
+//-----------------------------------------------------------------------------
+// DrawPrimitives2 DDI
+//-----------------------------------------------------------------------------
+
+//
+// Command structure for vertex buffer rendering
+//
+
+typedef struct _D3DHAL_DP2COMMAND
+{
+	BYTE bCommand;           // vertex command
+	BYTE bReserved;
+	union
+	{
+		WORD wPrimitiveCount;   // primitive count for unconnected primitives
+		WORD wStateCount;     // count of render states to follow
+	};
+} D3DHAL_DP2COMMAND, *LPD3DHAL_DP2COMMAND;
+
+//
+// DrawPrimitives2 commands:
+//
+
+typedef enum _D3DHAL_DP2OPERATION
+{
+    D3DDP2OP_POINTS               = 1,
+    D3DDP2OP_INDEXEDLINELIST      = 2,
+    D3DDP2OP_INDEXEDTRIANGLELIST  = 3,
+    D3DDP2OP_RESERVED0            = 4,      // Used by the front-end only
+    D3DDP2OP_RENDERSTATE          = 8,
+    D3DDP2OP_LINELIST             = 15,
+    D3DDP2OP_LINESTRIP            = 16,
+    D3DDP2OP_INDEXEDLINESTRIP     = 17,
+    D3DDP2OP_TRIANGLELIST         = 18,
+    D3DDP2OP_TRIANGLESTRIP        = 19,
+    D3DDP2OP_INDEXEDTRIANGLESTRIP = 20,
+    D3DDP2OP_TRIANGLEFAN          = 21,
+    D3DDP2OP_INDEXEDTRIANGLEFAN   = 22,
+    D3DDP2OP_TRIANGLEFAN_IMM      = 23,
+    D3DDP2OP_LINELIST_IMM         = 24,
+    D3DDP2OP_TEXTURESTAGESTATE    = 25,     // Has edge flags and called from Execute
+    D3DDP2OP_INDEXEDTRIANGLELIST2 = 26,
+    D3DDP2OP_INDEXEDLINELIST2     = 27,
+    D3DDP2OP_VIEWPORTINFO         = 28,
+    D3DDP2OP_WINFO                = 29,
+// two below are for pre-DX7 interface apps running DX7 driver
+    D3DDP2OP_SETPALETTE           = 30,
+    D3DDP2OP_UPDATEPALETTE        = 31,
+//#if(DIRECT3D_VERSION >= 0x0700)
+    // New for DX7
+    D3DDP2OP_ZRANGE               = 32,
+    D3DDP2OP_SETMATERIAL          = 33,
+    D3DDP2OP_SETLIGHT             = 34,
+    D3DDP2OP_CREATELIGHT          = 35,
+    D3DDP2OP_SETTRANSFORM         = 36,
+    D3DDP2OP_EXT                  = 37,
+    D3DDP2OP_TEXBLT               = 38,
+    D3DDP2OP_STATESET             = 39,
+    D3DDP2OP_SETPRIORITY          = 40,
+//#endif /* DIRECT3D_VERSION >= 0x0700 */
+    D3DDP2OP_SETRENDERTARGET      = 41,
+    D3DDP2OP_CLEAR                = 42,
+//#if(DIRECT3D_VERSION >= 0x0700)
+    D3DDP2OP_SETTEXLOD            = 43,
+    D3DDP2OP_SETCLIPPLANE         = 44
+//#endif /* DIRECT3D_VERSION >= 0x0700 */
+} D3DHAL_DP2OPERATION;
+
+//
+// DrawPrimitives2 point primitives
+//
+
+typedef struct _D3DHAL_DP2POINTS
+{
+    WORD wCount;
+    WORD wVStart;
+} D3DHAL_DP2POINTS, *LPD3DHAL_DP2POINTS;
+
+//
+// DrawPrimitives2 line primitives
+//
+
+typedef struct _D3DHAL_DP2STARTVERTEX
+{
+    WORD wVStart;
+} D3DHAL_DP2STARTVERTEX, *LPD3DHAL_DP2STARTVERTEX;
+
+typedef struct _D3DHAL_DP2LINELIST
+{
+    WORD wVStart;
+} D3DHAL_DP2LINELIST, *LPD3DHAL_DP2LINELIST;
+
+typedef struct _D3DHAL_DP2INDEXEDLINELIST
+{
+    WORD wV1;
+    WORD wV2;
+} D3DHAL_DP2INDEXEDLINELIST, *LPD3DHAL_DP2INDEXEDLINELIST;
+
+typedef struct _D3DHAL_DP2LINESTRIP
+{
+    WORD wVStart;
+} D3DHAL_DP2LINESTRIP, *LPD3DHAL_DP2LINESTRIP;
+
+typedef struct _D3DHAL_DP2INDEXEDLINESTRIP
+{
+    WORD wV[2];
+} D3DHAL_DP2INDEXEDLINESTRIP, *LPD3DHAL_DP2INDEXEDLINESTRIP;
+
+//
+// DrawPrimitives2 triangle primitives
+//
+
+typedef struct _D3DHAL_DP2TRIANGLELIST
+{
+    WORD wVStart;
+} D3DHAL_DP2TRIANGLELIST, *LPD3DHAL_DP2TRIANGLELIST;
+
+typedef struct _D3DHAL_DP2INDEXEDTRIANGLELIST
+{
+    WORD wV1;
+    WORD wV2;
+    WORD wV3;
+    WORD wFlags;
+} D3DHAL_DP2INDEXEDTRIANGLELIST, *LPD3DHAL_DP2INDEXEDTRIANGLELIST;
+
+typedef struct _D3DHAL_DP2INDEXEDTRIANGLELIST2
+{
+    WORD wV1;
+    WORD wV2;
+    WORD wV3;
+} D3DHAL_DP2INDEXEDTRIANGLELIST2, *LPD3DHAL_DP2INDEXEDTRIANGLELIST2;
+
+typedef struct _D3DHAL_DP2TRIANGLESTRIP
+{
+    WORD wVStart;
+} D3DHAL_DP2TRIANGLESTRIP, *LPD3DHAL_DP2TRIANGLESTRIP;
+
+typedef struct _D3DHAL_DP2INDEXEDTRIANGLESTRIP
+{
+    WORD wV[3];
+} D3DHAL_DP2INDEXEDTRIANGLESTRIP, *LPD3DHAL_DP2INDEXEDTRIANGLESTRIP;
+
+typedef struct _D3DHAL_DP2TRIANGLEFAN
+{
+    WORD wVStart;
+} D3DHAL_DP2TRIANGLEFAN, *LPD3DHAL_DP2TRIANGLEFAN;
+
+typedef struct _D3DHAL_DP2INDEXEDTRIANGLEFAN
+{
+    WORD wV[3];
+} D3DHAL_DP2INDEXEDTRIANGLEFAN, *LPD3DHAL_DP2INDEXEDTRIANGLEFAN;
+
+typedef struct _D3DHAL_DP2TRIANGLEFAN_IMM
+{
+    DWORD dwEdgeFlags;
+} D3DHAL_DP2TRIANGLEFAN_IMM, *LPD3DHAL_DP2TRIANGLEFAN_IMM;
+
+//
+// DrawPrimitives2 Renderstate changes
+//
+
+typedef struct _D3DHAL_DP2RENDERSTATE
+{
+    D3DRENDERSTATETYPE RenderState;
+    union
+    {
+        D3DVALUE dvState;
+        DWORD dwState;
+    };
+} D3DHAL_DP2RENDERSTATE, *LPD3DHAL_DP2RENDERSTATE;
+
+typedef struct _D3DHAL_DP2TEXTURESTAGESTATE
+{
+    WORD wStage;
+    WORD TSState;
+    DWORD dwValue;
+} D3DHAL_DP2TEXTURESTAGESTATE, *LPD3DHAL_DP2TEXTURESTAGESTATE;
+
+typedef struct _D3DHAL_DP2VIEWPORTINFO
+{
+    DWORD dwX;
+    DWORD dwY;
+    DWORD dwWidth;
+    DWORD dwHeight;
+} D3DHAL_DP2VIEWPORTINFO, *LPD3DHAL_DP2VIEWPORTINFO;
+
+typedef struct _D3DHAL_DP2WINFO
+{
+    D3DVALUE        dvWNear;
+    D3DVALUE        dvWFar;
+} D3DHAL_DP2WINFO, *LPD3DHAL_DP2WINFO;
+
+typedef struct _D3DHAL_DP2SETPALETTE
+{
+    DWORD dwPaletteHandle;
+    DWORD dwPaletteFlags;
+    DWORD dwSurfaceHandle;
+} D3DHAL_DP2SETPALETTE, *LPD3DHAL_DP2SETPALETTE;
+
+typedef struct _D3DHAL_DP2UPDATEPALETTE
+{
+    DWORD dwPaletteHandle;
+        WORD  wStartIndex;
+        WORD  wNumEntries;
+} D3DHAL_DP2UPDATEPALETTE, *LPD3DHAL_DP2UPDATEPALETTE;
+
+typedef struct _D3DHAL_DP2SETRENDERTARGET
+{
+    DWORD hRenderTarget;
+    DWORD hZBuffer;
+} D3DHAL_DP2SETRENDERTARGET, *LPD3DHAL_DP2SETRENDERTARGET;
+
+// Values for dwOperations in the D3DHAL_DP2STATESET
+#define D3DHAL_STATESETBEGIN     0
+#define D3DHAL_STATESETEND       1
+#define D3DHAL_STATESETDELETE    2
+#define D3DHAL_STATESETEXECUTE   3
+#define D3DHAL_STATESETCAPTURE   4
+
+typedef struct _D3DHAL_DP2STATESET
+{
+    DWORD               dwOperation;
+    DWORD               dwParam;  // State set handle passed with D3DHAL_STATESETBEGIN,
+                                  // D3DHAL_STATESETEXECUTE, D3DHAL_STATESETDELETE
+                                  // D3DHAL_STATESETCAPTURE
+    D3DSTATEBLOCKTYPE   sbType;   // Type use with D3DHAL_STATESETBEGIN/END
+} D3DHAL_DP2STATESET, *LPD3DHAL_DP2STATESET;
+//
+// T&L Hal specific stuff
+//
+typedef struct _D3DHAL_DP2ZRANGE
+{
+    D3DVALUE    dvMinZ;
+    D3DVALUE    dvMaxZ;
+} D3DHAL_DP2ZRANGE, *LPD3DHAL_DP2ZRANGE;
+
+typedef D3DMATERIAL7 D3DHAL_DP2SETMATERIAL, *LPD3DHAL_DP2SETMATERIAL;
+
+// Values for dwDataType in D3DHAL_DP2SETLIGHT
+#define D3DHAL_SETLIGHT_ENABLE   0
+#define D3DHAL_SETLIGHT_DISABLE  1
+// If this is set, light data will be passed in after the
+// D3DLIGHT7 structure
+#define D3DHAL_SETLIGHT_DATA     2
+
+typedef struct _D3DHAL_DP2SETLIGHT
+{
+    DWORD     dwIndex;
+    DWORD     dwDataType;
+} D3DHAL_DP2SETLIGHT, *LPD3DHAL_DP2SETLIGHT;
+
+typedef struct _D3DHAL_DP2SETCLIPPLANE
+{
+    DWORD     dwIndex;
+    D3DVALUE  plane[4];
+} D3DHAL_DP2SETCLIPPLANE, *LPD3DHAL_DP2SETCLIPPLANE;
+
+typedef struct _D3DHAL_DP2CREATELIGHT
+{
+    DWORD dwIndex;
+} D3DHAL_DP2CREATELIGHT, *LPD3DHAL_DP2CREATELIGHT;
+
+typedef struct _D3DHAL_DP2SETTRANSFORM
+{
+    D3DTRANSFORMSTATETYPE xfrmType;
+    D3DMATRIX matrix;
+} D3DHAL_DP2SETTRANSFORM, *LPD3DHAL_DP2SETTRANSFORM;
+
+typedef struct _D3DHAL_DP2EXT
+{
+    DWORD dwExtToken;
+    DWORD dwSize;
+} D3DHAL_DP2EXT, *LPD3DHAL_DP2EXT;
+
+typedef struct _D3DHAL_DP2TEXBLT
+{
+    DWORD   dwDDDestSurface;// dest surface
+    DWORD   dwDDSrcSurface; // src surface
+    POINT   pDest;
+    RECTL   rSrc;       // src rect
+    DWORD   dwFlags;    // blt flags
+} D3DHAL_DP2TEXBLT, *LPD3DHAL_DP2TEXBLT;
+
+typedef struct _D3DHAL_DP2SETPRIORITY
+{
+    DWORD dwDDSurface;
+    DWORD dwPriority;
+} D3DHAL_DP2SETPRIORITY, *LPD3DHAL_DP2SETPRIORITY;
+
+typedef struct _D3DHAL_DP2CLEAR
+{
+  // dwFlags can contain D3DCLEAR_TARGET, D3DCLEAR_ZBUFFER, and/or D3DCLEAR_STENCIL
+    DWORD               dwFlags;        // in:  surfaces to clear
+    DWORD               dwFillColor;    // in:  Color value for rtarget
+    D3DVALUE            dvFillDepth;    // in:  Depth value for Z buffer (0.0-1.0)
+    DWORD               dwFillStencil;  // in:  value used to clear stencil buffer
+    RECT                Rects[1];       // in:  Rectangles to clear
+} D3DHAL_DP2CLEAR, *LPD3DHAL_DP2CLEAR;
+
+typedef struct _D3DHAL_DP2SETTEXLOD
+{
+    DWORD dwDDSurface;
+    DWORD dwLOD;
+} D3DHAL_DP2SETTEXLOD, *LPD3DHAL_DP2SETTEXLOD;
+
+// typedef for the Callback that the drivers can use to parse unknown commands
+// passed to them via the DrawPrimitives2 callback. The driver obtains this
+// callback thru a GetDriverInfo call with GUID_D3DParseUnknownCommandCallback
+// made by ddraw somewhere around the initialization time.
+typedef HRESULT (__stdcall *PFND3DPARSEUNKNOWNCOMMAND) (LPVOID lpvCommands, LPVOID *lplpvReturnedCommand);
+
+/*
+ * Texture handle's offset into the 32-DWORD cascade state vector
+ */
+#define D3DTSS_TEXTUREMAP 0
 
 #endif /* _D3DHAL_H */

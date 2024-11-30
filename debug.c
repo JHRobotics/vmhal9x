@@ -42,9 +42,17 @@ void dbg_prefix_printf(const char *topic, const char *prefix, const char *file, 
 #ifdef DEBUG_TOPIC
 	if(topic == NULL)
 	{
-		return;
+		if(prefix == NULL)
+		{
+			return;
+		}
+
+		if((strcmp(prefix, "T|") == 0) || (strcmp(prefix, "D|") == 0))
+		{
+			return;
+		}
 	}
-	if(strcmp(topic, VMHAL_DSTR(DEBUG_TOPIC)) != 0)
+	else if(strcmp(topic, VMHAL_DSTR(DEBUG_TOPIC)) != 0)
 	{
 		return;
 	}

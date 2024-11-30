@@ -78,7 +78,7 @@ NOCRT_OBJS = nocrt/nocrt.c.o nocrt/nocrt_math.c.o nocrt/nocrt_file_win.c.o nocrt
 VMHAL9X_OBJS = $(NOCRT_OBJS) vmhal9x.c.o ddraw.c.o 3d_accel.c.o flip32.c.o blt32.c.o rop3.c.o transblt.c.o debug.c.o dump.c.o fill.c.o vmhal9x.res
 
 ifdef D3DHAL
-	VMHAL9X_OBJS += d3d.c.o mesa3d.c.o mesa3d_buffer.c.o mesa3d_draw.c.o mesa3d_chroma.c.o surface.c.o matrix.c.o
+	VMHAL9X_OBJS += d3d.c.o mesa3d.c.o mesa3d_buffer.c.o mesa3d_draw.c.o mesa3d_chroma.c.o surface.c.o matrix.c.o mesa3d_draw6.c.o
 	CFLAGS += -DD3DHAL
 endif
 
