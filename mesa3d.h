@@ -78,6 +78,9 @@ struct mesa3d_texstate
 	GLfloat border[4];
 	BOOL colorkey;
 	int coordindex;
+	
+	DWORD wrap;
+	
 	BOOL reload; // reload texture data (surface -> GPU)
 	BOOL update; // update texture params
 };
@@ -98,6 +101,7 @@ typedef struct mesa3d_ctx
 	LPDDRAWI_DDRAWSURFACE_INT front;
 	LPDDRAWI_DDRAWSURFACE_INT depth;
 	LPDDRAWI_DIRECTDRAW_GBL dd;
+	BOOL depth_stencil;
 	int texunits;
 
 	/* render state */
@@ -131,6 +135,20 @@ typedef struct mesa3d_ctx
 			int pos_specular;
 			int pos_tex[MESA_ACTIVE_TEX_TOTAL];
 		} fvf;
+		struct {
+			BOOL enabled;
+			GLenum sfail;
+			GLenum dpfail;
+			GLenum dppass;
+			GLenum func;
+			GLint ref;
+			GLuint mask;
+			GLuint writemask;
+		} stencil;
+		struct {
+			BOOL enabled;
+			BOOL writable;
+		} depth;
 		struct mesa3d_texstate tex[MESA_ACTIVE_TEX_TOTAL];
 	} state;
 
@@ -141,7 +159,7 @@ typedef struct mesa3d_ctx
 		GLuint depth_tex;
 		GLuint depth_fb;
 	} fbo;
-	
+
 	/* rendering state */
 	struct {
 		BOOL dirty;
@@ -157,6 +175,7 @@ typedef struct mesa3d_ctx
 		GLfloat vnorm[4];
 		BOOL fnorm_is_idx;
 	} matrix;
+	
 } mesa3d_ctx_t;
 
 #define CONV_U_TO_S(_u) (_u)
@@ -260,6 +279,8 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 
 void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, DWORD stencil, int rects_cnt, RECT *rects);
 DWORD DDSurf_GetBPP(LPDDRAWI_DDRAWSURFACE_INT surf);
+
+void MesaStencilApply(mesa3d_ctx_t *ctx);
 
 /* buffer (needs GL_BLOCK) */
 void MesaBufferUploadColor(mesa3d_ctx_t *ctx, const void *src);

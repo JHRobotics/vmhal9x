@@ -367,9 +367,9 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
     D3DCallbacks3.ValidateTextureStageState = ValidateTextureStageState32;
 		D3DCallbacks3.DrawPrimitives2           = DrawPrimitives2_32;
 		
-		// optional
-		//D3DCallbacks3.Clear2                    = Clear2_32;
-		//D3DCallbacks3.dwFlags                  |= D3DHAL3_CB32_CLEAR2;
+		// optional, but needed for stencil support
+		D3DCallbacks3.Clear2                    = Clear2_32;
+		D3DCallbacks3.dwFlags                  |= D3DHAL3_CB32_CLEAR2;
 
   	COPY_INFO(lpInput, D3DCallbacks3, D3DHAL_CALLBACKS3);
     TRACE("GUID_D3DCallbacks3 success");
@@ -433,37 +433,44 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 		dxcaps.dwSize = sizeof(D3DHAL_D3DEXTENDEDCAPS6); // 5, 6, 7 switch here!
 		dxcaps.dwMinTextureWidth  = 1;
 		dxcaps.dwMinTextureHeight = 1;
-		dxcaps.dwMaxTextureWidth  = 2048; // TODO: query by GL_MAX_TEXTURE_SIZE
-		dxcaps.dwMaxTextureHeight = 2048;
+		dxcaps.dwMaxTextureWidth  = VMHALenv.texture_max_width;
+		dxcaps.dwMaxTextureHeight = VMHALenv.texture_max_height;
 		dxcaps.dwMinStippleWidth  = 32;
 		dxcaps.dwMinStippleHeight = 32;
 		dxcaps.dwMaxStippleWidth  = 32;
 		dxcaps.dwMaxStippleHeight = 32;
 		
-		dxcaps.dwFVFCaps           = 1;
-    dxcaps.wMaxTextureBlendStages      = 1;
-    dxcaps.wMaxSimultaneousTextures    = 1;
+		dxcaps.dwFVFCaps           = VMHALenv.texture_num_units;
+    dxcaps.wMaxTextureBlendStages      = VMHALenv.texture_num_units;
+    dxcaps.wMaxSimultaneousTextures    = VMHALenv.texture_num_units;
     dxcaps.dwMaxTextureRepeat          = 2048;
     dxcaps.dwTextureOpCaps = D3DTEXOPCAPS_DISABLE
 			| D3DTEXOPCAPS_SELECTARG1
 			| D3DTEXOPCAPS_SELECTARG2
 			| D3DTEXOPCAPS_MODULATE
+			| D3DTEXOPCAPS_MODULATE2X
+			| D3DTEXOPCAPS_MODULATE4X
 			| D3DTEXOPCAPS_ADD
-			| D3DTEXOPCAPS_BLENDDIFFUSEALPHA
-			| D3DTEXOPCAPS_BLENDTEXTUREALPHA;
+			| D3DTEXOPCAPS_ADDSIGNED
+			| D3DTEXOPCAPS_ADDSIGNED2X
+			| D3DTEXOPCAPS_SUBTRACT;
+//			| D3DTEXOPCAPS_BLENDDIFFUSEALPHA
+//			| D3DTEXOPCAPS_BLENDTEXTUREALPHA;
     
-  	dxcaps.wMaxTextureBlendStages      = 1;
-    dxcaps.wMaxSimultaneousTextures    = 1;
-    
-    /*
-    Stencil:
+  	dxcaps.wMaxTextureBlendStages      = VMHALenv.texture_num_units;
+    dxcaps.wMaxSimultaneousTextures    = VMHALenv.texture_num_units;
+
+		// this need also Clear2 callback
 		dxcaps.dwStencilCaps = D3DSTENCILCAPS_KEEP
 			| D3DSTENCILCAPS_ZERO
 			| D3DSTENCILCAPS_REPLACE
 			| D3DSTENCILCAPS_INCRSAT
 			| D3DSTENCILCAPS_DECRSAT
-			| D3DSTENCILCAPS_INVERT;
+			| D3DSTENCILCAPS_INVERT
+			| D3DSTENCILCAPS_INCR
+			| D3DSTENCILCAPS_DECR;
 
+		/*
     T&L:
     dxcaps.dwMaxActiveLights = 0;
     */
@@ -477,7 +484,7 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 #pragma pack(1)
 		struct {
 			DWORD cnt;
-			DDPIXELFORMAT pixfmt[3];
+			DDPIXELFORMAT pixfmt[8];
 		} zformats;
 #pragma pack(pop)
 		int i = 0;

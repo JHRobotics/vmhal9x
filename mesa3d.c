@@ -421,6 +421,25 @@ static BOOL DDSurfaceToGL(LPDDRAWI_DDRAWSURFACE_INT surf, GLuint *bpp, GLint *in
 	return FALSE; /* not reached */
 }
 
+static GLenum DXSencilToGL(D3DSTENCILOP op)
+{
+	switch(op)
+	{
+    case D3DSTENCILOP_ZERO:    return GL_ZERO;
+    case D3DSTENCILOP_REPLACE: return GL_REPLACE;
+    case D3DSTENCILOP_INCRSAT: return GL_INCR_WRAP;
+    case D3DSTENCILOP_DECRSAT: return GL_DECR_WRAP;
+    case D3DSTENCILOP_INVERT:  return GL_INVERT;
+    case D3DSTENCILOP_INCR:    return GL_INCR;
+    case D3DSTENCILOP_DECR:    return GL_DECR;
+    case D3DSTENCILOP_KEEP:
+    default:
+    	return GL_KEEP;
+	} // switch
+	
+	return GL_KEEP;
+}
+
 SurfaceInfo_t *MesaAttachSurface(LPDDRAWI_DDRAWSURFACE_INT surf)
 {
 	SurfaceInfo_t *info = SurfaceInfoGet(surf->lpLcl->lpGbl->fpVidMem, TRUE);
@@ -434,19 +453,51 @@ SurfaceInfo_t *MesaAttachSurface(LPDDRAWI_DDRAWSURFACE_INT surf)
 	return info;
 }
 
+/* only needs for DX6+ */
+void MesaStencilApply(mesa3d_ctx_t *ctx)
+{
+	if(ctx->depth_stencil && ctx->state.stencil.enabled)
+	{
+		ctx->entry->proc.pglEnable(GL_STENCIL_TEST);
+		ctx->entry->proc.pglStencilFunc(
+			ctx->state.stencil.func,
+			ctx->state.stencil.ref,
+			ctx->state.stencil.mask
+		);
+		ctx->entry->proc.pglStencilOp(
+			ctx->state.stencil.sfail,
+ 			ctx->state.stencil.dpfail,
+ 			ctx->state.stencil.dppass
+ 		);
+		ctx->entry->proc.pglStencilMask(ctx->state.stencil.writemask);
+	}
+	else
+	{
+		ctx->entry->proc.pglDisable(GL_STENCIL_TEST);
+	}
+}
+
 static void MesaDepthReeval(mesa3d_ctx_t *ctx)
 {
 	mesa3d_entry_t *entry = ctx->entry;
+	ctx->depth_stencil = FALSE;
 	if(ctx->depth)
 	{
 		entry->proc.pglEnable(GL_DEPTH_TEST);
 		entry->proc.pglDepthMask(GL_TRUE);
+		
+		if(ctx->depth->lpLcl->lpGbl->ddpfSurface.dwFlags & DDPF_STENCILBUFFER)
+		{
+			ctx->depth_stencil = TRUE;
+		}
 	}
 	else
 	{
 		entry->proc.pglDisable(GL_DEPTH_TEST);
 		entry->proc.pglDepthMask(GL_FALSE);
 	}
+
+	MesaStencilApply(ctx);
 }
 
 mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry,
@@ -647,7 +698,7 @@ void MesaInitCtx(mesa3d_ctx_t *ctx)
 	
 	entry->proc.pglClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 	
-	ctx->texunits = 1;
+	ctx->texunits = VMHALenv.texture_num_units;
 	
 	entry->proc.pglEnable(GL_TEXTURE_2D);
 	
@@ -666,8 +717,9 @@ void MesaInitCtx(mesa3d_ctx_t *ctx)
 	for(i = 0; i < ctx->texunits; i++)
 	{
 		entry->proc.pglActiveTexture(GL_TEXTURE0 + i);
-		ctx->state.tex[i].reload= TRUE;
+		ctx->state.tex[i].reload = TRUE;
 		ctx->state.tex[i].update = TRUE;
+		ctx->state.tex[i].texblend = D3DTBLEND_DECAL;
 	}
 
 	entry->proc.pglEnable(GL_BLEND);
@@ -677,6 +729,14 @@ void MesaInitCtx(mesa3d_ctx_t *ctx)
 //	entry->proc.pglEnable(GL_CULL_FACE);
 //	entry->proc.pglCullFace(GL_FRONT_AND_BACK);
 	
+	ctx->state.stencil.sfail     = GL_KEEP;
+	ctx->state.stencil.dpfail    = GL_KEEP;
+	ctx->state.stencil.dppass    = GL_KEEP;
+	ctx->state.stencil.func      = GL_ALWAYS;
+	ctx->state.stencil.ref       = 0;
+	ctx->state.stencil.mask      = 0xFF;
+	ctx->state.stencil.writemask = 0xFF;
+
 	MesaDepthReeval(ctx);
 	entry->proc.pglDepthFunc(GL_LESS);
 }
@@ -1287,10 +1347,12 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state)
 				if(state->dwArg[0] == 0)
 				{
 					ctx->entry->proc.pglDisable(GL_DEPTH_TEST);
+					ctx->state.depth.enabled = FALSE;
 				}
 				else
 				{
 					ctx->entry->proc.pglEnable(GL_DEPTH_TEST);
+					ctx->state.depth.enabled = TRUE;
 				}
 			}
 			break;
@@ -1341,10 +1403,12 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state)
 				if(state->dwArg[0] != 0)
 				{
 					ctx->entry->proc.pglDepthMask(GL_TRUE);
+					ctx->state.depth.writable = TRUE;
 				}
 				else
 				{
 					ctx->entry->proc.pglDepthMask(GL_FALSE);
+					ctx->state.depth.writable = FALSE;
 				}
 			}
 			break;
@@ -1571,28 +1635,42 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state)
 		case D3DRENDERSTATE_FLUSHBATCH: /* Explicit flush for DP batching (DX5 Only) */
 			break;
 		/* d3d6 */
-		case D3DRENDERSTATE_STENCILENABLE:
+		case D3DRENDERSTATE_STENCILENABLE: /* BOOL enable/disable stenciling */
+			ctx->state.stencil.enabled = state->dwArg[0] == 0 ? FALSE : TRUE;
 			break;
-		case D3DRENDERSTATE_STENCILFAIL:
+		case D3DRENDERSTATE_STENCILFAIL: /* D3DSTENCILOP to do if stencil test fails */
+			ctx->state.stencil.sfail = DXSencilToGL(state->dwArg[0]);
 			break;
-		case D3DRENDERSTATE_STENCILZFAIL:
+		case D3DRENDERSTATE_STENCILZFAIL: /* D3DSTENCILOP to do if stencil test passes and Z test fails */
+			ctx->state.stencil.dpfail = DXSencilToGL(state->dwArg[0]);
 			break;
-		case D3DRENDERSTATE_STENCILPASS:
+		case D3DRENDERSTATE_STENCILPASS: /* D3DSTENCILOP to do if both stencil and Z tests pass */
+			ctx->state.stencil.dppass = DXSencilToGL(state->dwArg[0]);
 			break;
-		case D3DRENDERSTATE_STENCILFUNC:
+		case D3DRENDERSTATE_STENCILFUNC: /* D3DCMPFUNC fn.  Stencil Test passes if ((ref & mask) stencilfn (stencil & mask)) is true */
+			ctx->state.stencil.func = GetGLCmpFunc(state->dwArg[0]);
 			break;
-		case D3DRENDERSTATE_STENCILREF:
+		case D3DRENDERSTATE_STENCILREF: /* Reference value used in stencil test */
+			ctx->state.stencil.ref = state->dwArg[0];
 			break;
-		case D3DRENDERSTATE_STENCILMASK:
+		case D3DRENDERSTATE_STENCILMASK: /* Mask value used in stencil test */
+			ctx->state.stencil.mask = state->dwArg[0];
 			break;
-		case D3DRENDERSTATE_STENCILWRITEMASK:
+		case D3DRENDERSTATE_STENCILWRITEMASK: /* Write mask applied to values written to stencil buffer */
+			ctx->state.stencil.writemask = state->dwArg[0];
 			break;
-		case D3DRENDERSTATE_TEXTUREFACTOR:
+		case D3DRENDERSTATE_TEXTUREFACTOR: /* D3DCOLOR used for multi-texture blend */
 			break;
 		case D3DRENDERSTATE_STIPPLEPATTERN00 ... D3DRENDERSTATE_STIPPLEPATTERN31:
 		{
 			ctx->state.stipple[type - D3DRENDERSTATE_STIPPLEPATTERN00] = state->dwArg[0];
 			ctx->entry->proc.pglPolygonStipple((GLubyte*)&ctx->state.stipple[0]);
+			break;
+		}
+		case D3DRENDERSTATE_WRAP0 ... D3DRENDERSTATE_WRAP7: /* wrap for 1-8 texture coord. set */
+		{
+			ctx->state.tex[type - D3DRENDERSTATE_WRAP0].wrap = state->dwArg[0];
+			ctx->state.tex[type - D3DRENDERSTATE_WRAP0].update = TRUE;
 			break;
 		}
   /* d3d7 */
@@ -2025,7 +2103,7 @@ void MesaRender(mesa3d_ctx_t *ctx)
 	
 	FLATPTR front_addr = ctx->front->lpLcl->lpGbl->fpVidMem;
 	
-	TOPIC("ENTRY", "DRAW to %X", front_addr);
+	TOPIC("READBACK", "Render to %X", front_addr);
 	
 	entry->proc.pglFinish();
 	
@@ -2066,11 +2144,13 @@ void MesaReadback(mesa3d_ctx_t *ctx, GLbitfield mask)
 				MesaBufferUploadColor(ctx, (void*)front_addr);
 				front_info->texture_dirty = FALSE;
 				ctx->render.dirty = TRUE;
+				
+				TOPIC("READBACK", "read color plane");
 			}
 		}
 	}
 
-	if(mask & GL_DEPTH_BUFFER_BIT)
+	if(mask & (GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT))
 	{
 		if(ctx->depth)
 		{
@@ -2082,6 +2162,8 @@ void MesaReadback(mesa3d_ctx_t *ctx, GLbitfield mask)
 				MesaBufferUploadDepth(ctx, (void*)depth_addr);
 				depth_info->texture_dirty = FALSE;
 				ctx->render.dirty = TRUE;
+				
+				TOPIC("READBACK", "read depth+stencil plane");
 			}
 		}
 	}
@@ -2231,14 +2313,27 @@ void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, D
 	entry->proc.pglClearStencil(stencil);
 
 	GLbitfield mask = 0;
-	if(flags & D3DCLEAR_TARGET)  mask |= GL_COLOR_BUFFER_BIT;
-	if(flags & D3DCLEAR_ZBUFFER) mask |= GL_DEPTH_BUFFER_BIT;
-	if(flags & D3DCLEAR_STENCIL) mask |= GL_STENCIL_BUFFER_BIT;
+	if(flags & D3DCLEAR_TARGET)
+		mask |= GL_COLOR_BUFFER_BIT;
+
+	if(flags & D3DCLEAR_ZBUFFER)
+	{
+		mask |= GL_DEPTH_BUFFER_BIT;
+		entry->proc.pglEnable(GL_DEPTH_TEST);
+		entry->proc.pglDepthMask(GL_TRUE);
+	}
+	
+	if(flags & D3DCLEAR_STENCIL)
+	{
+		mask |= GL_STENCIL_BUFFER_BIT;
+		entry->proc.pglEnable(GL_STENCIL_TEST);
+		entry->proc.pglStencilMask(0xFF);
+	}
 
 	MesaReadback(ctx, mask);
 	// FIXME: ^when is done full clear, is not needed to readback the surface! 
 
-	TOPIC("DEPTH", "Clear %X => %X, %f, %X", flags, color, depth, stencil);
+	TOPIC("READBACK", "Clear %X => %X, %f, %X", flags, color, depth, stencil);
 	for(i = 0; i < rects_cnt; i++)
 	{
 		entry->proc.pglEnable(GL_SCISSOR_TEST);
@@ -2248,6 +2343,26 @@ void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, D
 			rects[i].bottom - rects[i].top);
 		entry->proc.pglClear(mask);
 		entry->proc.pglDisable(GL_SCISSOR_TEST);
+	}
+	
+	if(flags & D3DCLEAR_ZBUFFER)
+	{
+		if(ctx->state.depth.enabled)
+			entry->proc.pglEnable(GL_DEPTH_TEST);
+		else
+			entry->proc.pglDisable(GL_DEPTH_TEST);
+		
+		entry->proc.pglDepthMask(ctx->state.depth.writable ? GL_TRUE : GL_FALSE);
+	}
+	
+	if(flags & D3DCLEAR_STENCIL)
+	{
+		if(ctx->state.stencil.enabled)
+			entry->proc.pglEnable(GL_STENCIL_TEST);
+		else
+			entry->proc.pglDisable(GL_STENCIL_TEST);
+
+		entry->proc.pglStencilMask(ctx->state.stencil.writemask);
 	}
 	
 	ctx->render.dirty = TRUE;

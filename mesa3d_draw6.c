@@ -419,6 +419,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 					prim += sizeof(D3DHAL_DP2RENDERSTATE);
 				}
 				
+				MesaStencilApply(ctx);
 				MesaDrawRefreshState(ctx);
 				NEXT_INST(0);
 				break;
