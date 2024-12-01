@@ -125,13 +125,13 @@ void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 			format = GL_DEPTH_COMPONENT;
 			break;
 		case 24:
-			type   = GL_UNSIGNED_INT;
-			format = GL_DEPTH_STENCIL;
+			type   = GL_UNSIGNED_INT; //GL_UNSIGNED_INT_24_8; //GL_UNSIGNED_INT;
+			format = GL_DEPTH_COMPONENT;
 			break;
 		case 32:
 		default:
-			type   = GL_UNSIGNED_INT;
-			format = GL_DEPTH_COMPONENT;
+			type   = GL_UNSIGNED_INT_24_8;
+			format = GL_DEPTH_STENCIL;
 			break;
 	}
 	
@@ -172,7 +172,7 @@ void MesaBufferDownloadDepth(mesa3d_ctx_t *ctx, void *dst)
 			type = GL_UNSIGNED_SHORT;
 			break;
 		case 24:
-			type = GL_UNSIGNED_INT;
+			type = GL_UNSIGNED_INT_24_8;
 			break;
 		case 32:
 		default:

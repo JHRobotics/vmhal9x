@@ -154,6 +154,15 @@ DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
 	VMDAHAL_t *ddhal = GetHAL(pfd->lpDD);	
 	uint64_t flip_time = 0;
 
+	if(ddhal->pFBHDA32->flags & FB_SUPPORT_FLIPING)
+	{
+		if(GetOffset(ddhal, (void*)pfd->lpSurfCurr->lpGbl->fpVidMem) != ddhal->pFBHDA32->surface)
+		{
+			pfd->ddRVal = DDERR_INVALIDPARAMS;
+			return DDHAL_DRIVER_HANDLED;
+		}
+	}
+
 	if(halVSync)
 	{
 		flip_time = GetTimeTMS();
@@ -179,16 +188,12 @@ DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
 		16*1024*1024
 	);
 
-	if(GetOffset(ddhal, (void*)pfd->lpSurfTarg->lpGbl->fpVidMem) == ddhal->pFBHDA32->surface)
-	{
-		DoFlipping(ddhal, (void*)pfd->lpSurfTarg->lpGbl->fpVidMem, (void*)pfd->lpSurfCurr->lpGbl->fpVidMem,
-			pfd->lpSurfTarg->lpGbl->lPitch, pfd->lpSurfCurr->lpGbl->lPitch);
-	}
-	else
-	{
-		DoFlipping(ddhal, (void*)pfd->lpSurfCurr->lpGbl->fpVidMem, (void*)pfd->lpSurfTarg->lpGbl->fpVidMem,
-			pfd->lpSurfCurr->lpGbl->lPitch, pfd->lpSurfTarg->lpGbl->lPitch);
-	}
+#ifdef D3DHAL
+		MesaFlushSurface(pfd->lpSurfTarg->lpGbl->fpVidMem);
+#endif
+
+	DoFlipping(ddhal, (void*)pfd->lpSurfCurr->lpGbl->fpVidMem, (void*)pfd->lpSurfTarg->lpGbl->fpVidMem,
+		pfd->lpSurfCurr->lpGbl->lPitch, pfd->lpSurfTarg->lpGbl->lPitch);
 
 	last_flip_time = flip_time;
 	pfd->ddRVal = DD_OK;

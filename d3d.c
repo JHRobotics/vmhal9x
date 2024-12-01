@@ -363,10 +363,13 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
   	memset(&D3DCallbacks3, 0, sizeof(D3DHAL_CALLBACKS3));
 
 		D3DCallbacks3.dwSize = sizeof(D3DHAL_CALLBACKS3);
-		D3DCallbacks3.dwFlags = D3DHAL3_CB32_DRAWPRIMITIVES2 | D3DHAL3_CB32_VALIDATETEXTURESTAGESTATE | D3DHAL3_CB32_CLEAR2;
+		D3DCallbacks3.dwFlags = D3DHAL3_CB32_DRAWPRIMITIVES2 | D3DHAL3_CB32_VALIDATETEXTURESTAGESTATE;
     D3DCallbacks3.ValidateTextureStageState = ValidateTextureStageState32;
 		D3DCallbacks3.DrawPrimitives2           = DrawPrimitives2_32;
-		D3DCallbacks3.Clear2                    = Clear2_32;
+		
+		// optional
+		//D3DCallbacks3.Clear2                    = Clear2_32;
+		//D3DCallbacks3.dwFlags                  |= D3DHAL3_CB32_CLEAR2;
 
   	COPY_INFO(lpInput, D3DCallbacks3, D3DHAL_CALLBACKS3);
     TRACE("GUID_D3DCallbacks3 success");
@@ -474,33 +477,52 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 #pragma pack(1)
 		struct {
 			DWORD cnt;
-			DDPIXELFORMAT pixfmt[2];
+			DDPIXELFORMAT pixfmt[3];
 		} zformats;
 #pragma pack(pop)
+		int i = 0;
 		
 		memset(&zformats, 0, sizeof(zformats));
 		
-		zformats.pixfmt[0].dwSize             = sizeof(DDPIXELFORMAT);
-		zformats.pixfmt[0].dwFlags            = DDPF_ZBUFFER;
-		zformats.pixfmt[0].dwFourCC           = 0;
-		zformats.pixfmt[0].dwZBufferBitDepth  = 16;
-		zformats.pixfmt[0].dwStencilBitDepth  = 0;
-		zformats.pixfmt[0].dwZBitMask         = 0xFFFF;
-		zformats.pixfmt[0].dwStencilBitMask   = 0x0000;
-		zformats.pixfmt[0].dwRGBZBitMask      = 0;
+		zformats.pixfmt[i].dwSize             = sizeof(DDPIXELFORMAT);
+		zformats.pixfmt[i].dwFlags            = DDPF_ZBUFFER;
+		zformats.pixfmt[i].dwFourCC           = 0;
+		zformats.pixfmt[i].dwZBufferBitDepth  = 16;
+		zformats.pixfmt[i].dwStencilBitDepth  = 0;
+		zformats.pixfmt[i].dwZBitMask         = 0xFFFF;
+		zformats.pixfmt[i].dwStencilBitMask   = 0x0000;
+		zformats.pixfmt[i].dwRGBZBitMask      = 0;
+		i++;
+		
+		zformats.pixfmt[i].dwSize             = sizeof(DDPIXELFORMAT);
+		zformats.pixfmt[i].dwFlags            = DDPF_ZBUFFER;
+		zformats.pixfmt[i].dwFourCC           = 0;
+		zformats.pixfmt[i].dwZBufferBitDepth  = 32;
+		zformats.pixfmt[i].dwStencilBitDepth  = 0;
+		zformats.pixfmt[i].dwZBitMask         = 0xFFFFFFFF;
+		zformats.pixfmt[i].dwStencilBitMask   = 0x00000000;
+		zformats.pixfmt[i].dwRGBZBitMask      = 0;
+		i++;
 
-		zformats.pixfmt[1].dwSize             = sizeof(DDPIXELFORMAT);
-		zformats.pixfmt[1].dwFlags            = DDPF_ZBUFFER | DDPF_STENCILBUFFER;
-		zformats.pixfmt[1].dwFourCC           = 0;
+		zformats.pixfmt[i].dwSize             = sizeof(DDPIXELFORMAT);
+		zformats.pixfmt[i].dwFlags            = DDPF_ZBUFFER | DDPF_STENCILBUFFER;
+		zformats.pixfmt[i].dwFourCC           = 0;
+		zformats.pixfmt[i].dwZBufferBitDepth  = 32;
+		zformats.pixfmt[i].dwStencilBitDepth  = 8;
+		zformats.pixfmt[i].dwZBitMask         = 0xFFFFFF00;
+		zformats.pixfmt[i].dwStencilBitMask   = 0x000000FF;
+		zformats.pixfmt[i].dwRGBZBitMask      = 0;
+		i++;
+		
 		// The sum of the z buffer bit depth AND the stencil depth 
 		// should be included here
-		zformats.pixfmt[1].dwZBufferBitDepth  = 16;
-		zformats.pixfmt[1].dwStencilBitDepth  = 1;
-		zformats.pixfmt[1].dwZBitMask         = 0x7FFF;
-		zformats.pixfmt[1].dwStencilBitMask   = 0x8000;
-		zformats.pixfmt[1].dwRGBZBitMask      = 0;
-
-		zformats.cnt = 1;
+/*		zformats.pixfmt[2].dwZBufferBitDepth  = 16;
+		zformats.pixfmt[2].dwStencilBitDepth  = 1;
+		zformats.pixfmt[2].dwZBitMask         = 0x7FFF;
+		zformats.pixfmt[2].dwStencilBitMask   = 0x8000;
+		zformats.pixfmt[2].dwRGBZBitMask      = 0;*/
+		
+		zformats.cnt = i;
 		DWORD real_size = sizeof(DWORD) + sizeof(DDPIXELFORMAT)*zformats.cnt;
 		lpInput->dwActualSize = real_size;
 		memcpy(lpInput->lpvData, &zformats, min(lpInput->dwExpectedSize, real_size));
@@ -510,7 +532,7 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 	}
 	else if (IsEqualIID(&(lpInput->guidInfo), &GUID_D3DParseUnknownCommandCallback)) 
 	{
-		mesa3d_entry_t *entry = Mesa3DGet(GetCurrentProcessId());
+		mesa3d_entry_t *entry = Mesa3DGet(GetCurrentProcessId(), TRUE);
 		if(entry)
 		{
 			entry->D3DParseUnknownCommand = (DWORD)(lpInput->lpvData);
@@ -544,7 +566,7 @@ DWORD __stdcall ContextCreate32(LPD3DHAL_CONTEXTCREATEDATA pccd)
 
 	pccd->ddrval = D3DHAL_OUTOFCONTEXTS; /* error state */
 
-	mesa3d_entry_t *entry = Mesa3DGet(GetCurrentProcessId());
+	mesa3d_entry_t *entry = Mesa3DGet(GetCurrentProcessId(), TRUE);
 	if(entry)
 	{
 		LPDDRAWI_DDRAWSURFACE_INT dss = (LPDDRAWI_DDRAWSURFACE_INT)pccd->lpDDS;
@@ -912,7 +934,7 @@ static D3DHAL_CALLBACKS myD3DHALCallbacks = {
 	ContextDestroyAll32,	// Required.
 
 	// Scene capture
-	SceneCapture32,			// Optional. (JH: required when driver or HW do some buffering. ... JH #2: Not work for DX6+)
+	NULL, //SceneCapture32,			// Optional. (JH: required when driver or HW do some buffering. ... JH #2: Not work for DX6+)
 	// Execution
 #ifdef IMPLEMENT_EXECUTE
 	Execute32,
@@ -974,12 +996,17 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, VM
 	myGlobalD3DHal.dwNumClipVertices = 0;
 	myGlobalD3DHal.dwNumTextureFormats = (sizeof(myTextureFormats) / sizeof(DDSURFACEDESC));
 	myGlobalD3DHal.lpTextureFormats = &myTextureFormats[0];
- 
+
+	if(VMHALenv.ddi >= 6)
+	{
+		myGlobalD3DHal.hwCaps = myCaps6;
+	}
+
 	*lplpGlobal = (DWORD)&myGlobalD3DHal;
 	*lplpHALCallbacks = (DWORD)&myD3DHALCallbacks;
 	
 	lpHALFlags->ddscaps = DDSCAPS_3DDEVICE | DDSCAPS_TEXTURE | DDSCAPS_ZBUFFER | DDSCAPS_MIPMAP;
- 	lpHALFlags->zcaps = DDBD_16 | DDBD_24; // | DDBD_32;
+ 	lpHALFlags->zcaps = DDBD_16 | DDBD_32;
 
 	return TRUE;
 }

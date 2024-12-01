@@ -135,6 +135,12 @@ void MesaDrawVertex(mesa3d_ctx_t *ctx, LPD3DVERTEX vertex)
 
 void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD type)
 {
+	if(ctx->state.fvf.type == type)
+	{
+		/* not need to recalculate */
+		return;
+	}
+	
 	ctx->state.fvf.type = type;
 	
 	int offset = 0; // in DW
@@ -258,12 +264,17 @@ inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx
 		{
 			w = 2.0/vertex->fv[FVF_RHW];
 		}
-	
+		
+		/*TOPIC("DEPTH", "D3DFVF_XYZRHW: (%f %f %f %f) -> (%f %f %f %f)",
+			vertex->fv[FVF_X], vertex->fv[FVF_Y], vertex->fv[FVF_Z], vertex->fv[FVF_RHW],
+			x, y, z, w);*/
 		entry->proc.pglVertex4f(x*w, y*w, z*w, w);
 	}
 	else
 	{
 		entry->proc.pglVertex4f(vertex->fv[FVF_X], vertex->fv[FVF_Y], vertex->fv[FVF_Z], 1.0);
+		
+		TOPIC("DEPTH", "D3DFVF_XYZ: %f", vertex->fv[FVF_Z]);
 	}
 }
 

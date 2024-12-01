@@ -88,6 +88,88 @@
 	32                                    \
 }
 
+#define triCaps6 {               \
+	sizeof(D3DPRIMCAPS),          \
+	/* miscCaps */                \
+	D3DPMISCCAPS_CULLNONE         \
+	| D3DPMISCCAPS_CULLCW         \
+	| D3DPMISCCAPS_CULLCCW        \
+	| D3DPMISCCAPS_MASKZ,         \
+	/* rasterCaps */              \
+	D3DPRASTERCAPS_DITHER         \
+	| D3DPRASTERCAPS_SUBPIXEL     \
+	| D3DPRASTERCAPS_FOGTABLE     \
+	| D3DPRASTERCAPS_FOGRANGE     \
+	| D3DPRASTERCAPS_FOGVERTEX    \
+	| D3DPRASTERCAPS_STIPPLE      \
+	| D3DPRASTERCAPS_WFOG         \
+	/* | D3DPRASTERCAPS_ZTEST*/,  \
+	/* zCmpCaps */                \
+	D3DPCMPCAPS_NEVER             \
+	| D3DPCMPCAPS_LESS            \
+	| D3DPCMPCAPS_EQUAL           \
+	| D3DPCMPCAPS_LESSEQUAL       \
+	| D3DPCMPCAPS_GREATER         \
+	| D3DPCMPCAPS_NOTEQUAL        \
+	| D3DPCMPCAPS_GREATEREQUAL    \
+	| D3DPCMPCAPS_ALWAYS,         \
+	/* sourceBlendCaps */         \
+	ALL_D3DPBLENDCAPS                      \
+	| D3DPBLENDCAPS_BOTHSRCALPHA           \
+	| D3DPBLENDCAPS_BOTHINVSRCALPHA,       \
+	/* destBlendCaps */           \
+	ALL_D3DPBLENDCAPS,            \
+	/* alphaCmpCaps */            \
+	D3DPCMPCAPS_NEVER             \
+	| D3DPCMPCAPS_LESS            \
+	| D3DPCMPCAPS_EQUAL           \
+	| D3DPCMPCAPS_LESSEQUAL       \
+	| D3DPCMPCAPS_GREATER         \
+	| D3DPCMPCAPS_NOTEQUAL        \
+	| D3DPCMPCAPS_GREATEREQUAL    \
+	| D3DPCMPCAPS_ALWAYS,         \
+	/* shadeCaps */               \
+	D3DPSHADECAPS_COLORFLATRGB            \
+	| D3DPSHADECAPS_COLORGOURAUDRGB       \
+	| D3DPSHADECAPS_SPECULARFLATRGB       \
+	| D3DPSHADECAPS_SPECULARGOURAUDRGB    \
+	| D3DPSHADECAPS_SPECULARPHONGRGB      \
+	| D3DPSHADECAPS_ALPHAFLATBLEND        \
+	| D3DPSHADECAPS_ALPHAGOURAUDBLEND     \
+	| D3DPSHADECAPS_ALPHAPHONGBLEND       \
+	| D3DPSHADECAPS_FOGFLAT               \
+	| D3DPSHADECAPS_FOGPHONG              \
+	| D3DPSHADECAPS_FOGGOURAUD,           \
+	/* textureCaps */                     \
+	D3DPTEXTURECAPS_PERSPECTIVE           \
+	| D3DPTEXTURECAPS_POW2                \
+	| D3DPTEXTURECAPS_TRANSPARENCY        \
+	| D3DPTEXTURECAPS_ALPHA,              \
+	/* textureFilterCaps */               \
+	D3DPTFILTERCAPS_NEAREST               \
+	| D3DPTFILTERCAPS_LINEAR              \
+	| D3DPTFILTERCAPS_MIPNEAREST          \
+	| D3DPTFILTERCAPS_MIPLINEAR           \
+	| D3DPTFILTERCAPS_LINEARMIPNEAREST    \
+	| D3DPTFILTERCAPS_LINEARMIPLINEAR,    \
+	/* textureBlendCaps */                \
+	D3DPTBLENDCAPS_DECAL                  \
+	| D3DPTBLENDCAPS_MODULATE             \
+	| D3DPTBLENDCAPS_MODULATEALPHA        \
+	| D3DPTBLENDCAPS_COPY                 \
+	| D3DPTBLENDCAPS_ADD,                 \
+	/* textureAddressCaps */              \
+	D3DPTADDRESSCAPS_WRAP                 \
+	| D3DPTADDRESSCAPS_MIRROR             \
+	| D3DPTADDRESSCAPS_CLAMP              \
+	| D3DPTADDRESSCAPS_BORDER             \
+	| D3DPTADDRESSCAPS_INDEPENDENTUV,     \
+	/* stippleWidth */                    \
+	32,                                   \
+	/* stippleHeight */                   \
+	32                                    \
+}
+
 static D3DDEVICEDESC_V1 myCaps = {
 	sizeof(D3DDEVICEDESC),      /* dwSize */
 	/* dwFlags */
@@ -113,7 +195,34 @@ static D3DDEVICEDESC_V1 myCaps = {
 	nullPrimCaps,               /* lineCaps */
 	triCaps,                    /* triCaps */
 	DDBD_16 | DDBD_32,	/* dwDeviceRenderBitDepth */
-	DDBD_16 /*| DDBD_24 | DDBD_32*/,			/* dwDeviceZBufferBitDepth */
+	DDBD_16 | DDBD_24, /* | DDBD_32 - dwDeviceZBufferBitDepth */
+	0,			        /* dwMaxBufferSize */
+	0      			/* dwMaxVertexCount */
+};
+
+static D3DDEVICEDESC_V1 myCaps6 = {
+	sizeof(D3DDEVICEDESC),      /* dwSize */
+	/* dwFlags */
+	D3DDD_COLORMODEL
+	| D3DDD_DEVCAPS
+	| D3DDD_TRICAPS
+	| D3DDD_DEVICERENDERBITDEPTH
+	| D3DDD_DEVICEZBUFFERBITDEPTH,
+	/* dcmColorModel */
+	D3DCOLOR_RGB,         
+	/* devCaps */
+	D3DDEVCAPS_FLOATTLVERTEX  /* must be set */
+	| D3DDEVCAPS_TEXTUREVIDEOMEMORY
+	| D3DDEVCAPS_TLVERTEXSYSTEMMEMORY /* must be set */
+	| D3DDEVCAPS_DRAWPRIMTLVERTEX /* must be set */
+	| D3DDEVCAPS_EXECUTESYSTEMMEMORY, /* must be set */
+	{sizeof(D3DTRANSFORMCAPS), 0},		/* dtcTransformCaps */
+	FALSE,                      /* bClipping */
+	{sizeof(D3DLIGHTINGCAPS), 0},  /* dlcLightingCaps */
+	nullPrimCaps,               /* lineCaps */
+	triCaps6,                   /* triCaps */
+	DDBD_16 | DDBD_32,	/* dwDeviceRenderBitDepth */
+	DDBD_16 | DDBD_24, /* | DDBD_32* - dwDeviceZBufferBitDepth */
 	0,			        /* dwMaxBufferSize */
 	0      			/* dwMaxVertexCount */
 };
@@ -144,7 +253,7 @@ static D3DDEVICEDESC_V1 myCaps = {
 	}, {DDSCAPS_TEXTURE}                     /* ddscaps.dwCaps */ \
 }
 
-#define TEXFORMAT_ZBUF(_bits) \
+#define TEXFORMAT_ZBUF(_bits, _zmask) \
 { sizeof(DDSURFACEDESC),              /* dwSize */ \
 	DDSD_CAPS | DDSD_PIXELFORMAT | DDSD_ZBUFFERBITDEPTH, /* dwFlags */ \
 	0,                                  /* dwHeight */ \
@@ -166,7 +275,7 @@ static D3DDEVICEDESC_V1 myCaps = {
 		{0}, \
 		{0}, \
 		{0}, \
-		{_bits} \
+		{_zmask} \
 	}, {DDSCAPS_ZBUFFER}                /* ddscaps.dwCaps */ \
 }
 
@@ -210,11 +319,12 @@ static DDSURFACEDESC myTextureFormats[] = {
 	TEXFORMAT_RGB(16, 0x7C00, 0x03E0, 0x001F), /* BGRX 5551 */
 	TEXFORMAT_RGB(16, 0x0F00, 0x00F0, 0x000F), /* RGBX 4444 */
 	TEXFORMAT_RGB( 8, 0xE0, 0x1C, 0x03),       /* RGB 332 */
-	TEXFORMAT_ZBUF(16),
+	TEXFORMAT_ZBUF(16, 0x0000FFFF),
+	TEXFORMAT_ZBUF(32, 0x00FFFFFF),
 	TEXFORMAT_FOURCC('D', 'X', 'T', '1'),
-	TEXFORMAT_FOURCC('D', 'X', 'T', '2'),
+//	TEXFORMAT_FOURCC('D', 'X', 'T', '2'),
 	TEXFORMAT_FOURCC('D', 'X', 'T', '3'),
-	TEXFORMAT_FOURCC('D', 'X', 'T', '4'),
+//	TEXFORMAT_FOURCC('D', 'X', 'T', '4'),
 	TEXFORMAT_FOURCC('D', 'X', 'T', '5'),
 //	TEXFORMAT_RGB(32, 0x000000FF, 0x0000FF00, 0x00FF0000), /* RGBX 8888 */
 //	TEXFORMAT_RGB(24, 0x000000FF, 0x0000FF00, 0x00FF0000), /* RGB 888 */	

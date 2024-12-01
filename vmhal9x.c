@@ -46,6 +46,14 @@ VMDAHAL_t *globalHal;
 
 BOOL halVSync = FALSE;
 
+VMHAL_enviroment_t VMHALenv = {
+	FALSE,
+	6, // DDI
+	2048, // tex w
+	2048, // tex h
+	1 // tex units
+};
+
 static DWORD CalcPitch(DWORD w, DWORD bpp)
 {
 	DWORD bp = (bpp+7) / 8;

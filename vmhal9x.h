@@ -137,7 +137,7 @@ void Mesa3DCleanProc();
 #define HAL3D_COLOR 1
 #define HAL3D_DEPTH 2
 
-/* DDRAWI_DDRAWSURFACE_GBL -> dwReserved1 */
+/* saved in hash table where index is surface data flat memory address */
 typedef struct _SurfaceInfo
 {
 	FLATPTR lin_address;
@@ -168,5 +168,16 @@ inline static DWORD SurfacePitch(DWORD width, DWORD bpp)
 
 #define VMHAL_DSTR2(_x) #_x
 #define VMHAL_DSTR(_x) VMHAL_DSTR2(_x)
+
+typedef struct _VMHAL_enviroment
+{
+	BOOL scanned;
+	DWORD ddi;
+	DWORD texture_max_width;
+	DWORD texture_max_height;
+	DWORD texture_num_units;
+} VMHAL_enviroment_t;
+
+extern VMHAL_enviroment_t VMHALenv;
 
 #endif /* __VMHAL9X_H__INCLUDED__ */

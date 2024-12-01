@@ -639,7 +639,8 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 		} // switch
 	} // while
 	
-	MesaRender(ctx);
+	ctx->render.dirty = TRUE;
+	//MesaRender(ctx);
 	
 	return TRUE;
 }

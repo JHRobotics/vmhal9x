@@ -32,6 +32,8 @@
 #include "vmdahal32.h"
 #include "vmhal9x.h"
 
+#include "mesa3d.h"
+
 #include "nocrt.h"
 
 extern HANDLE hSharedHeap;
@@ -266,6 +268,10 @@ DWORD __stdcall Lock32(LPDDHAL_LOCKDATA pld)
 	{
 		FBHDA_access_begin(0);
 	}
+	
+#ifdef D3DHAL
+	MesaFlushSurface(pld->lpDDSurface->lpGbl->fpVidMem);
+#endif
 	
 	return DDHAL_DRIVER_NOTHANDLED; /* let the lock processed */
 }

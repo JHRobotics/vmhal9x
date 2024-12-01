@@ -132,8 +132,9 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 		srcx = pbd->lpDDSrcSurface;   
 		src = srcx->lpGbl;
 
-		//MESA_RASTER(src, FALSE);
-		//MESA_RASTER(dst, FALSE);
+#ifdef D3DHAL
+		MesaFlushSurface(src->fpVidMem);
+#endif
 
 #ifdef TRACE_ON
 		dwSrcOffset = GetOffset(ddhal, (void*)src->fpVidMem);

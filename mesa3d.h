@@ -179,7 +179,7 @@ typedef struct mesa3d_entry
 
 #define MESA_LIB_NAME "mesa3d.dll"
 
-mesa3d_entry_t *Mesa3DGet(DWORD pid);
+mesa3d_entry_t *Mesa3DGet(DWORD pid, BOOL create);
 void Mesa3DFree(DWORD pid);
 
 #define GL_BLOCK_BEGIN(_ctx_h) \
@@ -236,7 +236,7 @@ void MesaInitCtx(mesa3d_ctx_t *ctx);
 BOOL MesaSetCtx(mesa3d_ctx_t *ctx);
 
 /* NOT needs GL_BLOCK */
-void MesaUpdateSurface(SurfaceInfo_t *info);
+void MesaFlushSurface(FLATPTR vidmem);
 
 /* needs GL_BLOCK */
 mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_INT surf);
@@ -250,7 +250,7 @@ void MesaDrawIndex(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE v
 	LPWORD indices, DWORD indicesCnt);
 
 void MesaRender(mesa3d_ctx_t *ctx);
-void MesaReadback(mesa3d_ctx_t *ctx);
+void MesaReadback(mesa3d_ctx_t *ctx, GLbitfield mask);
 BOOL MesaSetTarget(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_INT dss, LPDDRAWI_DDRAWSURFACE_INT dsz);
 void MesaSetTextureState(mesa3d_ctx_t *ctx, int unit, DWORD state, void *value);
 
