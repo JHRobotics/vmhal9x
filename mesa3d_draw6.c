@@ -218,13 +218,16 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				// array with wPrimitiveCount+1 elements.
 				// The indexes are relative to a base index value that 
 				// immediately follows the command
+				base = ((D3DHAL_DP2STARTVERTEX*)prim)->wVStart;
+				prim += sizeof(D3DHAL_DP2STARTVERTEX);
+
 				entry->proc.pglBegin(GL_LINE_STRIP);
 				for(i = 0; i < inst->wPrimitiveCount+1; i++)
 				{
 					start = ((D3DHAL_DP2INDEXEDLINESTRIP*)prim)->wV[0];
-					MesaDrawFVFIndex(ctx, vertices, start);
+					MesaDrawFVFIndex(ctx, vertices, base+start);
 					
-					prim += sizeof(D3DHAL_DP2INDEXEDLINESTRIP);
+					prim += sizeof(WORD);
 				}
 				entry->proc.pglEnd();
 				NEXT_INST(0);
@@ -280,14 +283,19 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				// array with wPrimitiveCount+2 elements.
 				// The indexes are relative to a base index value that 
 				// immediately follows the command
+				base = ((D3DHAL_DP2STARTVERTEX*)prim)->wVStart;
+				prim += sizeof(D3DHAL_DP2STARTVERTEX);
+
 				entry->proc.pglBegin(GL_TRIANGLE_STRIP);
 				for(i = 0; i < inst->wPrimitiveCount+2; i++)
 				{
 					start = ((D3DHAL_DP2INDEXEDTRIANGLESTRIP*)prim)->wV[0];
-					MesaDrawFVFIndex(ctx, vertices, start);
-					prim += sizeof(D3DHAL_DP2INDEXEDTRIANGLESTRIP);
+					MesaDrawFVFIndex(ctx, vertices, base+start);
+					
+					prim += sizeof(WORD);
 				}
 				entry->proc.pglEnd();
+
 				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_INDEXEDTRIANGLEFAN)
@@ -298,14 +306,19 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				// (wV[wPrimitiveCount], wV[wPrimitiveCount+1],wV[0]).
 				// The indexes are relative to a base index value that 
 				// immediately follows the command
+				base = ((D3DHAL_DP2STARTVERTEX*)prim)->wVStart;
+				prim += sizeof(D3DHAL_DP2STARTVERTEX);
+
 				entry->proc.pglBegin(GL_TRIANGLE_FAN);
 				for(i = 0; i < inst->wPrimitiveCount+2; i++)
 				{
 					start = ((D3DHAL_DP2INDEXEDTRIANGLEFAN*)prim)->wV[0];
-					MesaDrawFVFIndex(ctx, vertices, start);
-					prim += sizeof(D3DHAL_DP2INDEXEDTRIANGLEFAN);
+					MesaDrawFVFIndex(ctx, vertices, base+start);
+					
+					prim += sizeof(WORD);
 				}
 				entry->proc.pglEnd();
+
 				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_INDEXEDTRIANGLELIST2)
