@@ -25,6 +25,8 @@ typedef OSMESAproc (APIENTRYP OSMesaGetProcAddress_h)(const char *funcName);
 #define MESA3D_MAX_CTXS 128
 #define MESA3D_MAX_MIPS 16
 
+#define MESA_TMU_MAX 8
+
 typedef struct mesa3d_texture
 {
 	BOOL    alloc;
@@ -42,12 +44,13 @@ typedef struct mesa3d_texture
 	int mipmap_level;
 	BOOL colorkey;
 	BOOL compressed;
+	BOOL tmu[MESA_TMU_MAX];
 } mesa3d_texture_t;
 
-#define MESA_ACTIVE_TEX_TOTAL 8
-
-struct mesa3d_texstate
+struct mesa3d_tmustate
 {
+	BOOL active;
+	
 	mesa3d_texture_t *image;
 	// texture address DX5 DX6 DX7
 	D3DTEXTUREADDRESS texaddr_u; // wrap, mirror, clamp, border
@@ -102,7 +105,7 @@ typedef struct mesa3d_ctx
 	LPDDRAWI_DDRAWSURFACE_INT depth;
 	LPDDRAWI_DIRECTDRAW_GBL dd;
 	BOOL depth_stencil;
-	int texunits;
+	int tmu_count;
 
 	/* render state */
 	struct {
@@ -133,7 +136,7 @@ typedef struct mesa3d_ctx
 			int pos_normal;
 			int pos_diffuse;
 			int pos_specular;
-			int pos_tex[MESA_ACTIVE_TEX_TOTAL];
+			int pos_tmu[MESA_TMU_MAX];
 		} fvf;
 		struct {
 			BOOL enabled;
@@ -149,7 +152,7 @@ typedef struct mesa3d_ctx
 			BOOL enabled;
 			BOOL writable;
 		} depth;
-		struct mesa3d_texstate tex[MESA_ACTIVE_TEX_TOTAL];
+		struct mesa3d_tmustate tmu[MESA_TMU_MAX];
 	} state;
 
 	/* fbo */
@@ -158,6 +161,7 @@ typedef struct mesa3d_ctx
 		GLuint color_fb;
 		GLuint depth_tex;
 		GLuint depth_fb;
+		int tmu; /* can be higher than tmu_count, if using extra TMU for FBO operations */
 	} fbo;
 
 	/* rendering state */
@@ -259,7 +263,7 @@ void MesaFlushSurface(FLATPTR vidmem);
 
 /* needs GL_BLOCK */
 mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_INT surf);
-void MesaReloadTexture(mesa3d_texture_t *tex, int unit);
+void MesaReloadTexture(mesa3d_texture_t *tex, int tmu);
 void MesaDestroyTexture(mesa3d_texture_t *tex);
 
 void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state);
@@ -271,7 +275,7 @@ void MesaDrawIndex(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE v
 void MesaRender(mesa3d_ctx_t *ctx);
 void MesaReadback(mesa3d_ctx_t *ctx, GLbitfield mask);
 BOOL MesaSetTarget(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_INT dss, LPDDRAWI_DDRAWSURFACE_INT dsz);
-void MesaSetTextureState(mesa3d_ctx_t *ctx, int unit, DWORD state, void *value);
+void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value);
 
 void MesaDrawRefreshState(mesa3d_ctx_t *ctx);
 void MesaDrawSetSurfaces(mesa3d_ctx_t *ctx);
@@ -287,8 +291,8 @@ void MesaBufferUploadColor(mesa3d_ctx_t *ctx, const void *src);
 void MesaBufferDownloadColor(mesa3d_ctx_t *ctx, void *dst);
 void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src);
 void MesaBufferDownloadDepth(mesa3d_ctx_t *ctx, void *dst);
-void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level);
-void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level, DWORD chroma_lw, DWORD chroma_hi);
+void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level, int tmu);
+void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level, int tmu, DWORD chroma_lw, DWORD chroma_hi);
 
 /* calculation */
 void MesaUnproject(mesa3d_ctx_t *ctx, GLfloat winx, GLfloat winy, GLfloat winz,

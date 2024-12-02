@@ -59,7 +59,7 @@ void MesaDrawTLVertex(mesa3d_ctx_t *ctx, LPD3DTLVERTEX vertex)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 	
-	if(ctx->state.tex[0].image)
+	if(ctx->state.tmu[0].image)
 	{
 		entry->proc.pglTexCoord2f(CONV_U_TO_S(vertex->tu), CONV_V_TO_T(vertex->tv));
 		TOPIC("TEX", "glTexCoord2f(%f, %f)", vertex->tu, vertex->tv);
@@ -97,7 +97,7 @@ void MesaDrawLVertex(mesa3d_ctx_t *ctx, LPD3DLVERTEX vertex)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 	
-	if(ctx->state.tex[0].image)
+	if(ctx->state.tmu[0].image)
 	{
 		entry->proc.pglTexCoord2f(CONV_U_TO_S(vertex->tu), CONV_V_TO_T(vertex->tv));
 	}
@@ -125,7 +125,7 @@ void MesaDrawVertex(mesa3d_ctx_t *ctx, LPD3DVERTEX vertex)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 	
-	if(ctx->state.tex[0].image)
+	if(ctx->state.tmu[0].image)
 	{
 		entry->proc.pglTexCoord2f(CONV_U_TO_S(vertex->tu), CONV_V_TO_T(vertex->tv));
 	}
@@ -204,16 +204,16 @@ void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD type)
 	}
 	
 	int tc = (type & D3DFVF_TEXCOUNT_MASK) >> D3DFVF_TEXCOUNT_SHIFT;
-	for(i = 0; i < MESA_ACTIVE_TEX_TOTAL; i++)
+	for(i = 0; i < ctx->tmu_count; i++)
 	{
 		if(tc > i)
 		{
-			ctx->state.fvf.pos_tex[i] = offset;
+			ctx->state.fvf.pos_tmu[i] = offset;
 			offset += 2;
 		}
 		else
 		{
-			ctx->state.fvf.pos_tex[i] = 0;
+			ctx->state.fvf.pos_tmu[i] = 0;
 		}
 	}
 	
@@ -224,14 +224,18 @@ inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx
 {
 	int i;
 	
-	for(i = 0; i < MESA_ACTIVE_TEX_TOTAL; i++)
+	for(i = 0; i < ctx->tmu_count; i++)
 	{
-		if(ctx->state.fvf.pos_tex[i])
+		if(ctx->state.tmu[i].image)
 		{
-			entry->proc.pglMultiTexCoord2f(GL_TEXTURE0 + i,
-				CONV_U_TO_S(vertex->fv[ctx->state.fvf.pos_tex[i] + 0]),
-				CONV_V_TO_T(vertex->fv[ctx->state.fvf.pos_tex[i] + 1])
-			);
+			int coordindex = ctx->state.tmu[i].coordindex;
+			if(ctx->state.fvf.pos_tmu[coordindex])
+			{
+				entry->proc.pglMultiTexCoord2f(GL_TEXTURE0 + i,
+					CONV_U_TO_S(vertex->fv[ctx->state.fvf.pos_tmu[coordindex] + 0]),
+					CONV_V_TO_T(vertex->fv[ctx->state.fvf.pos_tmu[coordindex] + 1])
+				);
+			}
 		}
 	}
 

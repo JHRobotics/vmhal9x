@@ -607,7 +607,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				// depth buffer or stencil buffer. This replaces the old D3dClear
 				// and D3dClear2 callbacks. 
 				{
-					D3DHAL_DP2CLEAR* pClear = (D3DHAL_DP2CLEAR*)prim;
+					D3DHAL_DP2CLEAR *pClear = (D3DHAL_DP2CLEAR*)prim;
 					prim += sizeof(D3DHAL_DP2CLEAR) - sizeof(RECT);
 					
 					MesaClear(ctx, pClear->dwFlags, pClear->dwFillColor, pClear->dvFillDepth, pClear->dwFillStencil,
