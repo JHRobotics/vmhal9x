@@ -120,6 +120,7 @@ typedef struct mesa3d_ctx
 		GLclampf alpharef;
 		DWORD overrides[4]; // 128 bit set
 		DWORD stipple[32];
+		GLfloat tfactor[4]; // TEXTUREFACTOR eq. GL_CONSTANT
 		struct {
 			BOOL enabled;
 			GLenum  tmode;

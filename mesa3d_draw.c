@@ -74,7 +74,7 @@ void MesaDrawTLVertex(mesa3d_ctx_t *ctx, LPD3DTLVERTEX vertex)
 
 	if(ctx->state.specular)
 	{
-		entry->proc.pglSecondaryColor3ubEXT(
+		entry->proc.pglSecondaryColor3ub(
 			RGBA_GETRED(vertex->specular),
 			RGBA_GETGREEN(vertex->specular),
 			RGBA_GETBLUE(vertex->specular)
@@ -111,7 +111,7 @@ void MesaDrawLVertex(mesa3d_ctx_t *ctx, LPD3DLVERTEX vertex)
 	
 	if(ctx->state.specular)
 	{
-		entry->proc.pglSecondaryColor3ubEXT(
+		entry->proc.pglSecondaryColor3ub(
 			RGBA_GETRED(vertex->specular),
 			RGBA_GETGREEN(vertex->specular),
 			RGBA_GETBLUE(vertex->specular)
@@ -253,7 +253,7 @@ inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx
 	if(ctx->state.specular && ctx->state.fvf.pos_specular)
 	{
 		DWORD color = vertex->dw[ctx->state.fvf.pos_specular];
-		entry->proc.pglSecondaryColor3ubEXT(
+		entry->proc.pglSecondaryColor3ub(
 			RGBA_GETRED(color),
 			RGBA_GETGREEN(color),
 			RGBA_GETBLUE(color)

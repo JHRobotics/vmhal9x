@@ -1553,12 +1553,12 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state)
 			// need EXT_SECONDARY_COLOR
 			if(state->dwArg[0])
 			{
-				ctx->entry->proc.pglEnable(GL_COLOR_SUM_EXT);
+				ctx->entry->proc.pglEnable(GL_COLOR_SUM);
 				ctx->state.specular = TRUE;
 			}
 			else
 			{
-				ctx->entry->proc.pglDisable(GL_COLOR_SUM_EXT);
+				ctx->entry->proc.pglDisable(GL_COLOR_SUM);
 				ctx->state.specular = FALSE;
 			}
 			break;
@@ -1682,7 +1682,17 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state)
 			ctx->state.stencil.writemask = state->dwArg[0];
 			break;
 		case D3DRENDERSTATE_TEXTUREFACTOR: /* D3DCOLOR used for multi-texture blend */
+		{
+			D3DCOLOR c = (D3DCOLOR)state->dwArg[0];
+			MESA_D3DCOLOR_TO_FV(c, ctx->state.tfactor);
+			int i;
+			for(i = 0; i < ctx->tmu_count; i++)
+			{
+				ctx->state.tmu[i].update = TRUE;
+			}
+			
 			break;
+		}
 		case D3DRENDERSTATE_STIPPLEPATTERN00 ... D3DRENDERSTATE_STIPPLEPATTERN31:
 		{
 			ctx->state.stipple[type - D3DRENDERSTATE_STIPPLEPATTERN00] = state->dwArg[0];
@@ -1787,13 +1797,16 @@ static void D3DTA2GL(DWORD dxarg, GLint *gl_src, GLint *gl_op)
 		case D3DTA_CURRENT:
 			*gl_src = GL_PREVIOUS;
 			break;
-		case D3DTA_TEXTURE:
-			*gl_src = GL_TEXTURE;
-			break;
 		case D3DTA_DIFFUSE:
-		case D3DTA_SPECULAR:
-		default:
 			*gl_src = GL_PRIMARY_COLOR;
+			break;
+		case D3DTA_TFACTOR:
+			*gl_src = GL_CONSTANT_EXT;
+			break;
+		case D3DTA_TEXTURE:
+		case D3DTA_SPECULAR: /* not possible, fail to texture */
+		default:
+			*gl_src = GL_TEXTURE;
 			break;
 	}
 	
@@ -1823,186 +1836,13 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 	
 	struct mesa3d_tmustate *ts = &ctx->state.tmu[tmu];
 	
-	/*
-	 * Texture blend
-	 */
-	if(ts->dx6_blend)
-	{
-		ts->active = TRUE;
-		
-		GLint color_fn = GL_REPLACE;
-		GLint color_arg1_source = GL_TEXTURE;
-		GLint color_arg1_op = GL_SRC_COLOR;
-		GLint color_arg2_source = GL_PREVIOUS;
-		GLint color_arg2_op = GL_SRC_COLOR;
-
-		GLint alpha_fn = GL_REPLACE;
-		GLint alpha_arg1_source = GL_TEXTURE;
-		GLint alpha_arg1_op = GL_SRC_ALPHA;
-		GLint alpha_arg2_source = GL_PREVIOUS;
-		GLint alpha_arg2_op = GL_SRC_ALPHA;
-		
-		D3DTA2GL(ts->color_arg1, &color_arg1_source, &color_arg1_op);
-		D3DTA2GL(ts->color_arg2, &color_arg2_source, &color_arg2_op);
-		D3DTA2GL(ts->alpha_arg1|D3DTA_ALPHAREPLICATE, &alpha_arg1_source, &alpha_arg1_op);
-		D3DTA2GL(ts->alpha_arg2|D3DTA_ALPHAREPLICATE, &alpha_arg2_source, &alpha_arg2_op);
-		
-		GLfloat color_mult = 1.0f;
-		GLfloat alpha_mult = 1.0f;
-		
-		switch(ts->color_op)
-		{
-			case D3DTOP_DISABLE:
-				ts->active = FALSE;
-				color_fn = GL_REPLACE;
-				color_arg1_source = GL_SRC_COLOR; //GL_CONSTANT;
-				color_arg1_op = GL_SRC_COLOR;
-				break;
-			case D3DTOP_SELECTARG1:
-				color_fn = GL_REPLACE;
-				break;
-			case D3DTOP_SELECTARG2:
-				color_fn = GL_REPLACE;
-				color_arg1_source = color_arg2_source;
-				color_arg1_op = color_arg2_op;
-				break;
-			case D3DTOP_MODULATE:
-				color_fn = GL_MODULATE;
-				break;
-			case D3DTOP_MODULATE2X:
-				color_fn = GL_MODULATE;
-				color_mult = 2.0f;
-				break;
-			case D3DTOP_MODULATE4X:
-				color_fn = GL_MODULATE;
-				color_mult = 4.0f;
-				break;
-			case D3DTOP_ADD:
-				color_fn = GL_ADD;
-				break;
-			case D3DTOP_ADDSIGNED:
-				color_fn = D3DTOP_ADDSIGNED;
-				break;
-			case D3DTOP_ADDSIGNED2X:
-				color_fn = D3DTOP_ADDSIGNED;
-				color_mult = 2.0f;
-				break;
-		}
-		
-		switch(ts->alpha_op)
-		{
-			case D3DTOP_DISABLE:
-				alpha_fn = GL_REPLACE;
-				alpha_arg1_source = GL_SRC_COLOR; //GL_CONSTANT;
-				alpha_arg1_op = GL_SRC_ALPHA;
-				break;
-			case D3DTOP_SELECTARG1:
-				alpha_fn = GL_REPLACE;
-				break;
-			case D3DTOP_SELECTARG2:
-				alpha_fn = GL_REPLACE;
-				alpha_arg1_source = alpha_arg2_source;
-				alpha_arg1_op = alpha_arg2_op;
-				break;
-			case D3DTOP_MODULATE:
-				alpha_fn = GL_MODULATE;
-				break;
-			case D3DTOP_MODULATE2X:
-				alpha_fn = GL_MODULATE;
-				alpha_mult = 2.0f;
-				break;
-			case D3DTOP_MODULATE4X:
-				alpha_fn = GL_MODULATE;
-				alpha_mult = 4.0f;
-				break;
-			case D3DTOP_ADD:
-				alpha_fn = GL_ADD;
-				break;
-			case D3DTOP_ADDSIGNED:
-				alpha_fn = D3DTOP_ADDSIGNED;
-				break;
-			case D3DTOP_ADDSIGNED2X:
-				alpha_fn = D3DTOP_ADDSIGNED;
-				alpha_mult = 2.0f;
-				break;
-		}
-		
-		if(!ts->active)
-		{
-			GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_2D));
-		}
-		else
-		{
-			GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
-			
-	    GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE));
-	
-	    GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB, color_fn));
-	    GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC0_RGB, color_arg1_source));
-	    GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_RGB, color_arg1_op));
-	    GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC1_RGB, color_arg2_source));
-	    GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_RGB, color_arg2_op));
-	    
-	    GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_ALPHA, alpha_fn));
-	    GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC0_ALPHA, alpha_arg1_source));
-	    GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_ALPHA, alpha_arg1_op));
-	    GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC1_ALPHA, alpha_arg2_source));
-	    GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_ALPHA, alpha_arg2_op));
-	    
-	    GL_CHECK(entry->proc.pglTexEnvf(GL_TEXTURE_ENV, GL_RGB_SCALE,   color_mult));
-	    GL_CHECK(entry->proc.pglTexEnvf(GL_TEXTURE_ENV, GL_ALPHA_SCALE, alpha_mult));
-    }
-	}
-	else
-	{
-		switch(ts->texblend)
-		{
-			case D3DTBLEND_DECAL:
-			case D3DTBLEND_COPY:
-				/* 
-				 * cPix = cTex
-				 * aPix = aTex
-				 */
-				GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE));
-				TOPIC("BLEND", "D3DTBLEND_DECAL");
-				break;
-			case D3DTBLEND_MODULATE:
-				/*
-				 * cPix = cSrc * cTex
-				 * aPix = aTex
-				 */
-				GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE));
-				TOPIC("BLEND", "D3DTBLEND_MODULATE");
-				break;
-			case D3DTBLEND_MODULATEALPHA:
-				/*
-				 * cPix = cSrc * cTex
-				 * aPix = aSrc * aTex
-				 */
-				GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE));
-				GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB, GL_MODULATE));
-				GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_ALPHA, GL_MODULATE));			
-				TOPIC("BLEND", "D3DTBLEND_MODULATEALPHA");
-				break;
-			case D3DTBLEND_ADD:
-				/*
-				 * cPix = cSrc + cTex
-				 * aPix = aSrc + aTex
-				 */
-				GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_ADD));
-				TOPIC("BLEND", "D3DTBLEND_ADD");
-				break;
-			default:
-				TOPIC("BLEND", "Wrong state: %d", ts->texblend);
-				/* NOP */
-				break;
-		}
-	} // !dx6_blend
-
 	if(ts->image)
 	{
-		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ts->image->gltex));
+		GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
+		ts->active = TRUE;
 		
+		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ts->image->gltex));
+
 		/*
 		 * texture filtering
 		 */
@@ -2084,8 +1924,253 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 	}
 	else
 	{
-		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, 0));
+		GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_2D));
+		ts->active = FALSE;
+		//GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, 0));
 	}
+	
+	/*
+	 * Texture blend
+	 */
+	if(ts->dx6_blend)
+	{
+		GLint color_fn = GL_REPLACE;
+		GLint color_arg1_source = GL_TEXTURE;
+		GLint color_arg1_op = GL_SRC_COLOR;
+		GLint color_arg2_source = GL_PREVIOUS;
+		GLint color_arg2_op = GL_SRC_COLOR;
+
+		GLint alpha_fn = GL_REPLACE;
+		GLint alpha_arg1_source = GL_TEXTURE;
+		GLint alpha_arg1_op = GL_SRC_ALPHA;
+		GLint alpha_arg2_source = GL_PREVIOUS;
+		GLint alpha_arg2_op = GL_SRC_ALPHA;
+		
+		// for GL_INTERPOLATE
+		GLint color_arg3_source = GL_CONSTANT;
+		GLint color_arg3_op = GL_SRC_COLOR;
+		GLint alpha_arg3_source = GL_CONSTANT;
+		GLint alpha_arg3_op = GL_SRC_COLOR;
+		
+		D3DTA2GL(ts->color_arg1, &color_arg1_source, &color_arg1_op);
+		D3DTA2GL(ts->color_arg2, &color_arg2_source, &color_arg2_op);
+		D3DTA2GL(ts->alpha_arg1|D3DTA_ALPHAREPLICATE, &alpha_arg1_source, &alpha_arg1_op);
+		D3DTA2GL(ts->alpha_arg2|D3DTA_ALPHAREPLICATE, &alpha_arg2_source, &alpha_arg2_op);
+		
+		GLfloat color_mult = 1.0f;
+		GLfloat alpha_mult = 1.0f;
+		
+		switch(ts->color_op)
+		{
+			case D3DTOP_DISABLE:
+				color_fn = GL_REPLACE;
+				color_arg1_source = GL_PREVIOUS; //GL_CONSTANT;
+				color_arg1_op = GL_SRC_COLOR;
+				break;
+			case D3DTOP_SELECTARG1:
+				color_fn = GL_REPLACE;
+				break;
+			case D3DTOP_SELECTARG2:
+				color_fn = GL_REPLACE;
+				color_arg1_source = color_arg2_source;
+				color_arg1_op = color_arg2_op;
+				break;
+			case D3DTOP_MODULATE:
+				color_fn = GL_MODULATE;
+				break;
+			case D3DTOP_MODULATE2X:
+				color_fn = GL_MODULATE;
+				color_mult = 2.0f;
+				break;
+			case D3DTOP_MODULATE4X:
+				color_fn = GL_MODULATE;
+				color_mult = 4.0f;
+				break;
+			case D3DTOP_ADD:
+				color_fn = GL_ADD;
+				break;
+			case D3DTOP_ADDSIGNED:
+				color_fn = GL_ADD_SIGNED;
+				break;
+			case D3DTOP_ADDSIGNED2X:
+				color_fn = GL_ADD_SIGNED;
+				color_mult = 2.0f;
+				break;
+			case D3DTOP_SUBTRACT:
+				color_fn = GL_SUBTRACT;
+				break;
+			case D3DTOP_BLENDDIFFUSEALPHA:
+				color_fn = GL_INTERPOLATE;
+				color_arg3_source = GL_PRIMARY_COLOR;
+				color_arg3_op = GL_SRC_ALPHA;
+				break;
+			case D3DTOP_BLENDTEXTUREALPHA:
+				color_fn = GL_INTERPOLATE;
+				color_arg3_source = GL_TEXTURE;
+				color_arg3_op = GL_SRC_ALPHA;
+				break;
+			case D3DTOP_BLENDFACTORALPHA:
+				color_fn = GL_INTERPOLATE;
+				color_arg3_source = GL_CONSTANT;
+				color_arg3_op = GL_SRC_ALPHA;
+				break;
+			case D3DTOP_BLENDCURRENTALPHA:
+				color_fn = GL_INTERPOLATE;
+				color_arg3_source = GL_PREVIOUS;
+				color_arg3_op = GL_SRC_ALPHA;
+				break;
+			/*
+					NOTE: for another states we can use this:
+						https://registry.khronos.org/OpenGL/extensions/NV/NV_texture_env_combine4.tx
+			*/
+			default:
+				WARN("Unknown color texture blend operation: %d, TMU: %d", ts->color_op, tmu);
+				break;
+				
+		}
+		
+		switch(ts->alpha_op)
+		{
+			case D3DTOP_DISABLE:
+				alpha_fn = GL_REPLACE;
+				alpha_arg1_source = GL_PREVIOUS;
+				alpha_arg1_op = GL_SRC_ALPHA;
+				break;
+			case D3DTOP_SELECTARG1:
+				alpha_fn = GL_REPLACE;
+				break;
+			case D3DTOP_SELECTARG2:
+				alpha_fn = GL_REPLACE;
+				alpha_arg1_source = alpha_arg2_source;
+				alpha_arg1_op = alpha_arg2_op;
+				break;
+			case D3DTOP_MODULATE:
+				alpha_fn = GL_MODULATE;
+				break;
+			case D3DTOP_MODULATE2X:
+				alpha_fn = GL_MODULATE;
+				alpha_mult = 2.0f;
+				break;
+			case D3DTOP_MODULATE4X:
+				alpha_fn = GL_MODULATE;
+				alpha_mult = 4.0f;
+				break;
+			case D3DTOP_ADD:
+				alpha_fn = GL_ADD;
+				break;
+			case D3DTOP_ADDSIGNED:
+				alpha_fn = GL_ADD_SIGNED;
+				break;
+			case D3DTOP_ADDSIGNED2X:
+				alpha_fn = GL_ADD_SIGNED;
+				alpha_mult = 2.0f;
+				break;
+			case D3DTOP_SUBTRACT:
+				alpha_fn = GL_SUBTRACT;
+				break;
+			case D3DTOP_BLENDDIFFUSEALPHA:
+				alpha_fn = GL_INTERPOLATE;
+				alpha_arg3_source = GL_PRIMARY_COLOR;
+				alpha_arg3_op = GL_SRC_ALPHA;
+				break;
+			case D3DTOP_BLENDTEXTUREALPHA:
+				alpha_fn = GL_INTERPOLATE;
+				alpha_arg3_source = GL_TEXTURE;
+				alpha_arg3_op = GL_SRC_ALPHA;
+				break;
+			case D3DTOP_BLENDFACTORALPHA:
+				alpha_fn = GL_INTERPOLATE;
+				alpha_arg3_source = GL_CONSTANT;
+				alpha_arg3_op = GL_SRC_ALPHA;
+				break;
+			case D3DTOP_BLENDCURRENTALPHA:
+				alpha_fn = GL_INTERPOLATE;
+				alpha_arg3_source = GL_PREVIOUS;
+				alpha_arg3_op = GL_SRC_ALPHA;
+				break;
+			default:
+				WARN("Unknown alpha texture blend operation: %d, TMU: %d", ts->color_op, tmu);
+				break;
+		}
+
+		GL_CHECK(entry->proc.pglTexEnvfv(GL_TEXTURE_ENV, GL_TEXTURE_ENV_COLOR, &ctx->state.tfactor[0]));
+
+	  GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC0_RGB, color_arg1_source));
+	  GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_RGB, color_arg1_op));
+	  GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC1_RGB, color_arg2_source));
+	  GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_RGB, color_arg2_op));
+	  
+	  if(color_fn == GL_INTERPOLATE)
+	  {
+	  	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC2_RGB, color_arg3_source));
+	  	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND2_RGB, color_arg3_op));
+	  }
+	  	  
+	  GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB, color_fn));
+
+	  GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC0_ALPHA, alpha_arg1_source));
+	  GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_ALPHA, alpha_arg1_op));
+	  GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC1_ALPHA, alpha_arg2_source));
+	  GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_ALPHA, alpha_arg2_op));
+	  
+	  if(alpha_fn == GL_INTERPOLATE)
+	  {
+	  	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC2_RGB, alpha_arg3_source));
+	  	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND2_RGB, alpha_arg3_op));
+	  }
+	  
+	  GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_ALPHA, alpha_fn));
+
+	  GL_CHECK(entry->proc.pglTexEnvf(GL_TEXTURE_ENV, GL_RGB_SCALE,   color_mult));
+	  GL_CHECK(entry->proc.pglTexEnvf(GL_TEXTURE_ENV, GL_ALPHA_SCALE, alpha_mult));
+	  
+	  GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE));
+	}
+	else
+	{
+		switch(ts->texblend)
+		{
+			case D3DTBLEND_DECAL:
+			case D3DTBLEND_COPY:
+				/* 
+				 * cPix = cTex
+				 * aPix = aTex
+				 */
+				GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE));
+				TOPIC("BLEND", "D3DTBLEND_DECAL");
+				break;
+			case D3DTBLEND_MODULATE:
+				/*
+				 * cPix = cSrc * cTex
+				 * aPix = aTex
+				 */
+				GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE));
+				TOPIC("BLEND", "D3DTBLEND_MODULATE");
+				break;
+			case D3DTBLEND_MODULATEALPHA:
+				/*
+				 * cPix = cSrc * cTex
+				 * aPix = aSrc * aTex
+				 */
+				GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE));
+				GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB, GL_MODULATE));
+				GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_ALPHA, GL_MODULATE));			
+				TOPIC("BLEND", "D3DTBLEND_MODULATEALPHA");
+				break;
+			case D3DTBLEND_ADD:
+				/*
+				 * cPix = cSrc + cTex
+				 * aPix = aSrc + aTex
+				 */
+				GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_ADD));
+				TOPIC("BLEND", "D3DTBLEND_ADD");
+				break;
+			default:
+				TOPIC("BLEND", "Wrong state: %d", ts->texblend);
+				/* NOP */
+				break;
+		}
+	} // !dx6_blend
 		
 	/*
 	 * Texture addressing
