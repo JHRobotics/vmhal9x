@@ -139,6 +139,7 @@ static uint64_t last_flip_time = 0;
 DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
 {
 	TRACE_ENTRY
+	SurfaceCtxLock();
 	/*
 	 * NOTES:
 	 *
@@ -158,7 +159,9 @@ DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
 	{
 		if(GetOffset(ddhal, (void*)pfd->lpSurfCurr->lpGbl->fpVidMem) != ddhal->pFBHDA32->surface)
 		{
+			WARN("Bad flip!");
 			pfd->ddRVal = DDERR_INVALIDPARAMS;
+			SurfaceCtxUnlock();
 			return DDHAL_DRIVER_HANDLED;
 		}
 	}
@@ -172,6 +175,7 @@ DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
 			if(last_flip_time + screen_time > flip_time)
 			{
 				pfd->ddRVal = DDERR_WASSTILLDRAWING;
+				SurfaceCtxUnlock();
 				return DDHAL_DRIVER_HANDLED;
 			}
 		}
@@ -197,12 +201,15 @@ DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
 
 	last_flip_time = flip_time;
 	pfd->ddRVal = DD_OK;
+	
+	SurfaceCtxUnlock();
 	return DDHAL_DRIVER_HANDLED;
 } /* Flip32 */
 
 DWORD __stdcall GetFlipStatus32(LPDDHAL_GETFLIPSTATUSDATA pfd)
 {
 	TRACE_ENTRY
+	SurfaceCtxLock();
 	
 	if(pfd->dwFlags == DDGFS_CANFLIP && halVSync)
 	{
@@ -219,5 +226,7 @@ DWORD __stdcall GetFlipStatus32(LPDDHAL_GETFLIPSTATUSDATA pfd)
 	
 	/* we do nothing async yet, so return always success */	
 	pfd->ddRVal = DD_OK;
+	
+	SurfaceCtxUnlock();
 	return DDHAL_DRIVER_HANDLED;
 } /* GetFlipStatus32 */

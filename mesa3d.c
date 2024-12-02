@@ -544,6 +544,7 @@ mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry,
 				if(ctx == NULL)
 					break;
 
+				ctx->thread_lock = 0;
 				ctx->entry = entry;
 				ctx->id = i;
 				ctx->gltype = gltype;
@@ -673,7 +674,16 @@ void MesaDestroyCtx(mesa3d_ctx_t *ctx)
 	
 	TOPIC("GL", "OSMesaDestroyContext");
 
-	entry->proc.pOSMesaDestroyContext(ctx->mesactx);
+	if(entry->pid == GetCurrentProcessId())
+	{
+		entry->proc.pOSMesaDestroyContext(ctx->mesactx);
+	}
+#ifdef WARN_ON
+	else
+	{
+		WARN("Alien cleaning! Don't call destructor!");
+	}
+#endif
 	
 	entry->ctx[id] = NULL;
 
@@ -754,14 +764,24 @@ void MesaInitCtx(mesa3d_ctx_t *ctx)
 
 BOOL MesaSetCtx(mesa3d_ctx_t *ctx)
 {
-	TOPIC("GL", "reseting mesa CTX");
-	if(ctx->entry->proc.pOSMesaMakeCurrent(
-		ctx->mesactx, ctx->osbuf, ctx->gltype, ctx->state.sw, ctx->state.sh))
+	TRACE_ENTRY
+	
+	if(ctx->entry->pid == GetCurrentProcessId())
 	{
-		UpdateScreenCoords(ctx, ctx->state.sw, ctx->state.sh);
-		ctx->thread_id = GetCurrentThreadId();
-		return TRUE;
+		if(ctx->entry->proc.pOSMesaMakeCurrent(
+			ctx->mesactx, ctx->osbuf, ctx->gltype, ctx->state.sw, ctx->state.sh))
+		{
+			UpdateScreenCoords(ctx, ctx->state.sw, ctx->state.sh);
+			ctx->thread_id = GetCurrentThreadId();
+			return TRUE;
+		}
 	}
+#ifdef WARN_ON
+	else
+	{
+		WARN("Alien process! %X vs %X, ignoring!", ctx->entry->pid, GetCurrentProcessId());
+	}
+#endif
 
 	return FALSE;
 }
@@ -2544,3 +2564,18 @@ void MesaFlushSurface(FLATPTR vidmem)
 		TOPIC("RENDER", "NO entry for PID = %d", GetCurrentProcessId());
 	}
 }
+
+void MesaBlockLock(mesa3d_ctx_t *ctx)
+{
+	LONG tmp;
+	do
+	{
+		tmp = InterlockedExchange(&ctx->thread_lock, 1);
+	} while(tmp == 1);
+}
+
+void MesaBlockUnlock(mesa3d_ctx_t *ctx)
+{
+	InterlockedExchange(&ctx->thread_lock, 0);
+}
+

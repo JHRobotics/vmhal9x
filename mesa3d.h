@@ -90,6 +90,7 @@ struct mesa3d_tmustate
 
 typedef struct mesa3d_ctx
 {
+	LONG thread_lock;
 	mesa3d_texture_t tex[MESA3D_MAX_TEXS];
 	struct mesa3d_entry *entry;
 	int id; /* mesa3d_entry.ctx[_id_] */
@@ -211,19 +212,23 @@ void Mesa3DFree(DWORD pid);
 		mesa3d_ctx_t *ctx = MESA_HANDLE_TO_CTX(_ctx_h); \
 		mesa3d_entry_t *entry = ctx->entry; \
 		OSMesaContext *oldmesa = NULL; \
-		if(ctx->thread_id != GetCurrentThreadId()){ \
-			TOPIC("GL", "Thread switch %s:%d", __FILE__, __LINE__); \
-			if(!MesaSetCtx(ctx)){break;} \
-		}else{ \
-		oldmesa = entry->proc.pOSMesaGetCurrentContext(); \
-		if(oldmesa != ctx->mesactx){ \
-			TOPIC("GL", "Wrong context in %s:%d", __FILE__, __LINE__); \
-			if(!MesaSetCtx(ctx)){break;}}}
+		MesaBlockLock(ctx); \
+		do { \
+			if(ctx->thread_id != GetCurrentThreadId()){ \
+				TOPIC("GL", "Thread switch %s:%d", __FILE__, __LINE__); \
+				if(!MesaSetCtx(ctx)){break;} \
+			}else{ \
+			oldmesa = entry->proc.pOSMesaGetCurrentContext(); \
+			if(oldmesa != ctx->mesactx){ \
+				WARN("Wrong context in %s:%d", __FILE__, __LINE__); \
+				if(!MesaSetCtx(ctx)){break;}}}
 
 #define GL_BLOCK_END \
-		if(oldmesa != ctx->mesactx && oldmesa != NULL){ \
-			entry->proc.pOSMesaMakeCurrent(NULL, NULL, 0, 0, 0);} \
-	}while(0);
+			if(oldmesa != ctx->mesactx && oldmesa != NULL){ \
+				entry->proc.pOSMesaMakeCurrent(NULL, NULL, 0, 0, 0);} \
+		}while(0); \
+		MesaBlockUnlock(ctx); \
+	} while(0);
 
 #define MESA_TEX_TO_HANDLE(_p) ((DWORD)(_p))
 #define MESA_HANDLE_TO_TEX(_h) ((mesa3d_texture_t*)(_h))
@@ -257,10 +262,12 @@ mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry,
 void MesaDestroyCtx(mesa3d_ctx_t *ctx);
 void MesaDestroyAllCtx(mesa3d_entry_t *entry);
 void MesaInitCtx(mesa3d_ctx_t *ctx);
-BOOL MesaSetCtx(mesa3d_ctx_t *ctx);
 
 /* NOT needs GL_BLOCK */
 void MesaFlushSurface(FLATPTR vidmem);
+void MesaBlockLock(mesa3d_ctx_t *ctx);
+void MesaBlockUnlock(mesa3d_ctx_t *ctx);
+BOOL MesaSetCtx(mesa3d_ctx_t *ctx);
 
 /* needs GL_BLOCK */
 mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_INT surf);
