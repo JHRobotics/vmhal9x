@@ -227,6 +227,40 @@ static D3DDEVICEDESC_V1 myCaps6 = {
 	0      			/* dwMaxVertexCount */
 };
 
+static D3DDEVICEDESC_V1 myCaps7 = {
+	sizeof(D3DDEVICEDESC),      /* dwSize */
+	/* dwFlags */
+	D3DDD_COLORMODEL
+	| D3DDD_DEVCAPS
+	| D3DDD_TRICAPS
+	| D3DDD_DEVICERENDERBITDEPTH
+	| D3DDD_DEVICEZBUFFERBITDEPTH,
+	/* dcmColorModel */
+	D3DCOLOR_RGB,         
+	/* devCaps */
+	D3DDEVCAPS_FLOATTLVERTEX  /* must be set */
+	| D3DDEVCAPS_TEXTUREVIDEOMEMORY
+	| D3DDEVCAPS_TLVERTEXSYSTEMMEMORY /* must be set */
+	| D3DDEVCAPS_DRAWPRIMTLVERTEX /* must be set */
+	| D3DDEVCAPS_EXECUTESYSTEMMEMORY /* must be set */
+	| D3DDEVCAPS_DRAWPRIMITIVES2EX, /* must be set for DX7 */
+	{sizeof(D3DTRANSFORMCAPS), 0},		/* dtcTransformCaps */
+	FALSE,                      /* bClipping */
+	{sizeof(D3DLIGHTINGCAPS), 0},  /* dlcLightingCaps */
+	nullPrimCaps,               /* lineCaps */
+	triCaps6,                   /* triCaps */
+	DDBD_16 | DDBD_32,	/* dwDeviceRenderBitDepth */
+	DDBD_16 | DDBD_24, /* | DDBD_32* - dwDeviceZBufferBitDepth */
+	0,			        /* dwMaxBufferSize */
+	0      			/* dwMaxVertexCount */
+};
+
+/*
+D3DDEVCAPS_HWTRANSFORMANDLIGHT
+D3DDEVCAPS_CANBLTSYSTONONLOCAL
+D3DDEVCAPS_HWRASTERIZATION
+*/
+
 #define TEXFORMAT_RGB_mask(_ddpf_flags, _bits, _rmask, _gmask, _bmask, _amask) \
 { sizeof(DDSURFACEDESC),              /* dwSize */ \
 	DDSD_CAPS | DDSD_PIXELFORMAT,       /* dwFlags */ \
@@ -320,7 +354,8 @@ static DDSURFACEDESC myTextureFormats[] = {
 	TEXFORMAT_RGB(16, 0x0F00, 0x00F0, 0x000F), /* RGBX 4444 */
 	TEXFORMAT_RGB( 8, 0xE0, 0x1C, 0x03),       /* RGB 332 */
 	TEXFORMAT_ZBUF(16, 0x0000FFFF),
-	TEXFORMAT_ZBUF(32, 0x00FFFFFF),
+	TEXFORMAT_ZBUF(32, 0xFFFFFF00),
+	TEXFORMAT_ZBUF(32, 0xFFFFFFFF),
 	TEXFORMAT_FOURCC('D', 'X', 'T', '1'),
 //	TEXFORMAT_FOURCC('D', 'X', 'T', '2'),
 	TEXFORMAT_FOURCC('D', 'X', 'T', '3'),

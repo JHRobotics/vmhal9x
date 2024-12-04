@@ -130,13 +130,21 @@ void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 			format = GL_DEPTH_COMPONENT;
 			break;
 		case 24:
-			type   = GL_UNSIGNED_INT; //GL_UNSIGNED_INT_24_8; //GL_UNSIGNED_INT;
+			type = GL_FLOAT_32_UNSIGNED_INT_24_8_REV;
 			format = GL_DEPTH_COMPONENT;
 			break;
 		case 32:
 		default:
-			type   = GL_UNSIGNED_INT_24_8;
-			format = GL_DEPTH_STENCIL;
+			if(ctx->depth_stencil)
+			{
+				type = GL_FLOAT_32_UNSIGNED_INT_24_8_REV;
+				format = GL_DEPTH_STENCIL;
+			}
+			else
+			{
+				type = GL_FLOAT;
+				format = GL_DEPTH_COMPONENT;
+			}
 			break;
 	}
 	
@@ -144,7 +152,7 @@ void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 	GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
 	GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.depth_fb));
 	GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.depth_tex));
-	GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, ctx->state.sw, ctx->state.sh, 0, format, type, src));
+	GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, ctx->state.sw, ctx->state.sh, 0, format, type, src));
 	GL_CHECK(entry->proc.pglFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, ctx->fbo.depth_tex, 0));
 
 	GL_CHECK(entry->proc.pglBindFramebuffer(GL_READ_FRAMEBUFFER, ctx->fbo.depth_fb));
@@ -174,6 +182,7 @@ void MesaBufferDownloadDepth(mesa3d_ctx_t *ctx, void *dst)
 {
 	//size_t s = ctx->state.sw * ctx->state.sh * ((ctx->front_bpp + 7)/8);
 	GLenum type;
+	GLenum format = GL_DEPTH_COMPONENT;
 	
 	switch(ctx->depth_bpp)
 	{
@@ -181,15 +190,24 @@ void MesaBufferDownloadDepth(mesa3d_ctx_t *ctx, void *dst)
 			type = GL_UNSIGNED_SHORT;
 			break;
 		case 24:
-			type = GL_UNSIGNED_INT_24_8;
+			 /* we silently increase ZBUFF 24 -> 32 bpp */
+			type = GL_FLOAT_32_UNSIGNED_INT_24_8_REV;
 			break;
 		case 32:
 		default:
-			type = GL_UNSIGNED_INT;
+			if(ctx->depth_stencil)
+			{
+				type = GL_FLOAT_32_UNSIGNED_INT_24_8_REV;
+				format = GL_DEPTH_STENCIL;
+			}
+			else
+			{
+				type = GL_FLOAT;
+			}
 			break;
 	}
 
-	ctx->entry->proc.pglReadPixels(0, 0, ctx->state.sw, ctx->state.sh, GL_DEPTH_COMPONENT, type, dst);
+	ctx->entry->proc.pglReadPixels(0, 0, ctx->state.sw, ctx->state.sh, format, type, dst);
 }
 
 static DWORD compressed_size(GLenum internal_format, GLuint w, GLuint h)

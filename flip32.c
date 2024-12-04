@@ -136,10 +136,11 @@ static void DoFlipping(VMDAHAL_t *ddhal, void *from, void *to, DWORD from_pitch,
 const uint64_t screen_time = 10000/60;
 static uint64_t last_flip_time = 0;
 
+volatile BOOL is_flipping = FALSE;
+
 DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
 {
 	TRACE_ENTRY
-	SurfaceCtxLock();
 	/*
 	 * NOTES:
 	 *
@@ -155,13 +156,18 @@ DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
 	VMDAHAL_t *ddhal = GetHAL(pfd->lpDD);	
 	uint64_t flip_time = 0;
 
+	if(is_flipping)
+	{
+		pfd->ddRVal = DDERR_WASSTILLDRAWING;
+		return DDHAL_DRIVER_HANDLED;
+	}
+
 	if(ddhal->pFBHDA32->flags & FB_SUPPORT_FLIPING)
 	{
 		if(GetOffset(ddhal, (void*)pfd->lpSurfCurr->lpGbl->fpVidMem) != ddhal->pFBHDA32->surface)
 		{
 			WARN("Bad flip!");
 			pfd->ddRVal = DDERR_INVALIDPARAMS;
-			SurfaceCtxUnlock();
 			return DDHAL_DRIVER_HANDLED;
 		}
 	}
@@ -175,7 +181,6 @@ DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
 			if(last_flip_time + screen_time > flip_time)
 			{
 				pfd->ddRVal = DDERR_WASSTILLDRAWING;
-				SurfaceCtxUnlock();
 				return DDHAL_DRIVER_HANDLED;
 			}
 		}
@@ -192,24 +197,36 @@ DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
 		16*1024*1024
 	);
 
+	SurfaceCtxLock();
+	is_flipping = TRUE;
+
 #ifdef D3DHAL
 		MesaFlushSurface(pfd->lpSurfTarg->lpGbl->fpVidMem);
 #endif
 
 	DoFlipping(ddhal, (void*)pfd->lpSurfCurr->lpGbl->fpVidMem, (void*)pfd->lpSurfTarg->lpGbl->fpVidMem,
 		pfd->lpSurfCurr->lpGbl->lPitch, pfd->lpSurfTarg->lpGbl->lPitch);
+		
+	is_flipping = FALSE;
+	SurfaceCtxUnlock();
 
 	last_flip_time = flip_time;
 	pfd->ddRVal = DD_OK;
 	
-	SurfaceCtxUnlock();
+
 	return DDHAL_DRIVER_HANDLED;
 } /* Flip32 */
 
 DWORD __stdcall GetFlipStatus32(LPDDHAL_GETFLIPSTATUSDATA pfd)
 {
 	TRACE_ENTRY
-	SurfaceCtxLock();
+	VMDAHAL_t *ddhal = GetHAL(pfd->lpDD);	
+	
+	if(is_flipping)
+	{
+		pfd->ddRVal = DDERR_WASSTILLDRAWING;
+		return DDHAL_DRIVER_HANDLED;
+	}
 	
 	if(pfd->dwFlags == DDGFS_CANFLIP && halVSync)
 	{
@@ -223,10 +240,17 @@ DWORD __stdcall GetFlipStatus32(LPDDHAL_GETFLIPSTATUSDATA pfd)
 			}
 		}
 	}
+	else if(pfd->dwFlags == DDGFS_ISFLIPDONE)
+	{
+		if(!IsInFront(ddhal, (void*)pfd->lpDDSurface->lpGbl->fpVidMem))
+		{
+			pfd->ddRVal = DDERR_WASSTILLDRAWING;
+			return DDHAL_DRIVER_HANDLED;
+		}
+	}
 	
 	/* we do nothing async yet, so return always success */	
 	pfd->ddRVal = DD_OK;
 	
-	SurfaceCtxUnlock();
 	return DDHAL_DRIVER_HANDLED;
 } /* GetFlipStatus32 */

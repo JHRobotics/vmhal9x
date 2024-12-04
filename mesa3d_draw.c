@@ -220,6 +220,18 @@ void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD type)
 	ctx->state.fvf.stride = offset * sizeof(D3DVALUE);
 }
 
+#define SV_UNPROJECT(_v, _x, _y, _z, _w) \
+	_v[3] = 2.0f/(_w); \
+	_v[0] = ((((_x) - ctx->matrix.vnorm[0]) * ctx->matrix.vnorm[2]) - 1.0f)*_v[3]; \
+	_v[1] = ((((_y) - ctx->matrix.vnorm[1]) * ctx->matrix.vnorm[3]) - 1.0f)*_v[3]; \
+	_v[2] = (_z)*_v[3]
+
+#define SV_UNPROJECTD(_v, _x, _y, _z, _w) \
+	_v[3] = 2.0/((double)_w); \
+	_v[0] = (((((double)_x) - ctx->matrix.vnorm[0]) * ctx->matrix.vnorm[2]) - 1.0)*_v[3]; \
+	_v[1] = (((((double)_y) - ctx->matrix.vnorm[1]) * ctx->matrix.vnorm[3]) - 1.0)*_v[3]; \
+	_v[2] = ((double)_z)*_v[3]
+
 inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, FVF_t *vertex)
 {
 	int i;
@@ -262,17 +274,22 @@ inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx
 
 	if(ctx->state.fvf.type & D3DFVF_XYZRHW)
 	{
-		GLfloat x, y, z, w = 2.0;
+		/*GLfloat x, y, z, w = 2.0;
 		MesaUnproject(ctx, vertex->fv[FVF_X], vertex->fv[FVF_Y], vertex->fv[FVF_Z], &x, &y, &z);
 		if(vertex->fv[FVF_RHW] != 0)
 		{
 			w = 2.0/vertex->fv[FVF_RHW];
 		}
-		
-		/*TOPIC("DEPTH", "D3DFVF_XYZRHW: (%f %f %f %f) -> (%f %f %f %f)",
-			vertex->fv[FVF_X], vertex->fv[FVF_Y], vertex->fv[FVF_Z], vertex->fv[FVF_RHW],
-			x, y, z, w);*/
-		entry->proc.pglVertex4f(x*w, y*w, z*w, w);
+		entry->proc.pglVertex4f(x*w, y*w, z*w, w);*/
+
+		GLfloat v[4];
+		SV_UNPROJECT(v, vertex->fv[FVF_X], vertex->fv[FVF_Y], vertex->fv[FVF_Z], vertex->fv[FVF_RHW]);		
+		entry->proc.pglVertex4fv(&v[0]);
+/*
+		GLdouble v[4];
+		SV_UNPROJECTD(v, vertex->fv[FVF_X], vertex->fv[FVF_Y], vertex->fv[FVF_Z], vertex->fv[FVF_RHW]);		
+		entry->proc.pglVertex4dv(&v[0]);
+*/
 	}
 	else
 	{

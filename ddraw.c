@@ -144,6 +144,16 @@ DWORD __stdcall CreateSurface(LPDDHAL_CREATESURFACEDATA pcsd)
 			}
 			else if(lpSurf->lpGbl->ddpfSurface.dwFlags & DDPF_ZBUFFER)
 			{
+				if(lpSurf->lpGbl->ddpfSurface.dwZBufferBitDepth >= 24)
+				{
+					lpSurf->lpGbl->lPitch = SurfacePitch(lpSurf->lpGbl->wWidth, 32);
+				}
+				
+				TOPIC("READBACK", "ZBuff: bpp %d, flags: 0x%X",
+					lpSurf->lpGbl->ddpfSurface.dwZBufferBitDepth,
+					lpSurf->lpGbl->ddpfSurface.dwFlags
+					);
+				
 				lpSurf->lpGbl->dwBlockSizeX = (DWORD)lpSurf->lpGbl->wHeight * lpSurf->lpGbl->lPitch;
 				lpSurf->lpGbl->dwBlockSizeY = 1;
 				lpSurf->lpGbl->fpVidMem     = DDHAL_PLEASEALLOC_BLOCKSIZE;

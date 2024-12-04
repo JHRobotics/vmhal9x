@@ -563,7 +563,7 @@ mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry,
 				/* create context every time with 24bit depth buffer and 8bit stencil buffer,
 				 * because we can't dynamicaly change depth and stencil plane.
 				 */
-				ctx->mesactx = entry->proc.pOSMesaCreateContextExt(ostype, /*bpp_depth*/24, 8, 0, NULL);
+				ctx->mesactx = entry->proc.pOSMesaCreateContextExt(ostype, /*bpp_depth*/32, 8, 0, NULL);
 				if(ctx->mesactx == NULL)
 					break;
 
@@ -666,9 +666,7 @@ BOOL MesaSetTarget(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_INT dds, LPDDRAWI_DD
 }
 
 void MesaDestroyCtx(mesa3d_ctx_t *ctx)
-{
-	SurfaceCtxLock();
-	
+{	
 	int id = ctx->id;
 	mesa3d_entry_t *entry = ctx->entry;
 	
@@ -689,8 +687,6 @@ void MesaDestroyCtx(mesa3d_ctx_t *ctx)
 
 	HeapFree(hSharedHeap, 0, ctx->osbuf);
 	HeapFree(hSharedHeap, 0, ctx);
-	
-	SurfaceCtxUnlock();
 }
 
 void MesaDestroyAllCtx(mesa3d_entry_t *entry)
@@ -1019,8 +1015,6 @@ void MesaReloadTexture(mesa3d_texture_t *tex, int tmu)
 
 void MesaDestroyTexture(mesa3d_texture_t *tex)
 {
-	SurfaceCtxLock();
-	
 	if(tex->alloc)
 	{
 		int i;
@@ -1036,8 +1030,6 @@ void MesaDestroyTexture(mesa3d_texture_t *tex)
 			}
 		}
 	}
-	
-	SurfaceCtxUnlock();
 }
 
 static GLenum GetBlendFactor(D3DBLEND dxfactor)
@@ -2213,10 +2205,9 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 		case D3DTADDRESS_BORDER:
 			GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER));
 			break;
-			break;
 		case D3DTADDRESS_WRAP:
 		default:
-			GL_CHECK(ctx->entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT));
+			GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT));
 			break;
 	}
 	
@@ -2226,8 +2217,10 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 			GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT));
 			break;
 		case D3DTADDRESS_CLAMP:
-		case D3DTADDRESS_BORDER:
 			GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE));
+			break;
+		case D3DTADDRESS_BORDER:
+			GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER));
 			break;
 		case D3DTADDRESS_WRAP:
 		default:
@@ -2443,24 +2436,23 @@ void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, D
 	GLfloat cv[4];
 	int i;
 	mesa3d_entry_t *entry = ctx->entry;
-	
-	MESA_D3DCOLOR_TO_FV(color, cv);
-	
+		
 	TRACE("Clear Z: %f", depth);
-	
-	entry->proc.pglClearColor(cv[0], cv[1], cv[2], cv[3]);
-	entry->proc.pglClearDepth(depth);
-	entry->proc.pglClearStencil(stencil);
 
 	GLbitfield mask = 0;
 	if(flags & D3DCLEAR_TARGET)
+	{
+		MESA_D3DCOLOR_TO_FV(color, cv);
+		entry->proc.pglClearColor(cv[0], cv[1], cv[2], cv[3]);
 		mask |= GL_COLOR_BUFFER_BIT;
+	}
 
 	if(flags & D3DCLEAR_ZBUFFER)
 	{
 		mask |= GL_DEPTH_BUFFER_BIT;
 		entry->proc.pglEnable(GL_DEPTH_TEST);
 		entry->proc.pglDepthMask(GL_TRUE);
+		entry->proc.pglClearDepth(depth);
 	}
 	
 	if(flags & D3DCLEAR_STENCIL)
@@ -2468,6 +2460,7 @@ void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, D
 		mask |= GL_STENCIL_BUFFER_BIT;
 		entry->proc.pglEnable(GL_STENCIL_TEST);
 		entry->proc.pglStencilMask(0xFF);
+		entry->proc.pglClearStencil(stencil);
 	}
 
 	MesaReadback(ctx, mask);
@@ -2481,6 +2474,8 @@ void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, D
 			rects[i].left, rects[i].top,
 			rects[i].right - rects[i].left,
 			rects[i].bottom - rects[i].top);
+		TOPIC("READBACK", "  RECT(%d, %d, %d, %d)",
+			rects[i].left, rects[i].top, rects[i].right, rects[i].bottom);
 		entry->proc.pglClear(mask);
 		entry->proc.pglDisable(GL_SCISSOR_TEST);
 	}

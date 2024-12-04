@@ -93,4 +93,37 @@ typedef struct _DDMORESURFACECAPS
     } ddsExtendedHeapRestrictions[1];
 } DDMORESURFACECAPS, FAR * LPDDMORESURFACECAPS;
 
+typedef struct _DDHAL_CREATESURFACEEXDATA {
+    DWORD                       dwFlags;    // Currently always 0 and not used
+    LPDDRAWI_DIRECTDRAW_LCL     lpDDLcl;    // driver struct
+    LPDDRAWI_DDRAWSURFACE_LCL   lpDDSLcl;   // list of created surface objects
+    HRESULT			ddRVal;     // return value
+} DDHAL_CREATESURFACEEXDATA;
+
+typedef struct _DDHAL_GETDRIVERSTATEDATA {
+    DWORD                       dwFlags;        // Flags to indicate the data
+                                                // required
+    union
+    {
+        // LPDDRAWI_DIRECTDRAW_GBL     lpDD;           // driver struct
+        DWORD                       dwhContext;     // d3d context
+    };
+    LPDWORD                     lpdwStates;     // ptr to the state data
+                                                // to be filled in by the
+                                                // driver
+    DWORD                       dwLength;
+    HRESULT                     ddRVal;         // return value
+} DDHAL_GETDRIVERSTATEDATA;
+
+typedef struct _DDHAL_DESTROYDDLOCALDATA
+{
+    DWORD dwFlags;
+    LPDDRAWI_DIRECTDRAW_LCL pDDLcl;
+    HRESULT  ddRVal;
+} DDHAL_DESTROYDDLOCALDATA;
+
+#define DDHAL_MISC2CB32_CREATESURFACEEX        0x00000002l
+#define DDHAL_MISC2CB32_GETDRIVERSTATE         0x00000004l
+#define DDHAL_MISC2CB32_DESTROYDDLOCAL         0x00000008l
+
 #endif /* __DDRAWI_DDK_H__INCLUDED__ */

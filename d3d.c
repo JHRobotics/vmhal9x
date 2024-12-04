@@ -313,6 +313,142 @@ DWORD __stdcall Clear2_32(LPD3DHAL_CLEAR2DATA cd)
 	return DDHAL_DRIVER_HANDLED;
 }
 
+DWORD __stdcall GetDriverState32(LPDDHAL_GETDRIVERSTATEDATA pGDSData)
+{
+	TRACE_ENTRY
+	
+	pGDSData->ddRVal = DD_OK;
+	
+	return DDHAL_DRIVER_HANDLED;
+}
+
+/*
+ * 
+ * Function:    D3DCreateSurfaceEx
+ * Description: D3dCreateSurfaceEx creates a Direct3D surface from a DirectDraw  
+ *              surface and associates a requested handle value to it.
+ * 
+ *              All Direct3D drivers must support D3dCreateSurfaceEx.
+ * 
+ *              D3dCreateSurfaceEx creates an association between a  
+ *              DirectDraw surface and a small integer surface handle. 
+ *              By creating these associations between a
+ *              handle and a DirectDraw surface, D3dCreateSurfaceEx allows a 
+ *              surface handle to be imbedded in the Direct3D command stream.
+ *              For example when the D3DDP2OP_TEXBLT command token is sent
+ *              to D3dDrawPrimitives2 to load a texture map, it uses a source 
+ *              handle and destination handle which were associated
+ *              with a DirectDraw surface through D3dCreateSurfaceEx.
+ *
+ *              For every DirectDraw surface created under the DirectDrawLocal 
+ *              object, the runtime generates a valid handle that uniquely
+ *              identifies the surface and places it in
+ *              pcsxd->lpDDSLcl->lpSurfMore->dwSurfaceHandle. This handle value
+ *              is also used with the D3DRENDERSTATE_TEXTUREHANDLE render state 
+ *              to enable texturing, and with the D3DDP2OP_SETRENDERTARGET and 
+ *              D3DDP2OP_CLEAR commands to set and/or clear new rendering and 
+ *              depth buffers. The driver should fail the call and return
+ *              DDHAL_DRIVER_HANDLED if it cannot create the Direct3D
+ *              surface. If the DDHAL_CREATESURFACEEX_SWAPHANDLES flag is set, 
+ *              the handles should be swapped over two sequential calls to 
+ *              D3dCreateSurfaceEx. As appropriate, the driver should also 
+ *              store any surface-related information that it will subsequently 
+ *              need when using the surface. The driver must create
+ *              a new surface table for each new lpDDLcl and implicitly grow 
+ *              the table when necessary to accommodate more surfaces. 
+ *              Typically this is done with an exponential growth algorithm 
+ *              so that you don't have to grow the table too often. Direct3D 
+ *              calls D3dCreateSurfaceEx after the surface is created by
+ *              DirectDraw by request of the Direct3D runtime or the application.
+ *
+ * Parameters
+ *
+ *      lpcsxd
+ *           pointer to CreateSurfaceEx structure that contains the information
+ *           required for the driver to create the surface (described below). 
+ *
+ *           dwFlags
+ *           lpDDLcl
+ *                   Handle to the DirectDraw object created by the application.
+ *                   This is the scope within which the lpDDSLcl handles exist.
+ *                   A DD_DIRECTDRAW_LOCAL structure describes the driver.
+ *           lpDDSLcl
+ *                   Handle to the DirectDraw surface we are being asked to
+ *                   create for Direct3D. These handles are unique within each
+ *                   different DD_DIRECTDRAW_LOCAL. A DD_SURFACE_LOCAL structure
+ *                   represents the created surface object.
+ *           ddRVal
+ *                   Specifies the location in which the driver writes the return
+ *                   value of the D3dCreateSurfaceEx callback. A return code of
+ *                   DD_OK indicates success.
+ *
+ * Return Value
+ *
+ *      DDHAL_DRIVER_HANDLE
+ *      DDHAL_DRIVER_NOTHANDLE
+ *
+ */
+
+DWORD __stdcall CreateSurfaceEx32(LPDDHAL_CREATESURFACEEXDATA lpcsxd)
+{
+	TRACE_ENTRY
+	
+	LPDDRAWI_DDRAWSURFACE_LCL lpSurf = lpcsxd->lpDDSLcl;
+	
+	lpSurf->lpSurfMore->dwSurfaceHandle = (DWORD)lpSurf;
+	
+	lpcsxd->ddRVal = DD_OK;
+	return DDHAL_DRIVER_HANDLED;
+}
+
+/**
+ *
+ * Function:    D3DDestroyDDLocal
+ *
+ * Description: D3dDestroyDDLocal destroys all the Direct3D surfaces previously 
+ *              created by D3DCreateSurfaceEx that belong to the same given 
+ *              local DirectDraw object.
+ *
+ *              All Direct3D drivers must support D3dDestroyDDLocal.
+ *              Direct3D calls D3dDestroyDDLocal when the application indicates 
+ *              that the Direct3D context is no longer required and it will be 
+ *              destroyed along with all surfaces associated to it. 
+ *              The association comes through the pointer to the local 
+ *              DirectDraw object. The driver must free any memory that the
+ *              driver's D3dCreateSurfaceEx callback allocated for
+ *              each surface if necessary. The driver should not destroy 
+ *              the DirectDraw surfaces associated with these Direct3D surfaces; 
+ *              this is the application's responsibility.
+ *
+ * Parameters
+ *
+ *      lpdddd
+ *            Pointer to the DestoryLocalDD structure that contains the
+ *            information required for the driver to destroy the surfaces.
+ *
+ *            dwFlags
+ *                  Currently unused
+ *            pDDLcl
+ *                  Pointer to the local Direct Draw object which serves as a
+ *                  reference for all the D3D surfaces that have to be destroyed.
+ *            ddRVal
+ *                  Specifies the location in which the driver writes the return
+ *                  value of D3dDestroyDDLocal. A return code of DD_OK indicates
+ *                   success.
+ *
+ * Return Value
+ *
+ *      DDHAL_DRIVER_HANDLED
+ *      DDHAL_DRIVER_NOTHANDLED
+ */
+
+DWORD __stdcall DestroyDDLocal32(LPDDHAL_DESTROYDDLOCALDATA lpdddd)
+{
+	TRACE_ENTRY
+	lpdddd->ddRVal = DD_OK;
+	return DDHAL_DRIVER_HANDLED;
+}
+
 #define COPY_INFO(_in, _s, _t) do{ \
 	DWORD size = min(_in->dwExpectedSize, sizeof(_t)); \
 	_in->dwActualSize = sizeof(_t); \
@@ -356,7 +492,7 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 		COPY_INFO(lpInput, D3DCallbacks2, D3DHAL_CALLBACKS2);
 		TRACE("GUID_D3DCallbacks2 success");
 	}
-	else if(IsEqualIID(&lpInput->guidInfo, &GUID_D3DCallbacks3))
+	else if(IsEqualIID(&lpInput->guidInfo, &GUID_D3DCallbacks3) && VMHALenv.ddi >= 6)
 	{
 		/* DX6 */
 		D3DHAL_CALLBACKS3 D3DCallbacks3;
@@ -386,27 +522,22 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 		COPY_INFO(lpInput, misccb, DDHAL_DDMISCELLANEOUSCALLBACKS);
 		TRACE("GUID_MiscellaneousCallbacks success");
 	}
-	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_Miscellaneous2Callbacks))
+	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_Miscellaneous2Callbacks) && VMHALenv.ddi >= 7)
 	{
-#if 0
 		/* DX7 */
 		DDHAL_DDMISCELLANEOUS2CALLBACKS misccb2;
 		memset(&misccb2, 0, sizeof(DDHAL_DDMISCELLANEOUS2CALLBACKS));
 		misccb2.dwSize = sizeof(DDHAL_DDMISCELLANEOUS2CALLBACKS);
-		misccb2.dwFlags =
-			| DDHAL_MISC2CB32_CREATESURFACEEX 
+		misccb2.dwFlags = DDHAL_MISC2CB32_CREATESURFACEEX 
 			| DDHAL_MISC2CB32_GETDRIVERSTATE
 			| DDHAL_MISC2CB32_DESTROYDDLOCAL;
 
 		misccb2.GetDriverState  = GetDriverState32;
 		misccb2.CreateSurfaceEx = CreateSurfaceEx32;
-		misccb2.DestroyDDLocal  = DDestroyDDLocal32;
+		misccb2.DestroyDDLocal  = DestroyDDLocal32;
 		
 		COPY_INFO(lpInput, misccb2, DDHAL_DDMISCELLANEOUS2CALLBACKS);
 		TRACE("GUID_Miscellaneous2Callbacks success");
-#else
-		TRACE("GUID_Miscellaneous2Callbacks not set");
-#endif
 	}
 	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_DDMoreSurfaceCaps))
 	{
@@ -430,7 +561,6 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 		D3DHAL_D3DEXTENDEDCAPS7 dxcaps;
 		
 		memset(&dxcaps, 0, sizeof(D3DHAL_D3DEXTENDEDCAPS7));
-		dxcaps.dwSize = sizeof(D3DHAL_D3DEXTENDEDCAPS6); // 5, 6, 7 switch here!
 		dxcaps.dwMinTextureWidth  = 1;
 		dxcaps.dwMinTextureHeight = 1;
 		dxcaps.dwMaxTextureWidth  = VMHALenv.texture_max_width;
@@ -477,10 +607,25 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
     dxcaps.dwMaxActiveLights = 0;
     */
     
-    COPY_INFO(lpInput, dxcaps, D3DHAL_D3DEXTENDEDCAPS6);
+    if(VMHALenv.ddi <= 5)
+    {
+    	dxcaps.dwSize = sizeof(D3DHAL_D3DEXTENDEDCAPS5);
+    	COPY_INFO(lpInput, dxcaps, D3DHAL_D3DEXTENDEDCAPS5);
+    }
+    else if(VMHALenv.ddi <= 6)
+    {
+    	dxcaps.dwSize = sizeof(D3DHAL_D3DEXTENDEDCAPS6);
+    	COPY_INFO(lpInput, dxcaps, D3DHAL_D3DEXTENDEDCAPS6);
+    }
+    else
+    {
+    	dxcaps.dwSize = sizeof(D3DHAL_D3DEXTENDEDCAPS7);
+    	COPY_INFO(lpInput, dxcaps, D3DHAL_D3DEXTENDEDCAPS7);
+    }
+    
 		TRACE("GUID_D3DExtendedCaps success");
 	}
-	else if(IsEqualIID(&lpInput->guidInfo, &GUID_ZPixelFormats))
+	else if(IsEqualIID(&lpInput->guidInfo, &GUID_ZPixelFormats) && VMHALenv.ddi >= 6)
 	{
 #pragma pack(push)
 #pragma pack(1)
@@ -490,9 +635,9 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 		} zformats;
 #pragma pack(pop)
 		int i = 0;
-		
+
 		memset(&zformats, 0, sizeof(zformats));
-		
+
 		zformats.pixfmt[i].dwSize             = sizeof(DDPIXELFORMAT);
 		zformats.pixfmt[i].dwFlags            = DDPF_ZBUFFER;
 		zformats.pixfmt[i].dwFourCC           = 0;
@@ -502,7 +647,7 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 		zformats.pixfmt[i].dwStencilBitMask   = 0x0000;
 		zformats.pixfmt[i].dwRGBZBitMask      = 0;
 		i++;
-		
+
 		zformats.pixfmt[i].dwSize             = sizeof(DDPIXELFORMAT);
 		zformats.pixfmt[i].dwFlags            = DDPF_ZBUFFER;
 		zformats.pixfmt[i].dwFourCC           = 0;
@@ -516,20 +661,12 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 		zformats.pixfmt[i].dwSize             = sizeof(DDPIXELFORMAT);
 		zformats.pixfmt[i].dwFlags            = DDPF_ZBUFFER | DDPF_STENCILBUFFER;
 		zformats.pixfmt[i].dwFourCC           = 0;
-		zformats.pixfmt[i].dwZBufferBitDepth  = 32;
+		zformats.pixfmt[i].dwZBufferBitDepth  = 32; // The sum of the z buffer bit depth AND the stencil depth 
 		zformats.pixfmt[i].dwStencilBitDepth  = 8;
 		zformats.pixfmt[i].dwZBitMask         = 0xFFFFFF00;
 		zformats.pixfmt[i].dwStencilBitMask   = 0x000000FF;
 		zformats.pixfmt[i].dwRGBZBitMask      = 0;
 		i++;
-		
-		// The sum of the z buffer bit depth AND the stencil depth 
-		// should be included here
-/*		zformats.pixfmt[2].dwZBufferBitDepth  = 16;
-		zformats.pixfmt[2].dwStencilBitDepth  = 1;
-		zformats.pixfmt[2].dwZBitMask         = 0x7FFF;
-		zformats.pixfmt[2].dwStencilBitMask   = 0x8000;
-		zformats.pixfmt[2].dwRGBZBitMask      = 0;*/
 		
 		zformats.cnt = i;
 		DWORD real_size = sizeof(DWORD) + sizeof(DDPIXELFORMAT)*zformats.cnt;
@@ -539,7 +676,7 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 		lpInput->ddRVal = DD_OK;
 		TRACE("GUID_ZPixelFormats success");
 	}
-	else if (IsEqualIID(&(lpInput->guidInfo), &GUID_D3DParseUnknownCommandCallback)) 
+	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_D3DParseUnknownCommandCallback) && VMHALenv.ddi >= 6) 
 	{
 		mesa3d_entry_t *entry = Mesa3DGet(GetCurrentProcessId(), TRUE);
 		if(entry)
@@ -1005,8 +1142,12 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, VM
 	myGlobalD3DHal.dwNumClipVertices = 0;
 	myGlobalD3DHal.dwNumTextureFormats = (sizeof(myTextureFormats) / sizeof(DDSURFACEDESC));
 	myGlobalD3DHal.lpTextureFormats = &myTextureFormats[0];
-
-	if(VMHALenv.ddi >= 6)
+	
+	if(VMHALenv.ddi >= 7)
+	{
+		myGlobalD3DHal.hwCaps = myCaps7;
+	}
+	else if(VMHALenv.ddi >= 6)
 	{
 		myGlobalD3DHal.hwCaps = myCaps6;
 	}
@@ -1016,6 +1157,12 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, VM
 	
 	lpHALFlags->ddscaps = DDSCAPS_3DDEVICE | DDSCAPS_TEXTURE | DDSCAPS_ZBUFFER | DDSCAPS_MIPMAP;
  	lpHALFlags->zcaps = DDBD_16 | DDBD_32;
+
+/*
+	if(VMHALenv.ddi >= 6)
+	{
+		lpHALFlags->zcaps |= DDBD_24;
+	}*/
 
 	return TRUE;
 }
