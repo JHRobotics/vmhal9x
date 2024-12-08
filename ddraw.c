@@ -276,12 +276,22 @@ DWORD __stdcall Lock32(LPDDHAL_LOCKDATA pld)
 	VMDAHAL_t *ddhal = GetHAL(pld->lpDD);
 	if(IsInFront(ddhal, (void*)pld->lpDDSurface->lpGbl->fpVidMem))
 	{
+#if 0
+		/* idea from sample driver, where they need wait to be done flipping before can be surface locked */
+		uint64_t timestamp = GetTimeTMS();
+		
+		if(timestamp >= last_flip_time)
+		{
+			if((last_flip_time + SCREEN_TIME) >= timestamp)
+			{
+				pld->ddRVal = DDERR_WASSTILLDRAWING;
+				return DDHAL_DRIVER_HANDLED;
+			}
+		}
+#endif
+		TOPIC("READBACK", "LOCK primary");
 		FBHDA_access_begin(0);
 	}
-	
-#ifdef D3DHAL
-	MesaFlushSurface(pld->lpDDSurface->lpGbl->fpVidMem);
-#endif
 	
 	return DDHAL_DRIVER_NOTHANDLED; /* let the lock processed */
 }
@@ -290,8 +300,10 @@ DWORD __stdcall Unlock32(LPDDHAL_UNLOCKDATA pld)
 {
 	TRACE_ENTRY
 	VMDAHAL_t *ddhal = GetHAL(pld->lpDD);
+		
 	if(IsInFront(ddhal, (void*)pld->lpDDSurface->lpGbl->fpVidMem))
 	{
+		TOPIC("READBACK", "UNLOCK primary");
 		FBHDA_access_end(0);
 	}
 

@@ -163,6 +163,8 @@ typedef struct mesa3d_ctx
 		GLuint color_fb;
 		GLuint depth_tex;
 		GLuint depth_fb;
+		GLuint stencil_tex;
+		GLuint stencil_fb;
 		int tmu; /* can be higher than tmu_count, if using extra TMU for FBO operations */
 	} fbo;
 

@@ -224,7 +224,7 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 	globalHal->cb32.Blt = Blt32;
 	globalHal->cb32.GetBltStatus = GetBltStatus32;
 	globalHal->cb32.SetExclusiveMode = SetExclusiveMode32;
-	globalHal->cb32.SetMode = SetMode32;
+//	globalHal->cb32.SetMode = SetMode32;
 #ifdef D3DHAL
 	globalHal->cb32.GetDriverInfo = GetDriverInfo32;
 #endif
@@ -338,6 +338,9 @@ BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpvReserved)
 			InterlockedExchange(&lProcessCount, tmp);
 			
 			dllHinst = hModule;
+#ifdef D3DHAL
+			Mesa3DCleanProc();
+#endif
 			
 			break;
 

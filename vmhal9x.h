@@ -123,6 +123,8 @@ void UpdateCustomMode(VMDAHAL_t *hal);
 /* globals */
 extern VMDAHAL_t *globalHal;
 extern BOOL halVSync;
+extern uint64_t last_flip_time;
+#define SCREEN_TIME ((uint64_t)(10000/60))
 
 /* debug */
 void SetExceptionHandler();

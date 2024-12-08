@@ -23,7 +23,6 @@
  * OTHER DEALINGS IN THE SOFTWARE.                                            *
  *                                                                            *
  ******************************************************************************/
- 
 #include <windows.h>
 #include <ddraw.h>
 #include <ddrawi.h>
@@ -36,10 +35,10 @@
 #include "nocrt.h"
 
 static FBHDA_t *hda = NULL;
-static VMDAHAL_t *hda_hal = NULL;
 
 /**
  * VXD <-> DLL communication
+ * Older version:
  * Application/DLL can communicate standard way by DeviceIoControl call.
  * You need HANDLE to driver, it can created by calling CreateFileA(“\\.\driver-file.vxd”, ...).
  * A good idea is open HANDLE at the beginning, and don’t waste time with CreateFileA
@@ -49,227 +48,162 @@ static VMDAHAL_t *hda_hal = NULL;
  * system calls) and in Windows 95 it is buggy. I solve this with table (in
  * system memory) with process PID and VXD handle pairs.
  *
+ * New version:
+ * Communication to VXD is exported to another DLL which is loaded to program space.
+ * We can check library presense by GetModuleHandle (NULL if not loaded), and
+ * VXD handles from it are now in proccess private space.
+ *
  * If someone, anyone, have better solution don’t be shy and rewrite this!
  *
  **/
-static HANDLE FBHDA_get_vxd(VMDAHAL_t *pHal)
+typedef FBHDA_t *(__cdecl *FBHDA_setup_t)();
+typedef void (__cdecl *FBHDA_access_begin_t)(DWORD flags);
+typedef void (__cdecl *FBHDA_access_end_t)(DWORD flags);
+typedef void (__cdecl *FBHDA_access_rect_t)(DWORD left, DWORD top, DWORD right, DWORD bottom);
+typedef BOOL (__cdecl *FBHDA_swap_t)(DWORD offset);
+
+#define VMDISP9X_LIB "vmdisp9x.dll"
+
+static struct
 {
-	if(pHal == NULL) return FALSE;
-	
-	DWORD pid = GetCurrentProcessId();
-	HANDLE h = INVALID_HANDLE_VALUE;
-	int i = 0;
-	int i_zero = -1;
-	
-	for(i = 0; i < VXD_PAIRS_CNT; i++)
+	HMODULE lib;
+	LONG lock;
+	FBHDA_setup_t pFBHDA_setup;
+	FBHDA_access_begin_t pFBHDA_access_begin;
+	FBHDA_access_end_t pFBHDA_access_end;
+	FBHDA_access_rect_t pFBHDA_access_rect;
+	FBHDA_swap_t pFBHDA_swap;
+} fbhda_lib = {NULL};
+
+static void FBHDA_call_lock()
+{
+	LONG tmp;
+	do
 	{
-		if(pHal->vxd_table[i].pid == pid)
-		{
-			h = (HANDLE)pHal->vxd_table[i].vxd;
-			break;
-		}
-		else if(pHal->vxd_table[i].pid == 0)
-		{
-			if(i_zero < 0)
-			{
-				i_zero = i;
-			}
-		}
-	}
-	
-	if(h == INVALID_HANDLE_VALUE)
+		tmp = InterlockedExchange(&fbhda_lib.lock, 1);
+	} while(tmp == 1);
+}
+
+static void FBHDA_call_unlock()
+{
+	InterlockedExchange(&fbhda_lib.lock, 0);
+}
+
+#define LoadAddress(_n) fbhda_lib.p ## _n = (_n ## _t)GetProcAddress(fbhda_lib.lib, #_n)
+
+static BOOL FBHDA_handle()
+{
+	HMODULE mod = GetModuleHandle(VMDISP9X_LIB);
+	BOOL need_load = TRUE;
+	if(mod)
 	{
-		char strbuf[MAX_PATH];
-		strcpy(strbuf, "\\\\.\\");
-		strcat(strbuf, pHal->pFBHDA32->vxdname);
-		h = CreateFileA(strbuf, 0, 0, NULL, CREATE_NEW, FILE_FLAG_DELETE_ON_CLOSE, 0);
+		if(fbhda_lib.lib == mod)
+		{
+			need_load = FALSE;
+		}
+		else
+		{
+			fbhda_lib.lib = mod;
+		}
 	}
 	else
 	{
-		TRACE("Reuse VXD for PID = %d", pid);
-		return h;
+		fbhda_lib.lib = LoadLibraryA(VMDISP9X_LIB);
 	}
 	
-	if(i < VXD_PAIRS_CNT)
+	if(fbhda_lib.lib)
 	{
-		pHal->vxd_table[i].vxd = (DWORD)h;
-	}
-	else if(i_zero >= 0)
-	{
-		pHal->vxd_table[i_zero].vxd = (DWORD)h;
-		pHal->vxd_table[i_zero].pid = pid;
-	}
-	
-	TRACE("New VXD for PID = %d", pid);
-	
-	return h;
-}
-
-static BOOL process_exists(DWORD pid)
-{
-	BOOL rc = FALSE;
-	HANDLE proc = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, pid);
-	if(proc != NULL)
-	{
-		DWORD code;
-		
-		rc = TRUE;
-		if(GetExitCodeProcess(proc, &code))
+		if(need_load)
 		{
-			if(code != STILL_ACTIVE)
-			{
-				rc = FALSE;
-			}
+			LoadAddress(FBHDA_setup);
+			LoadAddress(FBHDA_access_begin);
+			LoadAddress(FBHDA_access_end);
+			LoadAddress(FBHDA_access_rect);
+			LoadAddress(FBHDA_swap);
 		}
 
-		CloseHandle(proc);
+		return TRUE;
 	}
 	
-	return rc;
-}
-
-static void FBHDA_clean_vxd_table(VMDAHAL_t *pHal)
-{
-	int i;
-	DWORD current_pid = GetCurrentProcessId();
-	
-	for(i = 0; i < VXD_PAIRS_CNT; i++)
-	{
-		if(pHal->vxd_table[i].pid != 0)
-		{
-			if((!process_exists(pHal->vxd_table[i].pid)) ||
-				(current_pid == pHal->vxd_table[i].pid))
-				/* NOTE: if is process in table with same PID as current, this is
-				 zombie and current proccess reuse its PID.
-				 */
-			{
-				TRACE("cleaned pid=%X", pHal->vxd_table[i].pid);
-				pHal->vxd_table[i].pid = 0;
-				pHal->vxd_table[i].vxd = (DWORD)INVALID_HANDLE_VALUE;
-			}
-		}
-	}
+	return FALSE;
 }
 
 BOOL FBHDA_load_ex(VMDAHAL_t *pHal)
 {
 	TRACE_ENTRY
+	BOOL rc = FALSE;
 	
-	if(pHal->FBHDA_version != 2024)
+	FBHDA_call_lock();
+	rc = FBHDA_handle();
+	if(rc)
 	{
-		ERR("Wrong version: %d != 2024", pHal->FBHDA_version);
-		return FALSE;
+		hda = fbhda_lib.pFBHDA_setup();
 	}
 	
-	if(pHal->pFBHDA32->cb != sizeof(FBHDA_t))
-	{
-		ERR("Wrong FBHDA size: %d (expected %d)", pHal->pFBHDA32->cb, sizeof(FBHDA_t));
-		return FALSE;
-	}
+	FBHDA_call_unlock();
 	
-	if(pHal->pFBHDA32->version != API_3DACCEL_VER)
-	{
-		ERR("Wrong FBHDA version: %d (header version is %d)", pHal->pFBHDA32->version, API_3DACCEL_VER);
-		return FALSE;
-	}
-	
-	FBHDA_clean_vxd_table(pHal);
-	
-	hda = pHal->pFBHDA32;
-	hda_hal = pHal;
-	
-	return TRUE;
+	return rc;
 }
 
 void FBHDA_free()
 {
 	TRACE_ENTRY
 	
-	if(hda_hal == NULL) return;
-	
-	DWORD pid = GetCurrentProcessId();
-	int i;
-			
-	for(i = 0; i < VXD_PAIRS_CNT; i++)
-	{
-		if(hda_hal->vxd_table[i].pid == pid)
-		{
-			if(hda_hal->vxd_table[i].vxd != (DWORD)INVALID_HANDLE_VALUE)
-			{
-				CloseHandle((HANDLE)hda_hal->vxd_table[i].vxd);
-			}
-			
-			hda_hal->vxd_table[i].vxd = (DWORD)INVALID_HANDLE_VALUE;
-			hda_hal->vxd_table[i].pid = 0;
-			break;
-		}
-	}
+	// ...
 }
 
 FBHDA_t *FBHDA_setup()
 {
-	return hda;
+	TRACE_ENTRY
+	
+	FBHDA_t *fbhda = NULL;
+	
+	FBHDA_call_lock();
+	if(FBHDA_handle())
+	{
+		fbhda = fbhda_lib.pFBHDA_setup();
+	}
+	FBHDA_call_unlock();
+	
+	return fbhda;
 }
 
-/* 
- * multiple locking is fine, but we can save some time
- * if we avoid it.
- */
-static volatile int fbhda_locks_cnt = 0;
 
 void FBHDA_access_begin(DWORD flags)
 {
 	TRACE_ENTRY
 	
-	if(fbhda_locks_cnt++ == 0)
+	FBHDA_call_lock();
+	if(FBHDA_handle())
 	{
-		HANDLE h = FBHDA_get_vxd(hda_hal);
-		
-		if(h != INVALID_HANDLE_VALUE)
-		{
-			DeviceIoControl(h, OP_FBHDA_ACCESS_BEGIN, &flags, sizeof(DWORD), NULL, 0, NULL, NULL);
-		}
+		fbhda_lib.pFBHDA_access_begin(flags);
 	}
+	FBHDA_call_unlock();
 }
 
 void FBHDA_access_end(DWORD flags)
 {
 	TRACE_ENTRY
 	
-	if(--fbhda_locks_cnt <= 0)
+	FBHDA_call_lock();
+	if(FBHDA_handle())
 	{
-		HANDLE h = FBHDA_get_vxd(hda_hal);
-		
-		if(h != INVALID_HANDLE_VALUE)
-		{
-			DeviceIoControl(h, OP_FBHDA_ACCESS_END, &flags, sizeof(DWORD), NULL, 0, NULL, NULL);
-		}
-		
-		if(fbhda_locks_cnt < 0)
-		{
-			fbhda_locks_cnt = 0;
-		}
+		fbhda_lib.pFBHDA_access_end(flags);
 	}
+	FBHDA_call_unlock();
 }
 
 BOOL FBHDA_swap(DWORD offset)
 {
 	TRACE_ENTRY
+	BOOL rc = FALSE;
 	
-	DWORD result = 0;
-	HANDLE h = FBHDA_get_vxd(hda_hal);
-	
-	if(h != INVALID_HANDLE_VALUE)
-	{	
-		if(DeviceIoControl(h, OP_FBHDA_SWAP,
-			&offset, sizeof(DWORD), &result, sizeof(DWORD),
-			NULL, NULL))
-		{
-			return result == 0 ? FALSE : TRUE;
-		}
+	FBHDA_call_lock();
+	if(FBHDA_handle())
+	{
+		rc = fbhda_lib.pFBHDA_swap(offset);
 	}
+	FBHDA_call_unlock();
 	
-	return FALSE;
+	return rc;
 }
-
-

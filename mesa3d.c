@@ -47,40 +47,40 @@ static mesa3d_entry_t *mesa_entry_ht[MESA_HT_MOD] = {};
 #define MESA_API(_n, _t, _p) \
 	mesa->proc.p ## _n = (_n ## _h)mesa->GetProcAddress(#_n); if(!mesa->proc.p ## _n){valid = FALSE; break;}
 
-static mesa3d_entry_t *Mesa3DCreate(DWORD pid)
+static mesa3d_entry_t *Mesa3DCreate(DWORD pid, mesa3d_entry_t *mesa)
 {
-	mesa3d_entry_t *mesa = HeapAlloc(hSharedHeap, HEAP_ZERO_MEMORY, sizeof(mesa3d_entry_t));
+	mesa3d_entry_t *orig_next = mesa->next;
+	memset(mesa, 0, sizeof(mesa3d_entry_t));
 	
-	if(mesa)
+	mesa->pid = pid;
+	mesa->next = orig_next;
+
+	BOOL valid = TRUE;
+
+	do
 	{
-		mesa->pid = pid;
-		mesa->next = NULL;
-		
-		BOOL valid = TRUE;
-		
-		do
+		TRACE("LoadLibraryA(%s)", MESA_LIB_NAME);
+		mesa->lib = LoadLibraryA(MESA_LIB_NAME);
+		if(!mesa->lib)
 		{
-			mesa->lib = LoadLibraryA(MESA_LIB_NAME);
-			if(!mesa->lib)
-			{
-				valid = FALSE; break;
-			}
-			
-			mesa->GetProcAddress = (OSMesaGetProcAddress_h)GetProcAddress(mesa->lib, "OSMesaGetProcAddress");
-			if(!mesa->GetProcAddress)
-			{
-				valid = FALSE; break;
-			}
-			
-			#include "mesa3d_api.h"
-			
-		} while(0);
-		
-		if(!valid)
-		{
-			HeapFree(hSharedHeap, 0, mesa);
-			mesa = NULL;
+			valid = FALSE; break;
 		}
+
+		mesa->GetProcAddress = (OSMesaGetProcAddress_h)GetProcAddress(mesa->lib, "OSMesaGetProcAddress");
+		if(!mesa->GetProcAddress)
+		{
+			valid = FALSE; break;
+		}
+			
+		#include "mesa3d_api.h"
+			
+	} while(0);
+
+	if(!valid)
+	{
+		ERR("Can't load library %s", MESA_LIB_NAME);
+
+		mesa = NULL;
 	}
 	
 	return mesa;
@@ -100,20 +100,33 @@ mesa3d_entry_t *Mesa3DGet(DWORD pid, BOOL create)
 	{
 		if(entry->pid == pid)
 		{
-			return entry;
+			HMODULE h_test = GetModuleHandleA(MESA_LIB_NAME);
+			if(h_test)
+			{
+				return entry;
+			}
+			
+			ERR("Reloading mesa3d.dll!");
+			return Mesa3DCreate(pid, entry);
 		}
-		
+
 		entry = entry->next;
 	}
 	
 	if(create)
 	{
-		mesa3d_entry_t *new_entry = Mesa3DCreate(pid);
+		mesa3d_entry_t *mem = HeapAlloc(hSharedHeap, HEAP_ZERO_MEMORY, sizeof(mesa3d_entry_t));
+		mesa3d_entry_t *new_entry = Mesa3DCreate(pid, mem);
+		
 		if(new_entry)
 		{
 			new_entry->next = mesa_entry_ht[pid % MESA_HT_MOD];
 			mesa_entry_ht[pid % MESA_HT_MOD] = new_entry;
 			return new_entry;
+		}
+		else
+		{
+			HeapFree(hSharedHeap, 0, mem);
 		}
 	}
 	
@@ -127,7 +140,6 @@ void Mesa3DFree(DWORD pid)
 	
 	while(entry != NULL)
 	{
-		mesa3d_entry_t *clean_ptr = NULL;
 		if(entry->pid == pid)
 		{
 			if(prev)
@@ -138,19 +150,18 @@ void Mesa3DFree(DWORD pid)
 			{
 				mesa_entry_ht[pid % MESA_HT_MOD] = entry->next;
 			}
-			MesaDestroyAllCtx(entry);
+
+			mesa3d_entry_t *clean_ptr = entry;
+			entry = entry->next;
 			
-			FreeLibrary(entry->lib);
-			clean_ptr = entry;
-		}
-	
-		prev = entry;
-		entry = entry->next;
-		
-		if(clean_ptr)
-		{
+			MesaDestroyAllCtx(clean_ptr);
+			FreeLibrary(clean_ptr->lib);
 			HeapFree(hSharedHeap, 0, clean_ptr);
-			clean_ptr = NULL;
+		}
+		else
+		{
+			prev = entry;
+			entry = entry->next;
 		}
 	}
 }
@@ -456,24 +467,25 @@ SurfaceInfo_t *MesaAttachSurface(LPDDRAWI_DDRAWSURFACE_INT surf)
 /* only needs for DX6+ */
 void MesaStencilApply(mesa3d_ctx_t *ctx)
 {
+	mesa3d_entry_t *entry = ctx->entry;
 	if(ctx->depth_stencil && ctx->state.stencil.enabled)
 	{
-		ctx->entry->proc.pglEnable(GL_STENCIL_TEST);
-		ctx->entry->proc.pglStencilFunc(
+		GL_CHECK(entry->proc.pglEnable(GL_STENCIL_TEST));
+		GL_CHECK(entry->proc.pglStencilFunc(
 			ctx->state.stencil.func,
 			ctx->state.stencil.ref,
 			ctx->state.stencil.mask
-		);
-		ctx->entry->proc.pglStencilOp(
+		));
+		GL_CHECK(entry->proc.pglStencilOp(
 			ctx->state.stencil.sfail,
  			ctx->state.stencil.dpfail,
  			ctx->state.stencil.dppass
- 		);
-		ctx->entry->proc.pglStencilMask(ctx->state.stencil.writemask);
+ 		));
+		GL_CHECK(entry->proc.pglStencilMask(ctx->state.stencil.writemask));
 	}
 	else
 	{
-		ctx->entry->proc.pglDisable(GL_STENCIL_TEST);
+		GL_CHECK(entry->proc.pglDisable(GL_STENCIL_TEST));
 	}
 }
 
@@ -481,10 +493,12 @@ static void MesaDepthReeval(mesa3d_ctx_t *ctx)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 	ctx->depth_stencil = FALSE;
+	ctx->state.stencil.enabled = FALSE;
+	
 	if(ctx->depth)
 	{
-		entry->proc.pglEnable(GL_DEPTH_TEST);
-		entry->proc.pglDepthMask(GL_TRUE);
+		GL_CHECK(entry->proc.pglEnable(GL_DEPTH_TEST));
+		GL_CHECK(entry->proc.pglDepthMask(GL_TRUE));
 		ctx->state.depth.enabled = TRUE;
 		ctx->state.depth.writable = TRUE;
 		
@@ -495,12 +509,12 @@ static void MesaDepthReeval(mesa3d_ctx_t *ctx)
 	}
 	else
 	{
-		entry->proc.pglDisable(GL_DEPTH_TEST);
-		entry->proc.pglDepthMask(GL_FALSE);
+		GL_CHECK(entry->proc.pglDisable(GL_DEPTH_TEST));
+		GL_CHECK(entry->proc.pglDepthMask(GL_FALSE));
 		ctx->state.depth.enabled = FALSE;
 		ctx->state.depth.writable = FALSE;
 	}
-
+	
 	MesaStencilApply(ctx);
 }
 
@@ -558,12 +572,12 @@ mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry,
 				ctx->state.sw = width;
 				ctx->state.sh = height;
 				
-				TOPIC("GL", "OSMesaCreateContextExt(0x%X, %d, 0, 0, NULL)", ostype, bpp_depth);
+				TOPIC("RS", "OSMesaCreateContextExt(0x%X, %d, 0, 0, NULL)", ostype, bpp_depth);
 				
 				/* create context every time with 24bit depth buffer and 8bit stencil buffer,
 				 * because we can't dynamicaly change depth and stencil plane.
 				 */
-				ctx->mesactx = entry->proc.pOSMesaCreateContextExt(ostype, /*bpp_depth*/32, 8, 0, NULL);
+				ctx->mesactx = entry->proc.pOSMesaCreateContextExt(ostype, bpp_depth, 8, 0, NULL);
 				if(ctx->mesactx == NULL)
 					break;
 
@@ -578,8 +592,10 @@ mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry,
 				entry->proc.pOSMesaPixelStore(OSMESA_Y_UP, 1);
 				entry->proc.pglGenTextures(1, &ctx->fbo.color_tex);
 				entry->proc.pglGenTextures(1, &ctx->fbo.depth_tex);
+				entry->proc.pglGenTextures(1, &ctx->fbo.stencil_tex);
 				entry->proc.pglGenFramebuffers(1, &ctx->fbo.color_fb);
 				entry->proc.pglGenFramebuffers(1, &ctx->fbo.depth_fb);
+				entry->proc.pglGenFramebuffers(1, &ctx->fbo.stencil_fb);
 				
 				ctx->thread_id = GetCurrentThreadId();
 				
@@ -648,6 +664,8 @@ BOOL MesaSetTarget(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_INT dds, LPDDRAWI_DD
 		return FALSE;
 	}
 	
+	GL_CHECK(entry->proc.pglViewport(0, 0, width, height));
+	
 	TOPIC("GL", "New target bpp %d, bpz %d", bpp, bpp_depth);
 	
 	ctx->front_bpp = bpp;
@@ -666,7 +684,7 @@ BOOL MesaSetTarget(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_INT dds, LPDDRAWI_DD
 }
 
 void MesaDestroyCtx(mesa3d_ctx_t *ctx)
-{	
+{
 	int id = ctx->id;
 	mesa3d_entry_t *entry = ctx->entry;
 	
@@ -872,19 +890,7 @@ mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_INT
 						tex->colorkey = TRUE;
 					}
 				}
-				
-/*				if(tex->colorkey)
-				{
-					MesaBufferUploadTextureChroma(ctx, tex, 0,
-						surf->lpLcl->ddckCKSrcBlt.dwColorSpaceLowValue,
-						surf->lpLcl->ddckCKSrcBlt.dwColorSpaceHighValue);
-				}
-				else
-				{
-					MesaBufferUploadTexture(ctx, tex, 0);
-				}
-				
-				SurfaceInfoMakeClean(tex->data_ptr[0]);*/
+
 				SurfaceInfoMakeDirty(tex->data_ptr[0]);
 				
 				/* mipmaps */	
@@ -900,21 +906,7 @@ mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_INT
 						if(!item) break;
 						
 						tex->data_ptr[level] = item->lpAttached->lpGbl->fpVidMem;
-						
-/*						if(!tex->colorkey)
-						{
-							MesaBufferUploadTexture(ctx, tex, level);
-						}
-						else
-						{
-							MesaBufferUploadTextureChroma(ctx, tex, level,
-								surf->lpLcl->ddckCKSrcBlt.dwColorSpaceLowValue,
-								surf->lpLcl->ddckCKSrcBlt.dwColorSpaceHighValue
-							);
-						}
-						
-						SurfaceInfoMakeClean(tex->data_ptr[level]);*/
-						
+
 						item = item->lpAttached->lpAttachList;
 					}
 					
@@ -1018,7 +1010,8 @@ void MesaDestroyTexture(mesa3d_texture_t *tex)
 	if(tex->alloc)
 	{
 		int i;
-		tex->ctx->entry->proc.pglDeleteTextures(1, &tex->gltex);
+		mesa3d_entry_t *entry = tex->ctx->entry;
+		GL_CHECK(entry->proc.pglDeleteTextures(1, &tex->gltex));
 		tex->alloc = FALSE;
 		
 		for(i = 0; i < tex->ctx->tmu_count; i++)
@@ -1167,6 +1160,8 @@ static void MesaSetFog(mesa3d_ctx_t *ctx)
 #define TSS_DWORD (*((DWORD*)value))
 #define TSS_FLOAT (*((D3DVALUE*)value))
 
+#define RENDERSTATE(_c) case _c: TOPIC("RS", "%s=0x%X", #_c, TSS_DWORD);
+
 void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value)
 {
 	if(tmu >= ctx->tmu_count)
@@ -1179,81 +1174,81 @@ void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value)
 	switch(state)
 	{
 		/* texture resource */
-		case D3DTSS_TEXTUREMAP: 
+		RENDERSTATE(D3DTSS_TEXTUREMAP)
 			ts->image = MESA_HANDLE_TO_TEX(TSS_DWORD);
 			ts->reload = TRUE;
 			break;
 		/* D3DTEXTUREOP - per-stage blending controls for color channels */
-		case D3DTSS_COLOROP:
+		RENDERSTATE(D3DTSS_COLOROP)
 			ts->color_op = TSS_DWORD;
 			ts->dx6_blend = TRUE;
 			ts->reload = TRUE;
 			break;
 		/* D3DTA_* (texture arg) */
-		case D3DTSS_COLORARG1:
+		RENDERSTATE(D3DTSS_COLORARG1)
 			ts->color_arg1 = TSS_DWORD;
 			ts->dx6_blend = TRUE;
 			ts->reload = TRUE;
 			break;
 		/* D3DTA_* (texture arg) */
-		case D3DTSS_COLORARG2:
+		RENDERSTATE(D3DTSS_COLORARG2)
 			ts->color_arg2 = TSS_DWORD;
 			ts->dx6_blend = TRUE;
 			ts->reload = TRUE;
 			break;
 		/* D3DTEXTUREOP - per-stage blending controls for alpha channel */
-		case D3DTSS_ALPHAOP:
+		RENDERSTATE(D3DTSS_ALPHAOP)
 			ts->alpha_op = TSS_DWORD;
 			ts->dx6_blend = TRUE;
 			ts->reload = TRUE;
 			break;
 		/* D3DTA_* (texture arg) */
-		case D3DTSS_ALPHAARG1:
+		RENDERSTATE(D3DTSS_ALPHAARG1)
 			ts->alpha_arg1 = TSS_DWORD;
 			ts->dx6_blend = TRUE;
 			ts->reload = TRUE;
 			break;
 		/* D3DTA_* (texture arg) */
-		case D3DTSS_ALPHAARG2:
+		RENDERSTATE(D3DTSS_ALPHAARG2)
 			ts->alpha_arg2 = TSS_DWORD;
 			ts->dx6_blend = TRUE;
 			ts->reload = TRUE;
 			break;
 		/* D3DVALUE (bump mapping matrix) */
-		case D3DTSS_BUMPENVMAT00:
+		RENDERSTATE(D3DTSS_BUMPENVMAT00)
 			break;
 		/* D3DVALUE (bump mapping matrix) */
-		case D3DTSS_BUMPENVMAT01:
+		RENDERSTATE(D3DTSS_BUMPENVMAT01)
 			break;
 		/* D3DVALUE (bump mapping matrix) */
-		case D3DTSS_BUMPENVMAT10:
+		RENDERSTATE(D3DTSS_BUMPENVMAT10)
 			break;
 		/* D3DVALUE (bump mapping matrix) */
-		case D3DTSS_BUMPENVMAT11:
+		RENDERSTATE(D3DTSS_BUMPENVMAT11)
 			break;
 		/* identifies which set of texture coordinates index this texture */
-		case D3DTSS_TEXCOORDINDEX:
+		RENDERSTATE(D3DTSS_TEXCOORDINDEX)
 			ts->coordindex = TSS_DWORD;
 			TOPIC("TEXCOORDINDEX", "TEXCOORDINDEX %d for unit %d", TSS_DWORD, tmu);
 			break;
 		/* D3DTEXTUREADDRESS for both coordinates */
-		case D3DTSS_ADDRESS:
+		RENDERSTATE(D3DTSS_ADDRESS)
 			ts->texaddr_u = (D3DTEXTUREADDRESS)TSS_DWORD;
 			ts->texaddr_v = (D3DTEXTUREADDRESS)TSS_DWORD;
 			ts->update = TRUE;
 			break;
 		/* D3DTEXTUREADDRESS for U coordinate */
-		case D3DTSS_ADDRESSU:
+		RENDERSTATE(D3DTSS_ADDRESSU)
 			ts->texaddr_u = (D3DTEXTUREADDRESS)TSS_DWORD;
 			ts->update = TRUE;
 			break;
 		/* D3DTEXTUREADDRESS for V coordinate */
-		case D3DTSS_ADDRESSV:
+		RENDERSTATE(D3DTSS_ADDRESSV)
 			ts->texaddr_v = (D3DTEXTUREADDRESS)TSS_DWORD;
 			ts->update = TRUE;
 			break;
 		/* D3DCOLOR */
-		case D3DTSS_BORDERCOLOR:
+		RENDERSTATE(D3DTSS_BORDERCOLOR)
 		{
 			D3DCOLOR c = TSS_DWORD;
 			MESA_D3DCOLOR_TO_FV(c, ts->border);
@@ -1261,43 +1256,45 @@ void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value)
 			break;
 		}
 		/* D3DTEXTUREMAGFILTER filter to use for magnification */
-		case D3DTSS_MAGFILTER:
+		RENDERSTATE(D3DTSS_MAGFILTER)
 			ts->dx_mag = (D3DTEXTUREMAGFILTER)TSS_DWORD;
 			ts->dx6_filter = TRUE;
 			ts->update = TRUE;
 			break;
 		/* D3DTEXTUREMINFILTER filter to use for minification */
-		case D3DTSS_MINFILTER:
+		RENDERSTATE(D3DTSS_MINFILTER)
 			ts->dx_min = (D3DTEXTUREMINFILTER)TSS_DWORD;
 			ts->dx6_filter = TRUE;
 			ts->update = TRUE;
 			break;
 		/* D3DTEXTUREMIPFILTER filter to use between mipmaps during minification */
-		case D3DTSS_MIPFILTER:
+		RENDERSTATE(D3DTSS_MIPFILTER)
 			ts->dx_mip = (D3DTEXTUREMIPFILTER)TSS_DWORD;
 			ts->dx6_filter = TRUE;
 			ts->update = TRUE;
 			break;
 		/* D3DVALUE Mipmap LOD bias */
-		case D3DTSS_MIPMAPLODBIAS:
+		RENDERSTATE(D3DTSS_MIPMAPLODBIAS)
 			break;
 		/* DWORD 0..(n-1) LOD index of largest map to use (0 == largest) */
-		case D3DTSS_MAXMIPLEVEL:
+		RENDERSTATE(D3DTSS_MAXMIPLEVEL)
 			break;
 		/* DWORD maximum anisotropy */
-		case D3DTSS_MAXANISOTROPY:
+		RENDERSTATE(D3DTSS_MAXANISOTROPY)
 			break;
 		/* D3DVALUE scale for bump map luminance */
-		case D3DTSS_BUMPENVLSCALE:
+		RENDERSTATE(D3DTSS_BUMPENVLSCALE)
 			break;
 		/* D3DVALUE offset for bump map luminance */
-		case D3DTSS_BUMPENVLOFFSET:
+		RENDERSTATE(D3DTSS_BUMPENVLOFFSET)
 			break;
 		/* D3DTEXTURETRANSFORMFLAGS controls texture transform (DX7) */
-		case D3DTSS_TEXTURETRANSFORMFLAGS:
+		RENDERSTATE(D3DTSS_TEXTURETRANSFORMFLAGS)
 			break;
 	} // switch
 }
+
+#undef RENDERSTATE
 
 /* from DDK */
 #define IS_OVERRIDE(type)       ((DWORD)(type) > D3DSTATE_OVERRIDE_BIAS)
@@ -1321,6 +1318,8 @@ void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value)
 			if(ctx->state.overrides[wi] & (1 << bi)){return;} \
 		}\
 	}while(0)
+
+#define RENDERSTATE(_c) case _c: TOPIC("RS", "%s=0x%X", #_c, state->dwArg[0]);
 
 void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state)
 {
@@ -1346,7 +1345,7 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state)
 	
 	switch(type)
 	{
-		case D3DRENDERSTATE_TEXTUREHANDLE: /* Texture handle */
+		RENDERSTATE(D3DRENDERSTATE_TEXTUREHANDLE) /* Texture handle */
 			if(state->dwArg[0] != 0)
 			{
 				ctx->state.tmu[0].image = MESA_HANDLE_TO_TEX(state->dwArg[0]);
@@ -1358,24 +1357,24 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state)
 			TRACE("D3DRENDERSTATE_TEXTUREHANDLE = %X", state->dwArg[0]);
 			ctx->state.tmu[0].reload = TRUE;
 			break;
-		case D3DRENDERSTATE_ANTIALIAS: /* D3DANTIALIASMODE */
+		RENDERSTATE(D3DRENDERSTATE_ANTIALIAS) /* D3DANTIALIASMODE */
 			// !
 			break;
-		case D3DRENDERSTATE_TEXTUREADDRESS: /* D3DTEXTUREADDRESS	*/
+		RENDERSTATE(D3DRENDERSTATE_TEXTUREADDRESS) /* D3DTEXTUREADDRESS	*/
 			ctx->state.tmu[0].texaddr_u = state->dwArg[0];
 			ctx->state.tmu[0].texaddr_v = state->dwArg[0];
 			ctx->state.tmu[0].update = TRUE;
 			break;
-		case D3DRENDERSTATE_TEXTUREPERSPECTIVE: /* TRUE for perspective correction */
+		RENDERSTATE(D3DRENDERSTATE_TEXTUREPERSPECTIVE) /* TRUE for perspective correction */
 			/* nop */
 			break;
-		case D3DRENDERSTATE_WRAPU: /* TRUE for wrapping in u */
+		RENDERSTATE(D3DRENDERSTATE_WRAPU) /* TRUE for wrapping in u */
 			/* nop */
 			break;
-		case D3DRENDERSTATE_WRAPV: /* TRUE for wrapping in v */
+		RENDERSTATE(D3DRENDERSTATE_WRAPV) /* TRUE for wrapping in v */
 			/* nop */
 			break;
-		case D3DRENDERSTATE_ZENABLE: /* TRUE to enable z test */
+		RENDERSTATE(D3DRENDERSTATE_ZENABLE) /* TRUE to enable z test */
 			if(ctx->depth)
 			{
 				if(state->dwArg[0] == 0)
@@ -1390,7 +1389,7 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state)
 				}
 			}
 			break;
-		case D3DRENDERSTATE_FILLMODE: /* D3DFILL_MODE	*/
+		RENDERSTATE(D3DRENDERSTATE_FILLMODE) /* D3DFILL_MODE	*/
 			switch((D3DFILLMODE)state->dwArg[0])
 			{
 				case D3DFILL_POINT:
@@ -1405,7 +1404,7 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state)
 					break;
 			}
 			break;
-		case D3DRENDERSTATE_SHADEMODE: /* D3DSHADEMODE */
+		RENDERSTATE(D3DRENDERSTATE_SHADEMODE) /* D3DSHADEMODE */
 			switch((D3DSHADEMODE)state->dwArg[0])
 			{
         case D3DSHADE_FLAT:
@@ -1419,19 +1418,19 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state)
 					break;
 			}
 			break;
-		case D3DRENDERSTATE_LINEPATTERN: /* D3DLINEPATTERN */
+		RENDERSTATE(D3DRENDERSTATE_LINEPATTERN) /* D3DLINEPATTERN */
 			// !
 			break;
-		case D3DRENDERSTATE_MONOENABLE: /* TRUE to enable mono rasterization */
+		RENDERSTATE(D3DRENDERSTATE_MONOENABLE) /* TRUE to enable mono rasterization */
 			/* nop */
 			break;
-		case D3DRENDERSTATE_ROP2: /* ROP2 */
+		RENDERSTATE(D3DRENDERSTATE_ROP2) /* ROP2 */
 			/* nop */
 			break;
-		case D3DRENDERSTATE_PLANEMASK: /* DWORD physical plane mask */
+		RENDERSTATE(D3DRENDERSTATE_PLANEMASK) /* DWORD physical plane mask */
 			/* nop */
 			break;
-		case D3DRENDERSTATE_ZWRITEENABLE: /* TRUE to enable z writes */
+		RENDERSTATE(D3DRENDERSTATE_ZWRITEENABLE) /* TRUE to enable z writes */
 			if(ctx->depth)
 			{
 				if(state->dwArg[0] != 0)
@@ -1446,7 +1445,7 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state)
 				}
 			}
 			break;
-		case D3DRENDERSTATE_ALPHATESTENABLE: /* TRUE to enable alpha tests */
+		RENDERSTATE(D3DRENDERSTATE_ALPHATESTENABLE) /* TRUE to enable alpha tests */
 			TOPIC("BLEND", "D3DRENDERSTATE_ALPHATESTENABLE = 0x%X", state->dwArg[0]);
 			if(state->dwArg[0] != 0)
 			{
@@ -1457,18 +1456,18 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state)
 				ctx->entry->proc.pglDisable(GL_ALPHA_TEST);
 			}
 			break;
-		case D3DRENDERSTATE_LASTPIXEL: /* TRUE for last-pixel on lines */
+		RENDERSTATE(D3DRENDERSTATE_LASTPIXEL) /* TRUE for last-pixel on lines */
 			/* nop */
 			break;
-		case D3DRENDERSTATE_TEXTUREMAG: /* D3DTEXTUREFILTER */
+		RENDERSTATE(D3DRENDERSTATE_TEXTUREMAG) /* D3DTEXTUREFILTER */
 			ctx->state.tmu[0].texmag = GetGLTexFilter((D3DTEXTUREFILTER)state->dwArg[0]);
 			ctx->state.tmu[0].update = TRUE;
 			break;
-		case D3DRENDERSTATE_TEXTUREMIN: /* D3DTEXTUREFILTER */
+		RENDERSTATE(D3DRENDERSTATE_TEXTUREMIN) /* D3DTEXTUREFILTER */
 			ctx->state.tmu[0].texmin = GetGLTexFilter((D3DTEXTUREFILTER)state->dwArg[0]);
 			ctx->state.tmu[0].update = TRUE;
 			break;
-		case D3DRENDERSTATE_SRCBLEND: /* D3DBLEND */
+		RENDERSTATE(D3DRENDERSTATE_SRCBLEND) /* D3DBLEND */
 		{
 			TOPIC("BLEND", "D3DRENDERSTATE_SRCBLEND = 0x%X", state->dwArg[0]);
 			D3DBLEND dxblend = (D3DBLEND)state->dwArg[0];
@@ -1493,17 +1492,17 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state)
 			ctx->entry->proc.pglBlendFunc(ctx->state.blend_sfactor, ctx->state.blend_dfactor);
 			break;
 		}
-		case D3DRENDERSTATE_DESTBLEND: /* D3DBLEND */
+		RENDERSTATE(D3DRENDERSTATE_DESTBLEND) /* D3DBLEND */
 			TOPIC("BLEND", "D3DRENDERSTATE_DESTBLEND = 0x%X", state->dwArg[0]);
 			ctx->state.blend_dfactor = GetBlendFactor((D3DBLEND)state->dwArg[0]);
 			
 			ctx->entry->proc.pglBlendFunc(ctx->state.blend_sfactor, ctx->state.blend_dfactor);
 			break;
-		case D3DRENDERSTATE_TEXTUREMAPBLEND: /* D3DTEXTUREBLEND */
+		RENDERSTATE(D3DRENDERSTATE_TEXTUREMAPBLEND) /* D3DTEXTUREBLEND */
 			ctx->state.tmu[0].texblend = (D3DTEXTUREBLEND)state->dwArg[0];
 			ctx->state.tmu[0].update = TRUE;
 			break;
-		case D3DRENDERSTATE_CULLMODE: /* D3DCULL */
+		RENDERSTATE(D3DRENDERSTATE_CULLMODE) /* D3DCULL */
 			switch(state->dwArg[0])
 			{
 				case D3DCULL_NONE:
@@ -1519,10 +1518,10 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state)
 					break;
 			}
 			break;
-		case D3DRENDERSTATE_ZFUNC: /* D3DCMPFUNC */
+		RENDERSTATE(D3DRENDERSTATE_ZFUNC) /* D3DCMPFUNC */
 			ctx->entry->proc.pglDepthFunc(GetGLCmpFunc(state->dwArg[0]));
 			break;
-		case D3DRENDERSTATE_ALPHAREF: /* D3DFIXED */
+		RENDERSTATE(D3DRENDERSTATE_ALPHAREF) /* D3DFIXED */
 			TOPIC("BLEND", "D3DRENDERSTATE_ALPHAREF = 0x%X", state->dwArg[0]);
 			ctx->state.alpharef = (GLclampf)(state->dwArg[0]/255.0f);
 			if(ctx->state.alphafunc != 0)
@@ -1530,12 +1529,12 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state)
 				ctx->entry->proc.pglAlphaFunc(ctx->state.alphafunc, ctx->state.alpharef);
 			}
 			break;
-		case D3DRENDERSTATE_ALPHAFUNC: /* D3DCMPFUNC */
+		RENDERSTATE(D3DRENDERSTATE_ALPHAFUNC) /* D3DCMPFUNC */
 			TOPIC("BLEND", "D3DRENDERSTATE_ALPHAFUNC = 0x%X", state->dwArg[0]);
 			ctx->state.alphafunc = GetGLCmpFunc(state->dwArg[0]);
 			ctx->entry->proc.pglAlphaFunc(ctx->state.alphafunc, ctx->state.alpharef);
 			break;
-		case D3DRENDERSTATE_DITHERENABLE: /* TRUE to enable dithering */
+		RENDERSTATE(D3DRENDERSTATE_DITHERENABLE) /* TRUE to enable dithering */
 			if(state->dwArg[0])
 			{
 				ctx->entry->proc.pglEnable(GL_DITHER);
@@ -1545,7 +1544,7 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state)
 				ctx->entry->proc.pglDisable(GL_DITHER);
 			}
 			break;
-		case D3DRENDERSTATE_ALPHABLENDENABLE: /* TRUE to enable alpha blending */
+		RENDERSTATE(D3DRENDERSTATE_ALPHABLENDENABLE) /* TRUE to enable alpha blending */
 			TOPIC("BLEND", "D3DRENDERSTATE_ALPHABLENDENABLE = 0x%X", state->dwArg[0]);
 			if(state->dwArg[0])
 			{
@@ -1556,12 +1555,12 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state)
 				ctx->entry->proc.pglDisable(GL_BLEND);
 			}
 			break;
-		case D3DRENDERSTATE_FOGENABLE: /* TRUE to enable fog */
+		RENDERSTATE(D3DRENDERSTATE_FOGENABLE) /* TRUE to enable fog */
 			ctx->state.fog.enabled = state->dwArg[0] == 0 ? FALSE : TRUE;
 			TOPIC("FOG", "D3DRENDERSTATE_FOGENABLE=%X", state->dwArg[0]);
 			MesaSetFog(ctx);
 			break;
-		case D3DRENDERSTATE_SPECULARENABLE: /* TRUE to enable specular */
+		RENDERSTATE(D3DRENDERSTATE_SPECULARENABLE) /* TRUE to enable specular */
 			// need EXT_SECONDARY_COLOR
 			if(state->dwArg[0])
 			{
@@ -1574,16 +1573,16 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state)
 				ctx->state.specular = FALSE;
 			}
 			break;
-		case D3DRENDERSTATE_ZVISIBLE: /* TRUE to enable z checking */
+		RENDERSTATE(D3DRENDERSTATE_ZVISIBLE) /* TRUE to enable z checking */
 			ctx->state.zvisible = state->dwArg[0];
 			break;
-		case D3DRENDERSTATE_SUBPIXEL: /* TRUE to enable subpixel correction (<= d3d6) */
+		RENDERSTATE(D3DRENDERSTATE_SUBPIXEL) /* TRUE to enable subpixel correction (<= d3d6) */
 			break;
-		case D3DRENDERSTATE_SUBPIXELX: /* TRUE to enable correction in X only (<= d3d6) */
+		RENDERSTATE(D3DRENDERSTATE_SUBPIXELX) /* TRUE to enable correction in X only (<= d3d6) */
 			break;
-		case D3DRENDERSTATE_STIPPLEDALPHA: /* TRUE to enable stippled alpha */
+		RENDERSTATE(D3DRENDERSTATE_STIPPLEDALPHA) /* TRUE to enable stippled alpha */
 			break;
-		case D3DRENDERSTATE_FOGCOLOR: /* D3DCOLOR */
+		RENDERSTATE(D3DRENDERSTATE_FOGCOLOR) /* D3DCOLOR */
 		{
 			D3DCOLOR c = (D3DCOLOR)state->dwArg[0];
 			MESA_D3DCOLOR_TO_FV(c, ctx->state.fog.color);
@@ -1597,35 +1596,35 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state)
 			MesaSetFog(ctx);
 			break;
 		}
-		case D3DRENDERSTATE_FOGTABLEMODE: /* D3DFOGMODE */
+		RENDERSTATE(D3DRENDERSTATE_FOGTABLEMODE) /* D3DFOGMODE */
 		{
 			TOPIC("FOG", "D3DRENDERSTATE_FOGTABLEMODE=%X", state->dwArg[0]);
   		ctx->state.fog.tmode = GetGLFogMode(state->dwArg[0]);
   		MesaSetFog(ctx);
 			break;
 		}
-		case D3DRENDERSTATE_FOGTABLESTART: /* Fog table start (float)	*/
+		RENDERSTATE(D3DRENDERSTATE_FOGTABLESTART) /* Fog table start (float)	*/
 		{
 			TOPIC("FOG", "D3DRENDERSTATE_FOGTABLESTART=%f", state->dvArg[0]);
 			ctx->state.fog.start = state->dvArg[0];
 			MesaSetFog(ctx);
 			break;
 		}
-		case D3DRENDERSTATE_FOGTABLEEND: /* Fog table end (float)	*/
+		RENDERSTATE(D3DRENDERSTATE_FOGTABLEEND) /* Fog table end (float)	*/
 		{
 			TOPIC("FOG", "D3DRENDERSTATE_FOGTABLEEND=%f", state->dvArg[0]);
 			ctx->state.fog.end = state->dvArg[0];
 			MesaSetFog(ctx);
 			break;
 		}
-		case D3DRENDERSTATE_FOGTABLEDENSITY: /* Fog table density (probably float)	*/
+		RENDERSTATE(D3DRENDERSTATE_FOGTABLEDENSITY) /* Fog table density (probably float)	*/
 		{
 			TOPIC("FOG", "D3DRENDERSTATE_FOGTABLEDENSITY=%f", state->dvArg[0]);
 			ctx->state.fog.density = state->dvArg[0];
 			MesaSetFog(ctx);
 			break;
 		}
-		case D3DRENDERSTATE_STIPPLEENABLE: /* TRUE to enable stippling (<= d3d6) */
+		RENDERSTATE(D3DRENDERSTATE_STIPPLEENABLE) /* TRUE to enable stippling (<= d3d6) */
 			if(state->dwArg[0])
 			{
 				ctx->entry->proc.pglEnable(GL_POLYGON_STIPPLE);
@@ -1635,65 +1634,65 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state)
 				ctx->entry->proc.pglDisable(GL_POLYGON_STIPPLE);
 			}
 			break;
-		case D3DRENDERSTATE_EDGEANTIALIAS: /* TRUE to enable edge antialiasing */
+		RENDERSTATE(D3DRENDERSTATE_EDGEANTIALIAS) /* TRUE to enable edge antialiasing */
 			break;
-		case D3DRENDERSTATE_COLORKEYENABLE: /* TRUE to enable source colorkeyed textures */
+		RENDERSTATE(D3DRENDERSTATE_COLORKEYENABLE) /* TRUE to enable source colorkeyed textures */
 			ctx->state.tmu[0].colorkey = (state->dwArg[0] == 0) ? FALSE : TRUE;
 			ctx->state.tmu[0].reload = TRUE;
 			break;
-		case D3DRENDERSTATE_BORDERCOLOR: /* Border color for texturing w/border */
+		RENDERSTATE(D3DRENDERSTATE_BORDERCOLOR) /* Border color for texturing w/border */
 		{
 			D3DCOLOR c = (D3DCOLOR)state->dwArg[0];
 			MESA_D3DCOLOR_TO_FV(c, ctx->state.tmu[0].border);
 			break;
 		}
-		case D3DRENDERSTATE_TEXTUREADDRESSU: /* Texture addressing mode for U coordinate */
+		RENDERSTATE(D3DRENDERSTATE_TEXTUREADDRESSU) /* Texture addressing mode for U coordinate */
 			ctx->state.tmu[0].texaddr_u = state->dwArg[0];
 			ctx->state.tmu[0].update = TRUE;
 			break;
-		case D3DRENDERSTATE_TEXTUREADDRESSV: /* Texture addressing mode for V coordinate */
+		RENDERSTATE(D3DRENDERSTATE_TEXTUREADDRESSV) /* Texture addressing mode for V coordinate */
 			ctx->state.tmu[0].texaddr_v = state->dwArg[0];
 			ctx->state.tmu[0].update = TRUE;
 			break;
-		case D3DRENDERSTATE_MIPMAPLODBIAS: /* D3DVALUE Mipmap LOD bias */
+		RENDERSTATE(D3DRENDERSTATE_MIPMAPLODBIAS) /* D3DVALUE Mipmap LOD bias */
 			break;
-		case D3DRENDERSTATE_ZBIAS: /* LONG Z bias */
+		RENDERSTATE(D3DRENDERSTATE_ZBIAS) /* LONG Z bias */
 			break;
-		case D3DRENDERSTATE_RANGEFOGENABLE: /* Enables range-based fog */
+		RENDERSTATE(D3DRENDERSTATE_RANGEFOGENABLE) /* Enables range-based fog */
 			TOPIC("FOG", "D3DRENDERSTATE_RANGEFOGENABLE=%X", state->dwArg[0]);
 			ctx->state.fog.range = state->dwArg[0] == 0 ? FALSE : TRUE;
 			MesaSetFog(ctx);
 			break;
-		case D3DRENDERSTATE_ANISOTROPY: /* Max. anisotropy. 1 = no anisotropy */
+		RENDERSTATE(D3DRENDERSTATE_ANISOTROPY) /* Max. anisotropy. 1 = no anisotropy */
 			break;
-		case D3DRENDERSTATE_FLUSHBATCH: /* Explicit flush for DP batching (DX5 Only) */
+		RENDERSTATE(D3DRENDERSTATE_FLUSHBATCH) /* Explicit flush for DP batching (DX5 Only) */
 			break;
 		/* d3d6 */
-		case D3DRENDERSTATE_STENCILENABLE: /* BOOL enable/disable stenciling */
+		RENDERSTATE(D3DRENDERSTATE_STENCILENABLE) /* BOOL enable/disable stenciling */
 			ctx->state.stencil.enabled = state->dwArg[0] == 0 ? FALSE : TRUE;
 			break;
-		case D3DRENDERSTATE_STENCILFAIL: /* D3DSTENCILOP to do if stencil test fails */
+		RENDERSTATE(D3DRENDERSTATE_STENCILFAIL) /* D3DSTENCILOP to do if stencil test fails */
 			ctx->state.stencil.sfail = DXSencilToGL(state->dwArg[0]);
 			break;
-		case D3DRENDERSTATE_STENCILZFAIL: /* D3DSTENCILOP to do if stencil test passes and Z test fails */
+		RENDERSTATE(D3DRENDERSTATE_STENCILZFAIL) /* D3DSTENCILOP to do if stencil test passes and Z test fails */
 			ctx->state.stencil.dpfail = DXSencilToGL(state->dwArg[0]);
 			break;
-		case D3DRENDERSTATE_STENCILPASS: /* D3DSTENCILOP to do if both stencil and Z tests pass */
+		RENDERSTATE(D3DRENDERSTATE_STENCILPASS) /* D3DSTENCILOP to do if both stencil and Z tests pass */
 			ctx->state.stencil.dppass = DXSencilToGL(state->dwArg[0]);
 			break;
-		case D3DRENDERSTATE_STENCILFUNC: /* D3DCMPFUNC fn.  Stencil Test passes if ((ref & mask) stencilfn (stencil & mask)) is true */
+		RENDERSTATE(D3DRENDERSTATE_STENCILFUNC) /* D3DCMPFUNC fn.  Stencil Test passes if ((ref & mask) stencilfn (stencil & mask)) is true */
 			ctx->state.stencil.func = GetGLCmpFunc(state->dwArg[0]);
 			break;
-		case D3DRENDERSTATE_STENCILREF: /* Reference value used in stencil test */
+		RENDERSTATE(D3DRENDERSTATE_STENCILREF) /* Reference value used in stencil test */
 			ctx->state.stencil.ref = state->dwArg[0];
 			break;
-		case D3DRENDERSTATE_STENCILMASK: /* Mask value used in stencil test */
+		RENDERSTATE(D3DRENDERSTATE_STENCILMASK) /* Mask value used in stencil test */
 			ctx->state.stencil.mask = state->dwArg[0];
 			break;
-		case D3DRENDERSTATE_STENCILWRITEMASK: /* Write mask applied to values written to stencil buffer */
+		RENDERSTATE(D3DRENDERSTATE_STENCILWRITEMASK) /* Write mask applied to values written to stencil buffer */
 			ctx->state.stencil.writemask = state->dwArg[0];
 			break;
-		case D3DRENDERSTATE_TEXTUREFACTOR: /* D3DCOLOR used for multi-texture blend */
+		RENDERSTATE(D3DRENDERSTATE_TEXTUREFACTOR) /* D3DCOLOR used for multi-texture blend */
 		{
 			D3DCOLOR c = (D3DCOLOR)state->dwArg[0];
 			MESA_D3DCOLOR_TO_FV(c, ctx->state.tfactor);
@@ -1718,44 +1717,46 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state)
 			break;
 		}
   /* d3d7 */
-		case D3DRENDERSTATE_CLIPPING:
+		RENDERSTATE(D3DRENDERSTATE_CLIPPING)
 			break;
-		case D3DRENDERSTATE_LIGHTING:
+		RENDERSTATE(D3DRENDERSTATE_LIGHTING)
 			break;
-		case D3DRENDERSTATE_EXTENTS:
+		RENDERSTATE(D3DRENDERSTATE_EXTENTS)
 			break;
-		case D3DRENDERSTATE_AMBIENT:
+		RENDERSTATE(D3DRENDERSTATE_AMBIENT)
 			break;
-		case D3DRENDERSTATE_FOGVERTEXMODE:
+		RENDERSTATE(D3DRENDERSTATE_FOGVERTEXMODE)
 			TOPIC("FOG", "D3DRENDERSTATE_FOGVERTEXMODE=0x%X", state->dwArg[0]);
 			ctx->state.fog.vmode = GetGLFogMode(state->dwArg[0]);
 			MesaSetFog(ctx);
 			break;
-		case D3DRENDERSTATE_COLORVERTEX:
+		RENDERSTATE(D3DRENDERSTATE_COLORVERTEX)
 			break;
-		case D3DRENDERSTATE_LOCALVIEWER:
+		RENDERSTATE(D3DRENDERSTATE_LOCALVIEWER)
 			break;
-		case D3DRENDERSTATE_NORMALIZENORMALS:
+		RENDERSTATE(D3DRENDERSTATE_NORMALIZENORMALS)
 			break;
-		case D3DRENDERSTATE_COLORKEYBLENDENABLE:
+		RENDERSTATE(D3DRENDERSTATE_COLORKEYBLENDENABLE)
 			break;
-		case D3DRENDERSTATE_DIFFUSEMATERIALSOURCE:
+		RENDERSTATE(D3DRENDERSTATE_DIFFUSEMATERIALSOURCE)
 			break;
-		case D3DRENDERSTATE_SPECULARMATERIALSOURCE:
+		RENDERSTATE(D3DRENDERSTATE_SPECULARMATERIALSOURCE)
 			break;
-		case D3DRENDERSTATE_AMBIENTMATERIALSOURCE:
+		RENDERSTATE(D3DRENDERSTATE_AMBIENTMATERIALSOURCE)
 			break;
-		case D3DRENDERSTATE_EMISSIVEMATERIALSOURCE:
+		RENDERSTATE(D3DRENDERSTATE_EMISSIVEMATERIALSOURCE)
 			break;
-		case D3DRENDERSTATE_VERTEXBLEND:
+		RENDERSTATE(D3DRENDERSTATE_VERTEXBLEND)
 			break;
-		case D3DRENDERSTATE_CLIPPLANEENABLE:
+		RENDERSTATE(D3DRENDERSTATE_CLIPPLANEENABLE)
 			break;
 		default:
 			/* NOP */
 			break;
 	}
 }
+
+#undef RENDERSTATE
 
 static GLenum DX2GLPrimitive(D3DPRIMITIVETYPE dx_type)
 {
@@ -2437,7 +2438,7 @@ void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, D
 	int i;
 	mesa3d_entry_t *entry = ctx->entry;
 		
-	TRACE("Clear Z: %f", depth);
+	TOPIC("RS", "Clear=%X", flags);
 
 	GLbitfield mask = 0;
 	if(flags & D3DCLEAR_TARGET)
@@ -2463,8 +2464,19 @@ void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, D
 		entry->proc.pglClearStencil(stencil);
 	}
 
-	MesaReadback(ctx, mask);
-	// FIXME: ^when is done full clear, is not needed to readback the surface! 
+	if(IsInFront(GetHAL(ctx->dd), (void*)ctx->front->lpLcl->lpGbl->fpVidMem)/* && (flags & D3DCLEAR_TARGET) != 0*/)
+	{
+		TOPIC("READBACK", "single buffering");
+		if(ctx->render.dirty)
+		{
+			MesaRender(ctx);
+		}
+	}
+	else
+	{
+		MesaReadback(ctx, mask);
+		// FIXME: ^when is done full clear, is not needed to readback the surface! 
+	}
 
 	TOPIC("READBACK", "Clear %X => %X, %f, %X", flags, color, depth, stencil);
 	for(i = 0; i < rects_cnt; i++)
@@ -2521,15 +2533,18 @@ void MesaFlushSurface(FLATPTR vidmem)
 				GL_BLOCK_BEGIN(ptr->ctx[i])
 					if(ctx->front)
 					{
-						//TOPIC("RENDER", "TEST %X <-> %X", ctx->front->lpLcl->lpGbl->fpVidMem, vidmem);
+						TOPIC("READBACK", "TEST %X <-> %X", ctx->front->lpLcl->lpGbl->fpVidMem, vidmem);
 						if(ctx->front->lpLcl->lpGbl->fpVidMem == vidmem)
 						{
-							MesaReadback(ctx, GL_COLOR_BUFFER_BIT);
-							
+							TOPIC("READBACK", "render.dirty? %d", ctx->render.dirty);
 							if(ctx->render.dirty)
 							{
 								//TOPIC("RENDER", "do render!");
 								MesaRender(ctx);
+							}
+							else
+							{
+								MesaReadback(ctx, GL_COLOR_BUFFER_BIT);
 							}
 							
 							done = TRUE;
@@ -2540,7 +2555,10 @@ void MesaFlushSurface(FLATPTR vidmem)
 					{
 						if(ctx->depth->lpLcl->lpGbl->fpVidMem == vidmem)
 						{
-							MesaReadback(ctx, GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+							if(!ctx->render.dirty)
+							{
+								MesaReadback(ctx, GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+							}
 							
 							done = TRUE;
 						}

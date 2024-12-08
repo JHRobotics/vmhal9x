@@ -133,8 +133,7 @@ static void DoFlipping(VMDAHAL_t *ddhal, void *from, void *to, DWORD from_pitch,
 	}
 }
 
-const uint64_t screen_time = 10000/60;
-static uint64_t last_flip_time = 0;
+uint64_t last_flip_time = 0;
 
 volatile BOOL is_flipping = FALSE;
 
@@ -154,7 +153,7 @@ DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
 	 * done being displayed
 	 */
 	VMDAHAL_t *ddhal = GetHAL(pfd->lpDD);	
-	uint64_t flip_time = 0;
+	uint64_t flip_time = GetTimeTMS();
 
 	if(is_flipping)
 	{
@@ -162,53 +161,64 @@ DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
 		return DDHAL_DRIVER_HANDLED;
 	}
 
-	if(ddhal->pFBHDA32->flags & FB_SUPPORT_FLIPING)
+	if(halVSync && (pfd->dwFlags & DDFLIP_NOVSYNC) == 0)
 	{
-		if(GetOffset(ddhal, (void*)pfd->lpSurfCurr->lpGbl->fpVidMem) != ddhal->pFBHDA32->surface)
-		{
-			WARN("Bad flip!");
-			pfd->ddRVal = DDERR_INVALIDPARAMS;
-			return DDHAL_DRIVER_HANDLED;
-		}
-	}
-
-	if(halVSync)
-	{
-		flip_time = GetTimeTMS();
-		
 		if(last_flip_time <= flip_time) /* not in overflow */
 		{
-			if(last_flip_time + screen_time > flip_time)
+			if(last_flip_time + SCREEN_TIME > flip_time)
 			{
 				pfd->ddRVal = DDERR_WASSTILLDRAWING;
 				return DDHAL_DRIVER_HANDLED;
 			}
 		}
 	}
-	 
-	TRACE("Flip: %08lx -> %08lx",
-		(uint32_t)pfd->lpSurfCurr->lpGbl->fpVidMem - (uint32_t)ddhal->pFBHDA32->vram_pm32,
-		(uint32_t)pfd->lpSurfTarg->lpGbl->fpVidMem - (uint32_t)ddhal->pFBHDA32->vram_pm32
-	);
+
+	if(pfd->lpSurfCurr->ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
+	{
+		/* if currend surface is primary, do switching */
+		TRACE("Flip: %08lx -> %08lx",
+			(uint32_t)pfd->lpSurfCurr->lpGbl->fpVidMem - (uint32_t)ddhal->pFBHDA32->vram_pm32,
+			(uint32_t)pfd->lpSurfTarg->lpGbl->fpVidMem - (uint32_t)ddhal->pFBHDA32->vram_pm32
+		);
+		
+		TOPIC("FLIP", "Flip: 0x%08X -> 0x%08X [0x%08X]",
+			(uint32_t)pfd->lpSurfCurr->lpGbl->fpVidMem - (uint32_t)ddhal->pFBHDA32->vram_pm32,
+			(uint32_t)pfd->lpSurfTarg->lpGbl->fpVidMem - (uint32_t)ddhal->pFBHDA32->vram_pm32,
+			16*1024*1024
+		);
+		
+		SurfaceCtxLock();
+		is_flipping = TRUE;
 	
-	TOPIC("FLIP", "Flip: 0x%08X -> 0x%08X [0x%08X]",
-		(uint32_t)pfd->lpSurfCurr->lpGbl->fpVidMem - (uint32_t)ddhal->pFBHDA32->vram_pm32,
-		(uint32_t)pfd->lpSurfTarg->lpGbl->fpVidMem - (uint32_t)ddhal->pFBHDA32->vram_pm32,
-		16*1024*1024
-	);
-
-	SurfaceCtxLock();
-	is_flipping = TRUE;
-
 #ifdef D3DHAL
 		MesaFlushSurface(pfd->lpSurfTarg->lpGbl->fpVidMem);
 #endif
-
-	DoFlipping(ddhal, (void*)pfd->lpSurfCurr->lpGbl->fpVidMem, (void*)pfd->lpSurfTarg->lpGbl->fpVidMem,
-		pfd->lpSurfCurr->lpGbl->lPitch, pfd->lpSurfTarg->lpGbl->lPitch);
+	
+		DoFlipping(ddhal, (void*)pfd->lpSurfCurr->lpGbl->fpVidMem, (void*)pfd->lpSurfTarg->lpGbl->fpVidMem,
+			pfd->lpSurfCurr->lpGbl->lPitch, pfd->lpSurfTarg->lpGbl->lPitch);
 		
-	is_flipping = FALSE;
-	SurfaceCtxUnlock();
+		TOPIC("READBACK", "Primary surface: 0x%08X", pfd->lpSurfTarg->lpGbl->fpVidMem);
+		is_flipping = FALSE;
+		SurfaceCtxUnlock();
+	}
+#if 1
+	else
+	{
+		/* surface isn't primary, so only refresh primary surface */
+		SurfaceCtxLock();
+		is_flipping = TRUE;
+		FBHDA_access_begin(0);
+
+#ifdef D3DHAL
+		MesaFlushSurface((FLATPTR)ddhal->pFBHDA32->vram_pm32 + ddhal->pFBHDA32->surface);
+#endif
+
+		FBHDA_access_end(0);
+		TOPIC("READBACK", "Refresh primary: 0x%08X", pfd->lpSurfTarg->lpGbl->fpVidMem);
+		is_flipping = FALSE;
+		SurfaceCtxUnlock();
+	}
+#endif
 
 	last_flip_time = flip_time;
 	pfd->ddRVal = DD_OK;
@@ -233,7 +243,7 @@ DWORD __stdcall GetFlipStatus32(LPDDHAL_GETFLIPSTATUSDATA pfd)
 		uint64_t flip_time = GetTimeTMS();
 		if(last_flip_time <= flip_time) /* not in overflow */
 		{
-			if(last_flip_time + screen_time > flip_time)
+			if(last_flip_time + SCREEN_TIME > flip_time)
 			{
 				pfd->ddRVal = DDERR_WASSTILLDRAWING;
 				return DDHAL_DRIVER_HANDLED;

@@ -83,6 +83,8 @@ static D3DPRIMITIVETYPE DP2OP_to_PT(D3DHAL_DP2OPERATION Dp2Op)
 
 BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LPBYTE vertices, DWORD *error_offset)
 {
+	TOPIC("READBACK", "MesaDraw6");
+	
 	mesa3d_entry_t *entry = ctx->entry;
 	
 	MesaDrawSetSurfaces(ctx);
@@ -654,7 +656,6 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 	} // while
 	
 	ctx->render.dirty = TRUE;
-	//MesaRender(ctx);
 	
 	return TRUE;
 }

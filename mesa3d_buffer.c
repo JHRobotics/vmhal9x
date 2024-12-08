@@ -92,7 +92,9 @@ void MesaBufferDownloadColor(mesa3d_ctx_t *ctx, void *dst)
 	//size_t s = ctx->state.sw * ctx->state.sh * ((ctx->front_bpp + 7)/8);
 	GLenum type;
 	GLenum format;
-	
+
+	BOOL front_surface = IsInFront(GetHAL(ctx->dd), dst);
+
 	switch(ctx->front_bpp)
 	{
 		case 15:
@@ -114,7 +116,13 @@ void MesaBufferDownloadColor(mesa3d_ctx_t *ctx, void *dst)
 			break;
 	}
 
+	if(front_surface)
+		FBHDA_access_begin(0);
+
 	ctx->entry->proc.pglReadPixels(0, 0, ctx->state.sw, ctx->state.sh, format, type, dst);
+	
+	if(front_surface)
+		FBHDA_access_end(0);
 }
 
 void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
@@ -122,7 +130,7 @@ void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 	mesa3d_entry_t *entry = ctx->entry;
 	GLenum type;
 	GLenum format;
-	
+
 	switch(ctx->depth_bpp)
 	{
 		case 16:
@@ -131,7 +139,7 @@ void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 			break;
 		case 24:
 			type = GL_FLOAT_32_UNSIGNED_INT_24_8_REV;
-			format = GL_DEPTH_COMPONENT;
+			format = GL_DEPTH_STENCIL;
 			break;
 		case 32:
 		default:
@@ -148,11 +156,14 @@ void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 			break;
 	}
 	
+	TRACE("depth_bpp=%d, type=0x%X, format=0x%X, ?stencil = %d", ctx->depth_bpp, type, format, ctx->depth_stencil);
+	
 	GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0+ctx->fbo.tmu));
 	GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
+
 	GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.depth_fb));
 	GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.depth_tex));
-	GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, ctx->state.sw, ctx->state.sh, 0, format, type, src));
+	GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, ctx->state.sw, ctx->state.sh, 0, format, type, src));
 	GL_CHECK(entry->proc.pglFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, ctx->fbo.depth_tex, 0));
 
 	GL_CHECK(entry->proc.pglBindFramebuffer(GL_READ_FRAMEBUFFER, ctx->fbo.depth_fb));
@@ -160,7 +171,7 @@ void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 
 #ifdef TRACE_ON
 	GLenum test = entry->proc.pglCheckFramebufferStatus(GL_READ_FRAMEBUFFER);
-	TOPIC("GL", "glCheckFramebufferStatus = 0x%X", test);
+	TOPIC("GL", "(depth) glCheckFramebufferStatus = 0x%X", test);
 #endif
 	
 	GL_CHECK(entry->proc.pglBlitFramebuffer(
@@ -168,8 +179,29 @@ void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 		0, 0, ctx->state.sw, ctx->state.sh,
   	GL_DEPTH_BUFFER_BIT, GL_NEAREST));
 	
+	if(ctx->depth_stencil)
+	{
+		GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.stencil_fb));
+		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.stencil_tex));
+		GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_STENCIL_INDEX, ctx->state.sw, ctx->state.sh, 0, format, type, src));
+		GL_CHECK(entry->proc.pglFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, ctx->fbo.stencil_tex, 0));
+	
+		GL_CHECK(entry->proc.pglBindFramebuffer(GL_READ_FRAMEBUFFER, ctx->fbo.stencil_fb));
+		GL_CHECK(entry->proc.pglBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0));
+		
+#ifdef TRACE_ON
+		GLenum test = entry->proc.pglCheckFramebufferStatus(GL_READ_FRAMEBUFFER);
+		TOPIC("GL", "(stencil) glCheckFramebufferStatus = 0x%X", test);
+#endif
+		
+		GL_CHECK(entry->proc.pglBlitFramebuffer(
+			0, 0, ctx->state.sw, ctx->state.sh,
+			0, 0, ctx->state.sw, ctx->state.sh, GL_STENCIL_BUFFER_BIT, GL_NEAREST));
+	}
+	
+	// default buffer binding
 	GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, 0));
-	//ctx->state.last_tex = ctx->fbo.depth_tex;
+	
 	if(ctx->fbo.tmu < ctx->tmu_count)
 	{
 		ctx->state.tmu[ctx->fbo.tmu].update = TRUE;

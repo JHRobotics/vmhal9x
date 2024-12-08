@@ -44,13 +44,6 @@ typedef struct VMDAHALCB32
 	LPDDHAL_FLIPTOGDISURFACE          FlipToGDISurface;
 } VMDAHALCB32_t;
 
-struct VXD_pair
-{
-	DWORD pid;
-	DWORD vxd;
-};
-
-#define VXD_PAIRS_CNT 32
 #define DISP_MODES_MAX 512
 
 typedef struct VMDAHAL_D3DCAPS
@@ -82,8 +75,6 @@ typedef struct VMDAHAL
   DWORD FBHDA_version;
   
   HDC hDC;
-  
-  struct VXD_pair vxd_table[VXD_PAIRS_CNT];
   
   DDHALMODEINFO2_t modes[DISP_MODES_MAX];
   DWORD modes_count;

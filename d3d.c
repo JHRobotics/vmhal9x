@@ -103,8 +103,16 @@ DWORD __stdcall SetRenderTarget32(LPD3DHAL_SETRENDERTARGETDATA lpSetRenderData)
 DWORD __stdcall Clear32(LPD3DHAL_CLEARDATA lpClearData)
 {
 	TRACE_ENTRY
-	
+
 	VALIDATE(lpClearData)
+	
+	/* DDK98 - DX5: dwFillDepth will always be set to 0xffffffff which mens
+	fill to the maximum z-buffer value. This is currently the only supported z fill mode. */
+	GL_BLOCK_BEGIN(lpClearData->dwhContext)
+		MesaClear(ctx, lpClearData->dwFlags,
+			lpClearData->dwFillColor, 1.0f, 0x0,
+			lpClearData->dwNumRects, (LPRECT)lpClearData->lpRects);
+	GL_BLOCK_END
 
 	lpClearData->ddrval = DD_OK;
 
@@ -482,12 +490,14 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 		memset(&D3DCallbacks2, 0, sizeof(D3DHAL_CALLBACKS2));
 
 		D3DCallbacks2.dwSize = sizeof(D3DHAL_CALLBACKS2);
-		D3DCallbacks2.dwFlags = D3DHAL2_CB32_SETRENDERTARGET  | D3DHAL2_CB32_DRAWONEPRIMITIVE | D3DHAL2_CB32_DRAWONEINDEXEDPRIMITIVE | D3DHAL2_CB32_DRAWPRIMITIVES;
+		D3DCallbacks2.dwFlags = D3DHAL2_CB32_SETRENDERTARGET | D3DHAL2_CB32_DRAWONEPRIMITIVE | D3DHAL2_CB32_DRAWONEINDEXEDPRIMITIVE | D3DHAL2_CB32_DRAWPRIMITIVES;
 		D3DCallbacks2.SetRenderTarget = SetRenderTarget32;
 		D3DCallbacks2.DrawOnePrimitive = DrawOnePrimitive32;
 		D3DCallbacks2.DrawOneIndexedPrimitive = DrawOneIndexedPrimitive32;
 		D3DCallbacks2.DrawPrimitives = DrawPrimitives32;
-		//D3DCallbacks2.Clear = Clear32;
+
+		D3DCallbacks2.Clear = Clear32;
+		D3DCallbacks2.dwFlags |= D3DHAL2_CB32_CLEAR;
 
 		COPY_INFO(lpInput, D3DCallbacks2, D3DHAL_CALLBACKS2);
 		TRACE("GUID_D3DCallbacks2 success");

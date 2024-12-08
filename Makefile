@@ -25,7 +25,7 @@ ifeq ($(GIT_IS),true)
   VERSION_BUILD := $(shell $(GIT) rev-list --count main)
 endif
 
-TARGETS = vmhal9x.dll
+TARGETS = vmdisp9x.dll vmhal9x.dll
 
 all: $(TARGETS)
 .PHONY: all clean
@@ -74,8 +74,11 @@ endif
 	$(WINDRES) -DWINDRES -DVMHAL9X_BUILD=$(VERSION_BUILD) --input $< --output $@ --output-format=coff
 
 BASE_vmhal9x.dll := 0xB00B0000
+BASE_vmdisp9x.dll := 0x01800000
+
 NOCRT_OBJS = nocrt/nocrt.c.o nocrt/nocrt_math.c.o nocrt/nocrt_file_win.c.o nocrt/nocrt_mem_win.c.o nocrt/nocrt_dll.c.o
 VMHAL9X_OBJS = $(NOCRT_OBJS) vmhal9x.c.o ddraw.c.o 3d_accel.c.o flip32.c.o blt32.c.o rop3.c.o transblt.c.o debug.c.o dump.c.o fill.c.o vmhal9x.res
+VMDISP9X_OBJS = $(NOCRT_OBJS) vmdisp9x.c.o
 
 ifdef D3DHAL
 	VMHAL9X_OBJS += d3d.c.o mesa3d.c.o mesa3d_buffer.c.o mesa3d_draw.c.o mesa3d_chroma.c.o surface.c.o matrix.c.o mesa3d_draw6.c.o
@@ -89,6 +92,9 @@ vmhal9x.dll: $(VMHAL9X_OBJS) fixlink$(HOST_SUFFIX)
 	$(CC) $(LDFLAGS) $(VMHAL9X_OBJS) vmhal9x.def $(LIBS) $(DLLFLAGS)
 	$(RUNPATH)fixlink$(HOST_SUFFIX) -shared $@
 
+vmdisp9x.dll: $(VMDISP9X_OBJS)
+	$(CC) $(LDFLAGS) $(VMDISP9X_OBJS) vmdisp9x.def $(LIBS) $(DLLFLAGS)
+
 # generate win9x compatible ddraw import library
 libddraw.a: ddraw.def
 	$(DLLTOOL) -C -k -d $< -l $@
@@ -98,5 +104,8 @@ clean:
 	-$(RM) $(VMHAL9X_OBJS)
 	-$(RM) vmhal9x.dll
 	-$(RM) libvmhal9x.a
+	-$(RM) $(VMDISP9X_OBJS)
+	-$(RM) vmdisp9x.dll
+	-$(RM) libvmdisp9x.a
 	-$(RM) libddraw.a
 

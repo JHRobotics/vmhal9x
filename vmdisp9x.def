@@ -1,0 +1,7 @@
+EXPORTS
+	FBHDA_setup
+	FBHDA_access_begin
+	FBHDA_access_end
+	FBHDA_access_rect
+	FBHDA_swap
+
