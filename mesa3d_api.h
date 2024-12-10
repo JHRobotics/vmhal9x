@@ -48,6 +48,7 @@ MESA_API(glFramebufferTexture2D, void, (GLenum target, GLenum attachment, GLenum
 MESA_API(glBlitFramebuffer, void, (GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1, GLint dstX0, GLint dstY0, GLint dstX1, GLint dstY1, GLbitfield mask, GLenum filter))
 MESA_API(glDepthFunc, void, (GLenum func))
 MESA_API(glTexParameteri, void, (GLenum target, GLenum pname, GLint param))
+MESA_API(glTexParameterf, void, (GLenum target, GLenum pname, GLfloat param))
 MESA_API(glTexParameterfv, void, (GLenum target, GLenum pname, const GLfloat *params))
 MESA_API(glBlendFunc, void, (GLenum sfactor, GLenum dfactor))
 MESA_API(glCheckFramebufferStatus, GLenum, (GLenum target))

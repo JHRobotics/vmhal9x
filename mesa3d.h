@@ -38,8 +38,10 @@ typedef struct mesa3d_texture
 	GLenum  format;
 	GLenum  type;
 	FLATPTR data_ptr[MESA3D_MAX_MIPS];
+	BOOL    data_dirty[MESA3D_MAX_MIPS];
+	LPDDRAWI_DDRAWSURFACE_LCL data_surf[MESA3D_MAX_MIPS];
+	BOOL dirty;
 	struct mesa3d_ctx *ctx;
-	LPDDRAWI_DDRAWSURFACE_INT ddsurf;
 	BOOL mipmap;
 	int mipmap_level;
 	BOOL colorkey;
@@ -77,6 +79,10 @@ struct mesa3d_tmustate
 	D3DTEXTUREMAGFILTER dx_mag;
 	D3DTEXTUREMINFILTER dx_min;
 	D3DTEXTUREMIPFILTER dx_mip;
+	
+	// mipmap
+	GLfloat miplodbias;
+	GLint mipmaxlevel;
 	
 	GLfloat border[4];
 	BOOL colorkey;
@@ -171,6 +177,7 @@ typedef struct mesa3d_ctx
 	/* rendering state */
 	struct {
 		BOOL dirty;
+		BOOL zdirty;
 	} render;
 
 	/* dimensions */
@@ -265,8 +272,6 @@ void MesaDestroyCtx(mesa3d_ctx_t *ctx);
 void MesaDestroyAllCtx(mesa3d_entry_t *entry);
 void MesaInitCtx(mesa3d_ctx_t *ctx);
 
-/* NOT needs GL_BLOCK */
-void MesaFlushSurface(FLATPTR vidmem);
 void MesaBlockLock(mesa3d_ctx_t *ctx);
 void MesaBlockUnlock(mesa3d_ctx_t *ctx);
 BOOL MesaSetCtx(mesa3d_ctx_t *ctx);

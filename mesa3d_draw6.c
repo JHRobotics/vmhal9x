@@ -87,7 +87,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 	
 	mesa3d_entry_t *entry = ctx->entry;
 	
-	MesaDrawSetSurfaces(ctx);
+//	MesaDrawSetSurfaces(ctx);
 	
 	LPD3DHAL_DP2COMMAND inst = (LPD3DHAL_DP2COMMAND)cmdBufferStart;
 	DWORD start, count, base;
@@ -586,6 +586,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				// Map a new rendering target surface and depth buffer in
 				// the current context.  This replaces the old D3dSetRenderTarget
 				// callback. 
+#if 0
 				{
 					D3DHAL_DP2SETRENDERTARGET *pSRTData = (D3DHAL_DP2SETRENDERTARGET*)prim;
 					mesa3d_texture_t *front_tex = MESA_HANDLE_TO_TEX(pSRTData->hRenderTarget);
@@ -601,6 +602,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 						MesaSetTarget(ctx, front_dds, depth_dds);
 					}
 				}
+#endif
 				
 				NEXT_INST(sizeof(D3DHAL_DP2SETRENDERTARGET));
 				break;
@@ -656,6 +658,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 	} // while
 	
 	ctx->render.dirty = TRUE;
+	ctx->render.zdirty = TRUE;
 	
 	return TRUE;
 }

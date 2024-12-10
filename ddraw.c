@@ -73,9 +73,9 @@ DWORD __stdcall CanCreateSurface(LPDDHAL_CANCREATESURFACEDATA pccsd)
 	}
 	
 	LPDDSURFACEDESC lpDDSurfaceDesc = pccsd->lpDDSurfaceDesc;
-	
+		
 	if((lpDDSurfaceDesc->ddsCaps.dwCaps & 
-		(DDSCAPS_TEXTURE | DDSCAPS_EXECUTEBUFFER | DDSCAPS_EXECUTEBUFFER | DDSCAPS_ZBUFFER /*| DDSCAPS_OVERLAY*/)) != 0)
+		(DDSCAPS_TEXTURE | DDSCAPS_EXECUTEBUFFER | DDSCAPS_ZBUFFER /*| DDSCAPS_OVERLAY*/)) != 0)
 	{
 		pccsd->ddRVal = DD_OK;
 		return DDHAL_DRIVER_HANDLED;
@@ -174,14 +174,20 @@ DWORD __stdcall CreateSurface(LPDDHAL_CREATESURFACEDATA pcsd)
 					lpSurf->lpGbl->wHeight, s);
 			}
 			
+			SurfaceTableCreate(lpSurf);
+			
 			TOPIC("GL", "Mipmam %d/%d created", i+1, pcsd->dwSCnt);
 		}
-		
 		pcsd->ddRVal = DD_OK;
 		TOPIC("GL", "Texture created");
 		return DDHAL_DRIVER_HANDLED;
 	}
 #endif
+	if(pcsd->lplpSList)
+	{
+		SurfaceTableCreate(pcsd->lplpSList[0]);
+	}
+
 	TOPIC("ALLOC", "Alloc by HEL, type 0x%X", pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps);
 
 	pcsd->ddRVal = DD_OK;
@@ -203,10 +209,8 @@ DWORD __stdcall DestroySurface(LPDDHAL_DESTROYSURFACEDATA lpd)
 		lpd->lpDDSurface->lpGbl->lPitch,
 		lpd->lpDDSurface->lpGbl->ddpfSurface.dwFlags);
 	TOPIC("DESTROY", "VRAM ptr: 0x%X", lpd->lpDDSurface->lpGbl->fpVidMem);
-
-#ifdef D3DHAL
-	SurfaceInfoErase(lpd->lpDDSurface->lpGbl->fpVidMem);
-#endif
+	
+	SurfaceTableDestroy(lpd->lpDDSurface);
 	
 	return DDHAL_DRIVER_NOTHANDLED;
 }
@@ -292,6 +296,12 @@ DWORD __stdcall Lock32(LPDDHAL_LOCKDATA pld)
 		TOPIC("READBACK", "LOCK primary");
 		FBHDA_access_begin(0);
 	}
+	else
+	{
+		TOPIC("READBACK", "LOCK non primary");
+	}
+	
+	SurfaceFromMesa(pld->lpDDSurface);
 	
 	return DDHAL_DRIVER_NOTHANDLED; /* let the lock processed */
 }
@@ -306,10 +316,8 @@ DWORD __stdcall Unlock32(LPDDHAL_UNLOCKDATA pld)
 		TOPIC("READBACK", "UNLOCK primary");
 		FBHDA_access_end(0);
 	}
-
-#ifdef D3DHAL
-	SurfaceInfoMakeDirty(pld->lpDDSurface->lpGbl->fpVidMem);
-#endif
+	
+	SurfaceToMesa(pld->lpDDSurface);
 
 	return DDHAL_DRIVER_NOTHANDLED; /* let the unlock processed */
 }

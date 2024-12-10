@@ -189,10 +189,10 @@ DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
 		
 		SurfaceCtxLock();
 		is_flipping = TRUE;
-	
-#ifdef D3DHAL
-		MesaFlushSurface(pfd->lpSurfTarg->lpGbl->fpVidMem);
-#endif
+		
+		TOPIC("READBACK", "Flip context: 0x%X -> 0x%X", pfd->lpSurfCurr->dwReserved1, pfd->lpSurfTarg->dwReserved1);
+
+		SurfaceFlipMesa();
 	
 		DoFlipping(ddhal, (void*)pfd->lpSurfCurr->lpGbl->fpVidMem, (void*)pfd->lpSurfTarg->lpGbl->fpVidMem,
 			pfd->lpSurfCurr->lpGbl->lPitch, pfd->lpSurfTarg->lpGbl->lPitch);
@@ -201,17 +201,15 @@ DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
 		is_flipping = FALSE;
 		SurfaceCtxUnlock();
 	}
-#if 1
+#if 0
 	else
 	{
 		/* surface isn't primary, so only refresh primary surface */
 		SurfaceCtxLock();
 		is_flipping = TRUE;
 		FBHDA_access_begin(0);
-
-#ifdef D3DHAL
-		MesaFlushSurface((FLATPTR)ddhal->pFBHDA32->vram_pm32 + ddhal->pFBHDA32->surface);
-#endif
+		
+		// ...
 
 		FBHDA_access_end(0);
 		TOPIC("READBACK", "Refresh primary: 0x%08X", pfd->lpSurfTarg->lpGbl->fpVidMem);

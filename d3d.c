@@ -403,7 +403,7 @@ DWORD __stdcall CreateSurfaceEx32(LPDDHAL_CREATESURFACEEXDATA lpcsxd)
 	
 	LPDDRAWI_DDRAWSURFACE_LCL lpSurf = lpcsxd->lpDDSLcl;
 	
-	lpSurf->lpSurfMore->dwSurfaceHandle = (DWORD)lpSurf;
+	lpSurf->lpSurfMore->dwSurfaceHandle = lpSurf->dwReserved1;
 	
 	lpcsxd->ddRVal = DD_OK;
 	return DDHAL_DRIVER_HANDLED;
@@ -921,7 +921,7 @@ DWORD __stdcall TextureGetSurf32(LPD3DHAL_TEXTUREGETSURFDATA ptgd)
 	mesa3d_texture_t *tex = MESA_HANDLE_TO_TEX(ptgd->dwHandle);
 	if(tex)
 	{
-		ptgd->lpDDS  = (DWORD)tex->ddsurf;
+		ptgd->lpDDS  = (DWORD)tex->data_surf[0];
 		ptgd->ddrval = DD_OK;
 	}
 	else
@@ -1067,10 +1067,8 @@ DWORD __stdcall SceneCapture32(LPD3DHAL_SCENECAPTUREDATA scdata)
 			//MesaReadback(ctx);
 			break;
 		case D3DHAL_SCENE_CAPTURE_END:
-			if(ctx->render.dirty)
-			{
-				MesaRender(ctx);
-			}
+//			if(ctx->render.dirty)
+//				MesaRender(ctx);
 			break;
 	}
 	GL_BLOCK_END

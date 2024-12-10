@@ -82,7 +82,7 @@ void MesaBufferUploadColor(mesa3d_ctx_t *ctx, const void *src)
 		ctx->state.tmu[ctx->fbo.tmu].update = TRUE;
 	}
 	
-	TOPIC("GL", "upload color!");
+	TOPIC("READBACK", "upload color!");
 }
 
 void MesaBufferDownloadColor(mesa3d_ctx_t *ctx, void *dst)
@@ -123,6 +123,8 @@ void MesaBufferDownloadColor(mesa3d_ctx_t *ctx, void *dst)
 	
 	if(front_surface)
 		FBHDA_access_end(0);
+		
+	TOPIC("READBACK", "download color!");
 }
 
 void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
@@ -207,7 +209,7 @@ void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 		ctx->state.tmu[ctx->fbo.tmu].update = TRUE;
 	}
 	
-	TOPIC("GL", "upload depth!");
+	TOPIC("READBACK", "upload depth!");
 }
 
 void MesaBufferDownloadDepth(mesa3d_ctx_t *ctx, void *dst)
@@ -240,6 +242,8 @@ void MesaBufferDownloadDepth(mesa3d_ctx_t *ctx, void *dst)
 	}
 
 	ctx->entry->proc.pglReadPixels(0, 0, ctx->state.sw, ctx->state.sh, format, type, dst);
+	
+	TOPIC("READBACK", "download depth!");
 }
 
 static DWORD compressed_size(GLenum internal_format, GLuint w, GLuint h)

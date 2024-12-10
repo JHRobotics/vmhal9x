@@ -451,19 +451,6 @@ static GLenum DXSencilToGL(D3DSTENCILOP op)
 	return GL_KEEP;
 }
 
-SurfaceInfo_t *MesaAttachSurface(LPDDRAWI_DDRAWSURFACE_INT surf)
-{
-	SurfaceInfo_t *info = SurfaceInfoGet(surf->lpLcl->lpGbl->fpVidMem, TRUE);
-	if(info)
-	{
-		DDSurfaceToGL(surf, (GLuint*)&info->bpp, &info->internal_format, &info->format, &info->type, &info->compressed);
-		info->width  = surf->lpLcl->lpGbl->wWidth;
-		info->height = surf->lpLcl->lpGbl->wHeight;
-	}
-
-	return info;
-}
-
 /* only needs for DX6+ */
 void MesaStencilApply(mesa3d_ctx_t *ctx)
 {
@@ -506,6 +493,7 @@ static void MesaDepthReeval(mesa3d_ctx_t *ctx)
 		{
 			ctx->depth_stencil = TRUE;
 		}
+		TOPIC("READBACK", "Depth enabled");
 	}
 	else
 	{
@@ -513,6 +501,7 @@ static void MesaDepthReeval(mesa3d_ctx_t *ctx)
 		GL_CHECK(entry->proc.pglDepthMask(GL_FALSE));
 		ctx->state.depth.enabled = FALSE;
 		ctx->state.depth.writable = FALSE;
+		TOPIC("READBACK", "Depth disabled");
 	}
 	
 	MesaStencilApply(ctx);
@@ -577,7 +566,7 @@ mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry,
 				/* create context every time with 24bit depth buffer and 8bit stencil buffer,
 				 * because we can't dynamicaly change depth and stencil plane.
 				 */
-				ctx->mesactx = entry->proc.pOSMesaCreateContextExt(ostype, bpp_depth, 8, 0, NULL);
+				ctx->mesactx = entry->proc.pOSMesaCreateContextExt(ostype, 32, 8, 0, NULL);
 				if(ctx->mesactx == NULL)
 					break;
 
@@ -598,6 +587,11 @@ mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry,
 				entry->proc.pglGenFramebuffers(1, &ctx->fbo.stencil_fb);
 				
 				ctx->thread_id = GetCurrentThreadId();
+				
+				SurfaceAttachCtx(ctx->front->lpLcl, ctx);
+				
+				if(ctx->depth)
+					SurfaceAttachCtx(ctx->depth->lpLcl, ctx);
 				
 				MesaInitCtx(ctx);
 				UpdateScreenCoords(ctx, (GLfloat)width, (GLfloat)height);
@@ -668,12 +662,22 @@ BOOL MesaSetTarget(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_INT dds, LPDDRAWI_DD
 	
 	TOPIC("GL", "New target bpp %d, bpz %d", bpp, bpp_depth);
 	
+	if(ctx->front)
+		SurfaceDeattachCtx(ctx->front->lpLcl, ctx);
+	
+	if(ctx->depth)
+		SurfaceDeattachCtx(ctx->depth->lpLcl, ctx);
+	
 	ctx->front_bpp = bpp;
 	ctx->front     = dds;
+	
+	SurfaceAttachCtx(ctx->front->lpLcl, ctx);
+	
 	ctx->depth_bpp = bpp_depth;
 	if(ddz)
 	{
 		ctx->depth = ddz;
+		SurfaceAttachCtx(ctx->depth->lpLcl, ctx);
 	}
 	ctx->state.sw = width;
 	ctx->state.sh = height;
@@ -689,7 +693,13 @@ void MesaDestroyCtx(mesa3d_ctx_t *ctx)
 	mesa3d_entry_t *entry = ctx->entry;
 	
 	TOPIC("GL", "OSMesaDestroyContext");
-
+	
+	if(ctx->front)
+		SurfaceDeattachCtx(ctx->front->lpLcl, ctx);
+	
+	if(ctx->depth)
+		SurfaceDeattachCtx(ctx->depth->lpLcl, ctx);
+	
 	if(entry->pid == GetCurrentProcessId())
 	{
 		entry->proc.pOSMesaDestroyContext(ctx->mesactx);
@@ -873,8 +883,8 @@ mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_INT
 			
 			tex           = &ctx->tex[i];
 			tex->ctx      = ctx;
-			tex->ddsurf   = surf;
-			tex->data_ptr[0] = surf->lpLcl->lpGbl->fpVidMem;
+			tex->data_surf[0] = surf->lpLcl;
+			tex->data_ptr[0]  = surf->lpLcl->lpGbl->fpVidMem;
 
 			if(DDSurfaceToGL(surf, &tex->bpp, &tex->internalformat, &tex->format, &tex->type, &tex->compressed))
 			{
@@ -891,7 +901,7 @@ mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_INT
 					}
 				}
 
-				SurfaceInfoMakeDirty(tex->data_ptr[0]);
+				SurfaceAttachTexture(surf->lpLcl, tex, 0);
 				
 				/* mipmaps */	
 				if(surf->lpLcl->ddsCaps.dwCaps & DDSCAPS_MIPMAP)
@@ -906,6 +916,10 @@ mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_INT
 						if(!item) break;
 						
 						tex->data_ptr[level] = item->lpAttached->lpGbl->fpVidMem;
+						tex->data_dirty[level] = TRUE;
+						tex->data_surf[level] = item->lpAttached;
+
+						SurfaceAttachTexture(surf->lpLcl, tex, level);
 
 						item = item->lpAttached->lpAttachList;
 					}
@@ -923,6 +937,7 @@ mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_INT
 				
 				//ctx->state.reload_tex_par = TRUE;
 				tex->alloc = TRUE;
+				tex->dirty = TRUE;
 			}
 			else
 			{
@@ -939,28 +954,10 @@ mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_INT
 
 void MesaReloadTexture(mesa3d_texture_t *tex, int tmu)
 {
-	BOOL reload = FALSE;
+	BOOL reload = tex->dirty;
 	BOOL reload_done = FALSE;
 	int level;
-		
-	if(tex->ddsurf->lpLcl->lpGbl->fpVidMem != tex->data_ptr[0])
-	{
-		SurfaceInfo_t *info = MesaAttachSurface(tex->ddsurf);
-		tex->width          = info->width;
-		tex->height         = info->height;
-		tex->bpp            = info->bpp;
-		tex->internalformat = info->internal_format;
-		tex->format         = info->format;
-		tex->type           = info->type;
-		
-		SurfaceInfoErase(tex->data_ptr[0]);
-		tex->data_ptr[0] = tex->ddsurf->lpLcl->lpGbl->fpVidMem;
-		
-		TOPIC("RELOAD", "Full surface reload: %d", tex->gltex);
-		
-		reload = TRUE;
-	}
-	
+
 	if(tex->tmu[tmu] == FALSE)
 	{
 		reload = TRUE;
@@ -976,26 +973,26 @@ void MesaReloadTexture(mesa3d_texture_t *tex, int tmu)
 	
 	for(level = 0; level <= tex->mipmap_level; level++)
 	{
-		SurfaceInfo_t *info = SurfaceInfoGet(tex->data_ptr[level], TRUE);
-		if(reload || info->texture_dirty)
+		if(reload || tex->data_dirty[level])
 		{
 			if(tex->ctx->state.tmu[tmu].colorkey && 
-				(tex->ddsurf->lpLcl->dwFlags & DDRAWISURF_HASCKEYSRCBLT))
+				(tex->data_surf[level]->dwFlags & DDRAWISURF_HASCKEYSRCBLT))
 			{
 				MesaBufferUploadTextureChroma(tex->ctx, tex, level, tmu,
-							tex->ddsurf->lpLcl->ddckCKSrcBlt.dwColorSpaceLowValue,
-							tex->ddsurf->lpLcl->ddckCKSrcBlt.dwColorSpaceHighValue);
+							tex->data_surf[level]->ddckCKSrcBlt.dwColorSpaceLowValue,
+							tex->data_surf[level]->ddckCKSrcBlt.dwColorSpaceHighValue);
 			}
 			else
 			{
 				MesaBufferUploadTexture(tex->ctx, tex, level, tmu);
 			}
 			
-			info->texture_dirty = FALSE;
+			tex->data_dirty[level] = FALSE;
 			reload_done = TRUE;
 			
 			TOPIC("RELOAD", "Reloading: %d, level %d", tex->gltex, level);
 		}
+		tex->dirty = FALSE;
 	}
 	
 	if(reload_done)
@@ -1011,8 +1008,6 @@ void MesaDestroyTexture(mesa3d_texture_t *tex)
 	{
 		int i;
 		mesa3d_entry_t *entry = tex->ctx->entry;
-		GL_CHECK(entry->proc.pglDeleteTextures(1, &tex->gltex));
-		tex->alloc = FALSE;
 		
 		for(i = 0; i < tex->ctx->tmu_count; i++)
 		{
@@ -1022,6 +1017,14 @@ void MesaDestroyTexture(mesa3d_texture_t *tex)
 				tex->ctx->state.tmu[i].reload = TRUE;
 			}
 		}
+		
+		GL_CHECK(entry->proc.pglDeleteTextures(1, &tex->gltex));
+		for(i = 0; i <= tex->mipmap_level; i++)
+		{
+			SurfaceDeattachTexture(tex->data_surf[i], tex);
+		}
+		
+		tex->alloc = FALSE;
 	}
 }
 
@@ -1275,9 +1278,11 @@ void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value)
 			break;
 		/* D3DVALUE Mipmap LOD bias */
 		RENDERSTATE(D3DTSS_MIPMAPLODBIAS)
+			ts->miplodbias = TSS_FLOAT;
 			break;
 		/* DWORD 0..(n-1) LOD index of largest map to use (0 == largest) */
 		RENDERSTATE(D3DTSS_MAXMIPLEVEL)
+			ts->mipmaxlevel = TSS_DWORD;
 			break;
 		/* DWORD maximum anisotropy */
 		RENDERSTATE(D3DTSS_MAXANISOTROPY)
@@ -1655,6 +1660,7 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state)
 			ctx->state.tmu[0].update = TRUE;
 			break;
 		RENDERSTATE(D3DRENDERSTATE_MIPMAPLODBIAS) /* D3DVALUE Mipmap LOD bias */
+			ctx->state.tmu[0].miplodbias = state->dwArg[0];
 			break;
 		RENDERSTATE(D3DRENDERSTATE_ZBIAS) /* LONG Z bias */
 			break;
@@ -1863,7 +1869,10 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 		{
 			if(ts->image->mipmap)
 			{
-				GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, ts->image->mipmap_level));
+				GLint maxlevel = ts->image->mipmap_level;
+
+				GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, maxlevel));
+				GL_CHECK(entry->proc.pglTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, ts->miplodbias));
 
 				switch(ts->dx_min)
 				{
@@ -2230,85 +2239,20 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 	}
 }
 
-void MesaRender(mesa3d_ctx_t *ctx)
-{
-	int i;
-	mesa3d_entry_t *entry = ctx->entry;
-	
-	FLATPTR front_addr = ctx->front->lpLcl->lpGbl->fpVidMem;
-	
-	TOPIC("READBACK", "Render to %X", front_addr);
-	
-	entry->proc.pglFinish();
-	
-	MesaBufferDownloadColor(ctx, (void*)front_addr);
-	SurfaceInfoMakeClean(front_addr);
-	
-	if(ctx->depth)
-	{
-		FLATPTR depth_addr = ctx->depth->lpLcl->lpGbl->fpVidMem;
-		
-		MesaBufferDownloadDepth(ctx, (void*)depth_addr);
-		SurfaceInfoMakeClean(depth_addr);
-	}
-	
-	ctx->render.dirty = FALSE;
-	
-	/* reload textures at next run */
-	// FIXME: sure need this?
-	for(i = 0; i < ctx->tmu_count; i++)
-	{
-		ctx->state.tmu[i].reload = TRUE;
-	}
-}
-
-void MesaReadback(mesa3d_ctx_t *ctx, GLbitfield mask)
-{
-//	mesa3d_entry_t *entry = ctx->entry;
-	FLATPTR front_addr = ctx->front->lpLcl->lpGbl->fpVidMem;
-	
-	if(mask & GL_COLOR_BUFFER_BIT)
-	{
-		SurfaceInfo_t *front_info = SurfaceInfoGet(front_addr, TRUE);
-		if(front_info)
-		{
-			if(front_info->texture_dirty)
-			{
-				//ctx->entry->proc.pglClear(GL_COLOR_BUFFER_BIT);
-				MesaBufferUploadColor(ctx, (void*)front_addr);
-				front_info->texture_dirty = FALSE;
-				ctx->render.dirty = TRUE;
-				
-				TOPIC("READBACK", "read color plane");
-			}
-		}
-	}
-
-	if(mask & (GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT))
-	{
-		if(ctx->depth)
-		{
-			FLATPTR depth_addr = ctx->depth->lpLcl->lpGbl->fpVidMem;
-			SurfaceInfo_t *depth_info = SurfaceInfoGet(depth_addr, TRUE);
-			if(depth_info->texture_dirty)
-			{
-				//ctx->entry->proc.pglClear(GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-				MesaBufferUploadDepth(ctx, (void*)depth_addr);
-				depth_info->texture_dirty = FALSE;
-				ctx->render.dirty = TRUE;
-				
-				TOPIC("READBACK", "read depth+stencil plane");
-			}
-		}
-	}
-}
-
 void MesaDrawRefreshState(mesa3d_ctx_t *ctx)
 {
 	int i;
 
 	for(i = 0; i < ctx->tmu_count; i++)
 	{
+		if(ctx->state.tmu[i].image != NULL)
+		{
+			if(ctx->state.tmu[i].image->dirty)
+			{
+				ctx->state.tmu[i].reload = TRUE;
+			}
+		}
+		
 		if(ctx->state.tmu[i].reload)
 		{
 			if(ctx->state.tmu[i].image != NULL)
@@ -2327,17 +2271,12 @@ void MesaDrawRefreshState(mesa3d_ctx_t *ctx)
 	}
 }
 
-void MesaDrawSetSurfaces(mesa3d_ctx_t *ctx)
-{
-	MesaReadback(ctx, GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT); 
-	MesaDrawRefreshState(ctx);
-}
 
 void MesaDraw(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype, LPVOID vertices, DWORD verticesCnt)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 
-	MesaDrawSetSurfaces(ctx);
+//	MesaDrawSetSurfaces(ctx);
 
 	GLenum gl_ptype = DX2GLPrimitive(dx_ptype);
 
@@ -2382,6 +2321,7 @@ void MesaDraw(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype,
 		GL_CHECK(entry->proc.pglEnd());
 		
 		ctx->render.dirty = TRUE;
+		ctx->render.zdirty = TRUE;
 	}
 }
 
@@ -2392,7 +2332,7 @@ void MesaDrawIndex(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE v
 	mesa3d_entry_t *entry = ctx->entry;
 	DWORD i;
 	
-	MesaDrawSetSurfaces(ctx);
+//	MesaDrawSetSurfaces(ctx);
 
 	GLenum gl_ptype = DX2GLPrimitive(dx_ptype);
 
@@ -2429,6 +2369,7 @@ void MesaDrawIndex(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE v
 		entry->proc.pglEnd();
 		
 		ctx->render.dirty = TRUE;
+		ctx->render.zdirty = TRUE;
 	}
 }
 
@@ -2469,15 +2410,22 @@ void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, D
 		TOPIC("READBACK", "single buffering");
 		if(ctx->render.dirty)
 		{
-			MesaRender(ctx);
+			MesaBufferDownloadColor(ctx, (void*)ctx->front->lpLcl->lpGbl->fpVidMem);
+			ctx->render.dirty = FALSE;
 		}
 	}
 	else
 	{
-		MesaReadback(ctx, mask);
+		if(flags & D3DCLEAR_TARGET)
+			MesaBufferUploadColor(ctx, (void*)ctx->front->lpLcl->lpGbl->fpVidMem);
+		
+		if(ctx->depth && (flags & (D3DCLEAR_ZBUFFER | D3DCLEAR_STENCIL)))
+			MesaBufferUploadDepth(ctx, (void*)ctx->depth->lpLcl->lpGbl->fpVidMem);
+		
 		// FIXME: ^when is done full clear, is not needed to readback the surface! 
 	}
 
+#if 1
 	TOPIC("READBACK", "Clear %X => %X, %f, %X", flags, color, depth, stencil);
 	for(i = 0; i < rects_cnt; i++)
 	{
@@ -2486,10 +2434,20 @@ void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, D
 			rects[i].left, rects[i].top,
 			rects[i].right - rects[i].left,
 			rects[i].bottom - rects[i].top);
+
 		TOPIC("READBACK", "  RECT(%d, %d, %d, %d)",
 			rects[i].left, rects[i].top, rects[i].right, rects[i].bottom);
+
 		entry->proc.pglClear(mask);
 		entry->proc.pglDisable(GL_SCISSOR_TEST);
+	}
+#else
+	entry->proc.pglClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+#endif
+	
+	if(flags & D3DCLEAR_TARGET)
+	{
+		ctx->render.dirty = TRUE;
 	}
 	
 	if(flags & D3DCLEAR_ZBUFFER)
@@ -2498,8 +2456,10 @@ void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, D
 			entry->proc.pglEnable(GL_DEPTH_TEST);
 		else
 			entry->proc.pglDisable(GL_DEPTH_TEST);
-		
+
 		entry->proc.pglDepthMask(ctx->state.depth.writable ? GL_TRUE : GL_FALSE);
+
+		ctx->render.zdirty = TRUE;
 	}
 	
 	if(flags & D3DCLEAR_STENCIL)
@@ -2510,72 +2470,11 @@ void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, D
 			entry->proc.pglDisable(GL_STENCIL_TEST);
 
 		entry->proc.pglStencilMask(ctx->state.stencil.writemask);
-	}
-	
-	ctx->render.dirty = TRUE;
-	
-	MesaDrawRefreshState(ctx);
-}
 
-void MesaFlushSurface(FLATPTR vidmem)
-{
-	//TOPIC("RENDER", "MesaFlushSurface = %X", vidmem);
-	
-	int i;
-	mesa3d_entry_t *ptr = Mesa3DGet(GetCurrentProcessId(), FALSE);
-	if(ptr)
-	{
-		for(i = 0; i < MESA3D_MAX_CTXS; i++)
-		{
-			if(ptr->ctx[i] != NULL)
-			{
-				BOOL done = FALSE;
-				GL_BLOCK_BEGIN(ptr->ctx[i])
-					if(ctx->front)
-					{
-						TOPIC("READBACK", "TEST %X <-> %X", ctx->front->lpLcl->lpGbl->fpVidMem, vidmem);
-						if(ctx->front->lpLcl->lpGbl->fpVidMem == vidmem)
-						{
-							TOPIC("READBACK", "render.dirty? %d", ctx->render.dirty);
-							if(ctx->render.dirty)
-							{
-								//TOPIC("RENDER", "do render!");
-								MesaRender(ctx);
-							}
-							else
-							{
-								MesaReadback(ctx, GL_COLOR_BUFFER_BIT);
-							}
-							
-							done = TRUE;
-						}
-					}
-					
-					if(ctx->depth)
-					{
-						if(ctx->depth->lpLcl->lpGbl->fpVidMem == vidmem)
-						{
-							if(!ctx->render.dirty)
-							{
-								MesaReadback(ctx, GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-							}
-							
-							done = TRUE;
-						}
-					}
-					
-				GL_BLOCK_END
-				if(done)
-				{
-					return;
-				}
-			}
-		}
+		ctx->render.zdirty = TRUE;
 	}
-	else
-	{
-		TOPIC("RENDER", "NO entry for PID = %d", GetCurrentProcessId());
-	}
+
+	MesaDrawRefreshState(ctx);
 }
 
 void MesaBlockLock(mesa3d_ctx_t *ctx)

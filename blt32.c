@@ -131,10 +131,8 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 		
 		srcx = pbd->lpDDSrcSurface;   
 		src = srcx->lpGbl;
-
-#ifdef D3DHAL
-		MesaFlushSurface(src->fpVidMem);
-#endif
+		
+		SurfaceFromMesa(srcx);
 
 #ifdef TRACE_ON
 		dwSrcOffset = GetOffset(ddhal, (void*)src->fpVidMem);
@@ -272,10 +270,8 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 							pbd->rSrc.left, pbd->rSrc.top, pbd->rDest.left, pbd->rDest.top, dwSrcWidth, dwSrcHeight, spitch, dpitch);
 			}
 		}
-
-#ifdef D3DHAL
-		SurfaceInfoMakeDirty(dst->fpVidMem);
-#endif
+		
+		SurfaceToMesa(dstx);
 	}
 	else if (dwFlags & (DDBLT_COLORFILL | DDBLT_DEPTHFILL))
 	{
@@ -307,10 +303,8 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 			rop3(bpp, 0xF0, (void*)dst->fpVidMem, (void*)dst->fpVidMem, dwFillColor,
 				pbd->rDest.left, pbd->rDest.top, pbd->rDest.left, pbd->rDest.top, dwDstWidth, dwDstHeight, dst->lPitch, dst->lPitch);
 		}
-
-#ifdef D3DHAL
-		SurfaceInfoMakeDirty(dst->fpVidMem);
-#endif
+		
+		SurfaceToMesa(dstx);
 	}
 	else
 	{

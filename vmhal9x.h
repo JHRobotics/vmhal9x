@@ -135,32 +135,18 @@ uint64_t GetTimeTMS();
 /* mesa */
 void Mesa3DCleanProc();
 
-#define HAL3D_NONE  0
-#define HAL3D_COLOR 1
-#define HAL3D_DEPTH 2
-
-/* saved in hash table where index is surface data flat memory address */
-typedef struct _SurfaceInfo
-{
-	FLATPTR lin_address;
-	BOOL texture_dirty;   /* when set, D3D needs reload texture */
-	DWORD width;
-	DWORD height;
-	DWORD bpp;
-	int internal_format;
-	unsigned int format;
-	unsigned int type;
-	BOOL compressed;
-	struct _SurfaceInfo *next; /* text in list */
-} SurfaceInfo_t;
-
-SurfaceInfo_t *SurfaceInfoGet(FLATPTR lin_address, BOOL create);
-void SurfaceInfoErase(FLATPTR lin_address);
-void SurfaceInfoMakeDirty(FLATPTR lin_address);
-void SurfaceInfoMakeClean(FLATPTR lin_address);
-
 void SurfaceCtxLock();
 void SurfaceCtxUnlock();
+
+DWORD SurfaceTableCreate(LPDDRAWI_DDRAWSURFACE_LCL surf);
+void SurfaceTableDestroy(LPDDRAWI_DDRAWSURFACE_LCL surf);
+void SurfaceAttachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_tex, int level);
+void SurfaceAttachCtx(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_ctx);
+void SurfaceDeattachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_tex);
+void SurfaceDeattachCtx(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_ctx);
+void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf);
+void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf);
+void SurfaceFlipMesa();
 
 inline static DWORD SurfacePitch(DWORD width, DWORD bpp)
 {
