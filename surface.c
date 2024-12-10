@@ -56,7 +56,7 @@ extern HANDLE hSharedHeap;
 
 #define SURF_TYPE_NONE 1
 #define SURF_TYPE_TEX  2
-#define SURF_TYPE_CTX  3
+//#define SURF_TYPE_CTX  3
 
 typedef struct surface_attachment
 {
@@ -68,7 +68,7 @@ typedef struct surface_attachment
 			mesa3d_texture_t *tex;
 			int level;
 		} texture;
-		mesa3d_ctx_t *ctx;
+		//mesa3d_ctx_t *ctx;
 	};
 } surface_attachment_t;
 
@@ -78,6 +78,20 @@ typedef struct surface_info
 	surface_attachment_t *first;
 	LPDDRAWI_DDRAWSURFACE_LCL surf;
 } surface_info_t;
+
+typedef struct context_attachment
+{
+	struct context_attachment *next;
+	DWORD pid;
+	mesa3d_ctx_t *ctx;
+} context_attachment_t;
+
+typedef struct context_info
+{
+	context_attachment_t *first;
+} context_info_t;
+
+static context_info_t contexts = {NULL};
 
 #define SURFACE_TABLE_MAGIC 0xD3D01234
 
@@ -160,47 +174,39 @@ void SurfaceAttachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *tex, int level)
 	} // info
 }
 
-void SurfaceAttachCtx(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_ctx)
+void SurfaceAttachCtx(void *mesa_ctx)
 {
 	TRACE_ENTRY
 	
-	if(!surf)
-		return;
-
-	surface_info_t *info = SurfaceGetInfo(surf);
-	if(info)
+	context_attachment_t *item = contexts.first;
+	context_attachment_t *last = NULL;
+	while(item)
 	{
-		surface_attachment_t *item = info->first;
-		surface_attachment_t *last = NULL;
-		
-		while(item)
+		if(item->ctx == mesa_ctx)
 		{
-			if(item->type == SURF_TYPE_CTX && 
-				item->ctx == mesa_ctx
-			){
-				/* context already attached */
-				return;
-			}
-			
-			item = item->next;
+			return;
 		}
 		
-		item = HeapAlloc(hSharedHeap, HEAP_ZERO_MEMORY, sizeof(surface_attachment_t));
-		if(item)
+		last = item;
+		item = item->next;
+	}
+	
+	item = HeapAlloc(hSharedHeap, HEAP_ZERO_MEMORY, sizeof(context_attachment_t));
+	if(item)
+	{
+		item->ctx = mesa_ctx;
+		item->next = NULL;
+		item->pid = GetCurrentProcessId();
+		
+		if(last)
 		{
-			item->type = SURF_TYPE_CTX;
-			item->ctx = mesa_ctx;
-			item->next = NULL;
-			if(last)
-			{
-				last->next = item;
-			}
-			else
-			{
-				info->first = item;
-			}
+			last->next = item;
 		}
-	} // info
+		else
+		{
+			contexts.first = item;
+		}
+	}
 }
 
 void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf)
@@ -222,32 +228,44 @@ void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf)
 						item->texture.tex->dirty = TRUE;
 					}
 					break;
-				case SURF_TYPE_CTX:
-					if(item->ctx->front)
-					{
-						if(SurfaceGetInfo(item->ctx->front->lpLcl) == info)
-						{
-							GL_BLOCK_BEGIN(item->ctx)
-								MesaBufferUploadColor(ctx, (void*)ctx->front->lpLcl->lpGbl->fpVidMem);
-								item->ctx->render.dirty = FALSE;
-							GL_BLOCK_END
-						}
-					}
-					if(item->ctx->depth)
-					{
-						if(SurfaceGetInfo(item->ctx->depth->lpLcl) == info)
-						{
-							GL_BLOCK_BEGIN(item->ctx)
-								MesaBufferUploadDepth(ctx, (void*)ctx->depth->lpLcl->lpGbl->fpVidMem);
-								item->ctx->render.zdirty = FALSE;
-							GL_BLOCK_END
-						}
-					}
-					break;
 			}
 			
 			item = item->next;
 		}
+	}
+	
+	FLATPTR vidmem = surf->lpGbl->fpVidMem;
+	context_attachment_t *citem = contexts.first;
+	DWORD pid = GetCurrentProcessId();
+
+	while(citem)
+	{
+		if(citem->pid == pid)
+		{
+			if(citem->ctx->front)
+			{
+				if(citem->ctx->front->lpGbl->fpVidMem == vidmem)
+				{
+					GL_BLOCK_BEGIN(citem->ctx)
+						MesaBufferUploadColor(ctx, (void*)vidmem);
+						ctx->render.dirty = TRUE;
+					GL_BLOCK_END
+				}
+			}
+			
+			if(citem->ctx->depth)
+			{
+				if(citem->ctx->depth->lpGbl->fpVidMem == vidmem)
+				{
+					GL_BLOCK_BEGIN(citem->ctx)
+						MesaBufferUploadDepth(ctx, (void*)vidmem);
+						ctx->render.zdirty = TRUE;
+					GL_BLOCK_END
+				}
+			}
+		}
+		
+		citem = citem->next;
 	}
 }
 
@@ -266,32 +284,44 @@ void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf)
 				case SURF_TYPE_TEX:
 					// don't downloading textures back to surfaces
 					break;
-				case SURF_TYPE_CTX:
-					if(item->ctx->render.dirty && item->ctx->front)
-					{
-						if(SurfaceGetInfo(item->ctx->front->lpLcl) == info)
-						{
-							GL_BLOCK_BEGIN(item->ctx)
-								MesaBufferDownloadColor(ctx, (void*)ctx->front->lpLcl->lpGbl->fpVidMem);
-								item->ctx->render.dirty = FALSE;
-							GL_BLOCK_END
-						}
-					}
-					if(item->ctx->render.zdirty && item->ctx->depth)
-					{
-						if(SurfaceGetInfo(item->ctx->depth->lpLcl) == info)
-						{
-							GL_BLOCK_BEGIN(item->ctx)
-								MesaBufferDownloadDepth(ctx, (void*)ctx->depth->lpLcl->lpGbl->fpVidMem);
-								item->ctx->render.zdirty = FALSE;
-							GL_BLOCK_END
-						}
-					}
-					break;
 			}
 			
 			item = item->next;
 		}
+	}
+	
+	FLATPTR vidmem = surf->lpGbl->fpVidMem;
+	context_attachment_t *citem = contexts.first;	
+	DWORD pid = GetCurrentProcessId();
+
+	while(citem)
+	{
+		if(citem->pid == pid)
+		{
+			if(citem->ctx->render.dirty && citem->ctx->front)
+			{
+				if(citem->ctx->front->lpGbl->fpVidMem == vidmem)
+				{
+					GL_BLOCK_BEGIN(citem->ctx)
+						MesaBufferDownloadColor(ctx, (void*)vidmem);
+						ctx->render.dirty = FALSE;
+					GL_BLOCK_END
+				}
+			}
+			
+			if(citem->ctx->render.zdirty && citem->ctx->depth)
+			{
+				if(citem->ctx->depth->lpGbl->fpVidMem == vidmem)
+				{
+					GL_BLOCK_BEGIN(citem->ctx)
+						MesaBufferDownloadDepth(ctx, (void*)vidmem);
+						ctx->render.zdirty = FALSE;
+					GL_BLOCK_END
+				}
+			}
+		}
+		
+		citem = citem->next;
 	}
 }
 
@@ -314,28 +344,44 @@ void SurfaceTableDestroy(LPDDRAWI_DDRAWSURFACE_LCL surf)
 	surf->dwReserved1 = 0;
 }
 
-void SurfaceFlipMesa()
+/*
+	This is a bit headache, in time when DD Flip is called DX runtime switch
+	primary pointer to the front buffer surface. So pointers are now:
+		ctx->front->lpGbl->fpVidMem == targ->lpGbl->fpVidMem
+		So we can copy GL color buffer to "targ" surface,
+
+		but in same we should read back from "curr" back to GL
+		but this seems to be pretty ineffective
+*/
+void SurfaceFlipMesa(LPDDRAWI_DDRAWSURFACE_LCL curr, LPDDRAWI_DDRAWSURFACE_LCL targ)
 {
 	TRACE_ENTRY
 	
-	mesa3d_entry_t *entry = Mesa3DGet(GetCurrentProcessId(), FALSE);
+	context_attachment_t *item = contexts.first;
 	
-	if(entry)
+	DWORD pid = GetCurrentProcessId();
+	
+	while(item)
 	{
-		int i;
-		for(i = 0; i < MESA3D_MAX_CTXS; i++)
+		if(item->pid == pid)
 		{
-			if(entry->ctx[i] != NULL)
-			{
-				if(entry->ctx[i]->render.dirty)
+			GL_BLOCK_BEGIN(item->ctx)
+				if(item->ctx->render.dirty)
 				{
-					GL_BLOCK_BEGIN(entry->ctx[i])
-						MesaBufferDownloadColor(ctx, (void*)ctx->front->lpLcl->lpGbl->fpVidMem);
-						ctx->render.dirty = FALSE;
-					GL_BLOCK_END
+					MesaBufferDownloadColor(ctx, (void*)ctx->front->lpGbl->fpVidMem);
+					ctx->render.dirty = FALSE;
 				}
-			}
+#if 0
+				if(ctx->front->lpGbl->fpVidMem == targ->lpGbl->fpVidMem)
+				{
+					MesaBufferUploadColor(ctx, (void*)curr->lpGbl->fpVidMem);
+					ctx->render.dirty = TRUE;
+				}
+#endif
+			GL_BLOCK_END
 		}
+		
+		item = item->next;
 	}
 }
 
@@ -375,38 +421,34 @@ void SurfaceDeattachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_tex)
 	}
 }
 
-void SurfaceDeattachCtx(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_ctx)
+void SurfaceDeattachCtx(void *mesa_ctx)
 {
 	TRACE_ENTRY
 	
-	surface_info_t *info = SurfaceGetInfo(surf);
-	if(info)
-	{
-		surface_attachment_t *item = info->first;
-		surface_attachment_t *last = NULL;
+	context_attachment_t *item = contexts.first;
+	context_attachment_t *last = NULL;
 		
-		while(item)
+	while(item)
+	{
+		if(item->ctx == mesa_ctx)
 		{
-			if(item->type == SURF_TYPE_CTX && item->ctx == mesa_ctx)
+			if(!last)
 			{
-				if(!last)
-				{
-					info->first = item->next;
-				}
-				else
-				{
-					last->next = item->next;
-				}
-				
-				surface_attachment_t *ptr = item;
-				item = item->next;
-				HeapFree(hSharedHeap, 0, ptr);
+				contexts.first = item->next;
 			}
 			else
 			{
-				last = item;
-				item = item->next;
+				last->next = item->next;
 			}
+			
+			context_attachment_t *ptr = item;
+			item = item->next;
+			HeapFree(hSharedHeap, 0, ptr);
+		}
+		else
+		{
+			last = item;
+			item = item->next;
 		}
 	}
 }

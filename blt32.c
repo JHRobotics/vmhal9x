@@ -131,8 +131,6 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 		
 		srcx = pbd->lpDDSrcSurface;   
 		src = srcx->lpGbl;
-		
-		SurfaceFromMesa(srcx);
 
 #ifdef TRACE_ON
 		dwSrcOffset = GetOffset(ddhal, (void*)src->fpVidMem);
@@ -147,6 +145,8 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 			FBHDA_access_begin(0);
 			isInFront = TRUE;
 		}
+		
+		SurfaceFromMesa(srcx);
 		
 		/* check if need stretch */
 		if(dwDstWidth != dwSrcWidth ||

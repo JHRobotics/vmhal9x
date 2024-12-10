@@ -149,11 +149,6 @@ DWORD __stdcall CreateSurface(LPDDHAL_CREATESURFACEDATA pcsd)
 					lpSurf->lpGbl->lPitch = SurfacePitch(lpSurf->lpGbl->wWidth, 32);
 				}
 				
-				TOPIC("READBACK", "ZBuff: bpp %d, flags: 0x%X",
-					lpSurf->lpGbl->ddpfSurface.dwZBufferBitDepth,
-					lpSurf->lpGbl->ddpfSurface.dwFlags
-					);
-				
 				lpSurf->lpGbl->dwBlockSizeX = (DWORD)lpSurf->lpGbl->wHeight * lpSurf->lpGbl->lPitch;
 				lpSurf->lpGbl->dwBlockSizeY = 1;
 				lpSurf->lpGbl->fpVidMem     = DDHAL_PLEASEALLOC_BLOCKSIZE;
@@ -293,12 +288,12 @@ DWORD __stdcall Lock32(LPDDHAL_LOCKDATA pld)
 			}
 		}
 #endif
-		TOPIC("READBACK", "LOCK primary");
+		TOPIC("READBACK", "LOCK %X (primary)", pld->lpDDSurface->lpGbl->fpVidMem);
 		FBHDA_access_begin(0);
 	}
 	else
 	{
-		TOPIC("READBACK", "LOCK non primary");
+		TOPIC("READBACK", "LOCK %X (non primary)", pld->lpDDSurface->lpGbl->fpVidMem);
 	}
 	
 	SurfaceFromMesa(pld->lpDDSurface);
@@ -313,9 +308,10 @@ DWORD __stdcall Unlock32(LPDDHAL_UNLOCKDATA pld)
 		
 	if(IsInFront(ddhal, (void*)pld->lpDDSurface->lpGbl->fpVidMem))
 	{
-		TOPIC("READBACK", "UNLOCK primary");
 		FBHDA_access_end(0);
 	}
+	
+	TOPIC("READBACK", "UNLOCK %X", pld->lpDDSurface->lpGbl->fpVidMem);
 	
 	SurfaceToMesa(pld->lpDDSurface);
 

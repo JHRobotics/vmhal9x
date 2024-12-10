@@ -90,8 +90,8 @@ DWORD __stdcall SetRenderTarget32(LPD3DHAL_SETRENDERTARGETDATA lpSetRenderData)
 	
 	GL_BLOCK_BEGIN(lpSetRenderData->dwhContext)
 		MesaSetTarget(ctx,
-			(LPDDRAWI_DDRAWSURFACE_INT)lpSetRenderData->lpDDS,
-			(LPDDRAWI_DDRAWSURFACE_INT)lpSetRenderData->lpDDSZ
+			((LPDDRAWI_DDRAWSURFACE_INT)lpSetRenderData->lpDDS)->lpLcl,
+			((LPDDRAWI_DDRAWSURFACE_INT)lpSetRenderData->lpDDSZ)->lpLcl
 		);
 	GL_BLOCK_END
 	
@@ -725,13 +725,19 @@ DWORD __stdcall ContextCreate32(LPD3DHAL_CONTEXTCREATEDATA pccd)
 	mesa3d_entry_t *entry = Mesa3DGet(GetCurrentProcessId(), TRUE);
 	if(entry)
 	{
-		LPDDRAWI_DDRAWSURFACE_INT dss = (LPDDRAWI_DDRAWSURFACE_INT)pccd->lpDDS;
-		LPDDRAWI_DDRAWSURFACE_INT dsz = (LPDDRAWI_DDRAWSURFACE_INT)pccd->lpDDSZ;
+		LPDDRAWI_DDRAWSURFACE_INT dss_int = (LPDDRAWI_DDRAWSURFACE_INT)pccd->lpDDS;
+		LPDDRAWI_DDRAWSURFACE_INT dsz_int = (LPDDRAWI_DDRAWSURFACE_INT)pccd->lpDDSZ;
+		LPDDRAWI_DDRAWSURFACE_LCL dss = dss_int->lpLcl;
+		LPDDRAWI_DDRAWSURFACE_LCL dsz = NULL;
+	
+		if(dsz_int)
+			dsz = dsz_int->lpLcl;
 
 		mesa3d_ctx_t *ctx = MesaCreateCtx(entry, dss, dsz);
 		if(ctx)
 		{
 			TOPIC("GL", "MesaCreateCtx(entry, %X, %X)", dss, dsz);
+			SurfaceAttachCtx(ctx);
 			pccd->dwhContext = MESA_CTX_TO_HANDLE(ctx);
 			pccd->ddrval = DD_OK;
 			ctx->dd = pccd->lpDDGbl;
@@ -750,7 +756,9 @@ DWORD __stdcall ContextDestroy32(LPD3DHAL_CONTEXTDESTROYDATA pcdd)
 {
 	TRACE_ENTRY
 	
-	MesaDestroyCtx(MESA_HANDLE_TO_CTX(pcdd->dwhContext));
+	mesa3d_ctx_t *ctx = MESA_HANDLE_TO_CTX(pcdd->dwhContext);
+	SurfaceDeattachCtx(ctx);
+	MesaDestroyCtx(ctx);
 	pcdd->dwhContext = 0;
 	
 	pcdd->ddrval = DD_OK;
@@ -842,22 +850,27 @@ DWORD __stdcall TextureCreate32(LPD3DHAL_TEXTURECREATEDATA ptcd)
 	VALIDATE(ptcd)
 	
 	ptcd->ddrval = DDERR_OUTOFVIDEOMEMORY;
+	
+	LPDDRAWI_DDRAWSURFACE_INT dss = (LPDDRAWI_DDRAWSURFACE_INT)ptcd->lpDDS;
 
-	GL_BLOCK_BEGIN(ptcd->dwhContext)
-		mesa3d_texture_t *tex = MesaCreateTexture(ctx, (LPDDRAWI_DDRAWSURFACE_INT)ptcd->lpDDS);
-		if(tex)
-		{
-			ptcd->dwHandle = MESA_TEX_TO_HANDLE(tex);
-			TRACE("new texture: %X", ptcd->dwHandle);
-			ptcd->ddrval = DD_OK;
-		}
-		else
-		{
-			/* set NULL handle */
-			ptcd->dwHandle = 0;
-			ptcd->ddrval = DDERR_GENERIC;
-		}
-	GL_BLOCK_END
+	if(dss)
+	{
+		GL_BLOCK_BEGIN(ptcd->dwhContext)
+			mesa3d_texture_t *tex = MesaCreateTexture(ctx, dss->lpLcl);
+			if(tex)
+			{
+				ptcd->dwHandle = MESA_TEX_TO_HANDLE(tex);
+				TRACE("new texture: %X", ptcd->dwHandle);
+				ptcd->ddrval = DD_OK;
+			}
+			else
+			{
+				/* set NULL handle */
+				ptcd->dwHandle = 0;
+				ptcd->ddrval = DDERR_GENERIC;
+			}
+		GL_BLOCK_END
+	}
 
 	return DDHAL_DRIVER_HANDLED;
 }

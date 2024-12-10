@@ -190,18 +190,21 @@ DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
 		SurfaceCtxLock();
 		is_flipping = TRUE;
 		
-		TOPIC("READBACK", "Flip context: 0x%X -> 0x%X", pfd->lpSurfCurr->dwReserved1, pfd->lpSurfTarg->dwReserved1);
+		TOPIC("READBACK", "Flip: %X -> %X",
+			(uint32_t)pfd->lpSurfCurr->lpGbl->fpVidMem,
+			(uint32_t)pfd->lpSurfTarg->lpGbl->fpVidMem);
 
-		SurfaceFlipMesa();
-	
+		SurfaceFlipMesa(pfd->lpSurfCurr, pfd->lpSurfTarg);
+
 		DoFlipping(ddhal, (void*)pfd->lpSurfCurr->lpGbl->fpVidMem, (void*)pfd->lpSurfTarg->lpGbl->fpVidMem,
 			pfd->lpSurfCurr->lpGbl->lPitch, pfd->lpSurfTarg->lpGbl->lPitch);
 		
-		TOPIC("READBACK", "Primary surface: 0x%08X", pfd->lpSurfTarg->lpGbl->fpVidMem);
+		TOPIC("READBACK", "Fliped (on screen: %X)", pfd->lpSurfTarg->lpGbl->fpVidMem);
+		
 		is_flipping = FALSE;
 		SurfaceCtxUnlock();
 	}
-#if 0
+#if 1
 	else
 	{
 		/* surface isn't primary, so only refresh primary surface */
@@ -212,7 +215,7 @@ DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
 		// ...
 
 		FBHDA_access_end(0);
-		TOPIC("READBACK", "Refresh primary: 0x%08X", pfd->lpSurfTarg->lpGbl->fpVidMem);
+		TOPIC("READBACK", "Flip, refresh: %X (!)", pfd->lpSurfTarg->lpGbl->fpVidMem);
 		is_flipping = FALSE;
 		SurfaceCtxUnlock();
 	}

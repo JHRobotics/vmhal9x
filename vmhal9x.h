@@ -141,12 +141,12 @@ void SurfaceCtxUnlock();
 DWORD SurfaceTableCreate(LPDDRAWI_DDRAWSURFACE_LCL surf);
 void SurfaceTableDestroy(LPDDRAWI_DDRAWSURFACE_LCL surf);
 void SurfaceAttachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_tex, int level);
-void SurfaceAttachCtx(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_ctx);
+void SurfaceAttachCtx(void *mesa_ctx);
 void SurfaceDeattachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_tex);
-void SurfaceDeattachCtx(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_ctx);
+void SurfaceDeattachCtx(void *mesa_ctx);
 void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf);
 void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf);
-void SurfaceFlipMesa();
+void SurfaceFlipMesa(LPDDRAWI_DDRAWSURFACE_LCL curr, LPDDRAWI_DDRAWSURFACE_LCL targ);
 
 inline static DWORD SurfacePitch(DWORD width, DWORD bpp)
 {

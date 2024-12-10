@@ -108,8 +108,8 @@ typedef struct mesa3d_ctx
 	DWORD thread_id;
 	GLint front_bpp;
 	GLint depth_bpp;
-	LPDDRAWI_DDRAWSURFACE_INT front;
-	LPDDRAWI_DDRAWSURFACE_INT depth;
+	LPDDRAWI_DDRAWSURFACE_LCL front;
+	LPDDRAWI_DDRAWSURFACE_LCL depth;
 	LPDDRAWI_DIRECTDRAW_GBL dd;
 	BOOL depth_stencil;
 	int tmu_count;
@@ -266,8 +266,8 @@ void Mesa3DFree(DWORD pid);
 #endif
 
 mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry,
-	LPDDRAWI_DDRAWSURFACE_INT dds,
-	LPDDRAWI_DDRAWSURFACE_INT ddz);
+	LPDDRAWI_DDRAWSURFACE_LCL dds,
+	LPDDRAWI_DDRAWSURFACE_LCL ddz);
 void MesaDestroyCtx(mesa3d_ctx_t *ctx);
 void MesaDestroyAllCtx(mesa3d_entry_t *entry);
 void MesaInitCtx(mesa3d_ctx_t *ctx);
@@ -277,7 +277,7 @@ void MesaBlockUnlock(mesa3d_ctx_t *ctx);
 BOOL MesaSetCtx(mesa3d_ctx_t *ctx);
 
 /* needs GL_BLOCK */
-mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_INT surf);
+mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_LCL surf);
 void MesaReloadTexture(mesa3d_texture_t *tex, int tmu);
 void MesaDestroyTexture(mesa3d_texture_t *tex);
 
@@ -289,7 +289,7 @@ void MesaDrawIndex(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE v
 
 void MesaRender(mesa3d_ctx_t *ctx);
 void MesaReadback(mesa3d_ctx_t *ctx, GLbitfield mask);
-BOOL MesaSetTarget(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_INT dss, LPDDRAWI_DDRAWSURFACE_INT dsz);
+BOOL MesaSetTarget(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_LCL dss, LPDDRAWI_DDRAWSURFACE_LCL dsz);
 void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value);
 
 void MesaDrawRefreshState(mesa3d_ctx_t *ctx);
@@ -297,7 +297,7 @@ void MesaDrawSetSurfaces(mesa3d_ctx_t *ctx);
 BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LPBYTE vertices, DWORD *error_offset);
 
 void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, DWORD stencil, int rects_cnt, RECT *rects);
-DWORD DDSurf_GetBPP(LPDDRAWI_DDRAWSURFACE_INT surf);
+DWORD DDSurf_GetBPP(LPDDRAWI_DDRAWSURFACE_LCL surf);
 
 void MesaStencilApply(mesa3d_ctx_t *ctx);
 

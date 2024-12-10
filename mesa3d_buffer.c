@@ -39,6 +39,8 @@
 
 void MesaBufferUploadColor(mesa3d_ctx_t *ctx, const void *src)
 {
+	TRACE_ENTRY
+
 	mesa3d_entry_t *entry = ctx->entry;
 	GLenum type;
 	GLint format;
@@ -82,14 +84,13 @@ void MesaBufferUploadColor(mesa3d_ctx_t *ctx, const void *src)
 		ctx->state.tmu[ctx->fbo.tmu].update = TRUE;
 	}
 	
-	TOPIC("READBACK", "upload color!");
+	TOPIC("READBACK", "%X -> upload color!", src);
 }
 
 void MesaBufferDownloadColor(mesa3d_ctx_t *ctx, void *dst)
 {
-//	size_t s = ctx->state.sw * ctx->state.sh * ((ctx->front_bpp + 7)/8);
-//	memcpy(dst, ctx->osbuf, s);
-	//size_t s = ctx->state.sw * ctx->state.sh * ((ctx->front_bpp + 7)/8);
+	TRACE_ENTRY
+
 	GLenum type;
 	GLenum format;
 
@@ -124,11 +125,13 @@ void MesaBufferDownloadColor(mesa3d_ctx_t *ctx, void *dst)
 	if(front_surface)
 		FBHDA_access_end(0);
 		
-	TOPIC("READBACK", "download color!");
+	TOPIC("READBACK", "%X <- download color!", dst);
 }
 
 void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 {
+	TRACE_ENTRY
+	
 	mesa3d_entry_t *entry = ctx->entry;
 	GLenum type;
 	GLenum format;
@@ -209,12 +212,13 @@ void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 		ctx->state.tmu[ctx->fbo.tmu].update = TRUE;
 	}
 	
-	TOPIC("READBACK", "upload depth!");
+	TOPIC("READBACK", "%X -> upload depth!", src);
 }
 
 void MesaBufferDownloadDepth(mesa3d_ctx_t *ctx, void *dst)
 {
-	//size_t s = ctx->state.sw * ctx->state.sh * ((ctx->front_bpp + 7)/8);
+	TRACE_ENTRY
+
 	GLenum type;
 	GLenum format = GL_DEPTH_COMPONENT;
 	
@@ -243,7 +247,7 @@ void MesaBufferDownloadDepth(mesa3d_ctx_t *ctx, void *dst)
 
 	ctx->entry->proc.pglReadPixels(0, 0, ctx->state.sw, ctx->state.sh, format, type, dst);
 	
-	TOPIC("READBACK", "download depth!");
+	TOPIC("READBACK", "%X -> download depth!", dst);
 }
 
 static DWORD compressed_size(GLenum internal_format, GLuint w, GLuint h)
@@ -266,6 +270,8 @@ static DWORD compressed_size(GLenum internal_format, GLuint w, GLuint h)
 
 void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level, int tmu)
 {
+	TRACE_ENTRY
+
 	mesa3d_entry_t *entry = ctx->entry;
 	GLuint w = tex->width;
 	GLuint h = tex->height;
