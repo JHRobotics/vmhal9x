@@ -48,7 +48,7 @@ BOOL halVSync = FALSE;
 
 VMHAL_enviroment_t VMHALenv = {
 	FALSE,
-	6, // DDI
+	7, // DDI
 	2048, // tex w  (can be query by GL_MAX_TEXTURE_SIZE)
 	2048, // tex h
 	8 // tex units

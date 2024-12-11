@@ -49,7 +49,7 @@ void WINAPI DDHAL32_VidMemFree(LPDDRAWI_DIRECTDRAW_GBL lpDD, int heap, FLATPTR p
 
 VMDAHAL_t *GetHAL(LPDDRAWI_DIRECTDRAW_GBL lpDD)
 {
-	if(IS_GLOBAL_ADDR(lpDD->dwReserved3)) // running on DX5 or greater?
+	if(lpDD != NULL && IS_GLOBAL_ADDR(lpDD->dwReserved3)) // running on DX5 or greater?
 		return (VMDAHAL_t*)lpDD->dwReserved3;
 	else
 		return globalHal;         // our global value for this
@@ -204,7 +204,15 @@ DWORD __stdcall DestroySurface(LPDDHAL_DESTROYSURFACEDATA lpd)
 		lpd->lpDDSurface->lpGbl->lPitch,
 		lpd->lpDDSurface->lpGbl->ddpfSurface.dwFlags);
 	TOPIC("DESTROY", "VRAM ptr: 0x%X", lpd->lpDDSurface->lpGbl->fpVidMem);
-	
+
+	if(lpd->lpDDSurface->lpSurfMore->dwSize >= sizeof(DDRAWI_DDRAWSURFACE_MORE))
+	{
+		if(lpd->lpDDSurface->lpSurfMore->dwSurfaceHandle)
+		{
+		 	SurfaceNestDestroy(lpd->lpDDSurface->lpSurfMore->dwSurfaceHandle, TRUE);
+		}
+	}
+
 	SurfaceTableDestroy(lpd->lpDDSurface);
 	
 	return DDHAL_DRIVER_NOTHANDLED;

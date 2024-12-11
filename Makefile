@@ -74,7 +74,7 @@ endif
 	$(WINDRES) -DWINDRES -DVMHAL9X_BUILD=$(VERSION_BUILD) --input $< --output $@ --output-format=coff
 
 BASE_vmhal9x.dll := 0xB00B0000
-BASE_vmdisp9x.dll := 0x01800000
+BASE_vmdisp9x.dll := 0x01350000
 
 NOCRT_OBJS = nocrt/nocrt.c.o nocrt/nocrt_math.c.o nocrt/nocrt_file_win.c.o nocrt/nocrt_mem_win.c.o nocrt/nocrt_dll.c.o
 VMHAL9X_OBJS = $(NOCRT_OBJS) vmhal9x.c.o ddraw.c.o 3d_accel.c.o flip32.c.o blt32.c.o rop3.c.o transblt.c.o debug.c.o dump.c.o fill.c.o vmhal9x.res

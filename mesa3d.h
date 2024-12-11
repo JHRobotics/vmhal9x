@@ -202,6 +202,7 @@ typedef struct mesa3d_entry
 	DWORD pid;
 	struct mesa3d_entry *next;
 	HANDLE lib;
+	BOOL dx7; // latch set by GetDriverInfo32
 	mesa3d_ctx_t *ctx[MESA3D_MAX_CTXS];
 	OSMesaGetProcAddress_h GetProcAddress;
 	struct {

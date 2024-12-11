@@ -504,6 +504,21 @@ static void MesaDepthReeval(mesa3d_ctx_t *ctx)
 	
 	MesaStencilApply(ctx);
 }
+/*
+mesa3d_ctx_t *MesaCreateCtxEx(mesa3d_entry_t *entry, DWORD dds_nest, DWORD ddz_nest)
+{
+	TRACE_ENTRY
+	
+	LPDDRAWI_DDRAWSURFACE_LCL dds = SurfaceNestSurface(dds_nest);
+	LPDDRAWI_DDRAWSURFACE_LCL ddz = SurfaceNestSurface(ddz_nest);
+	
+	if(dds)
+	{
+		return MesaCreateCtx(dds, ddz);
+	}
+	
+	return NULL;
+}*/
 
 mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry,
 	LPDDRAWI_DDRAWSURFACE_LCL dds,
@@ -595,6 +610,8 @@ mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry,
 			/* error, clean the garbage */
 			if(!valid)
 			{
+				ERR("Context creation failure!");
+				
 				if(ctx)
 				{
 					if(ctx->mesactx)
@@ -1156,7 +1173,14 @@ void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value)
 	{
 		/* texture resource */
 		RENDERSTATE(D3DTSS_TEXTUREMAP)
-			ts->image = MESA_HANDLE_TO_TEX(TSS_DWORD);
+			if(ctx->entry->dx7)
+			{
+				ts->image = SurfaceNestTexture(TSS_DWORD, ctx);
+			}
+			else
+			{
+				ts->image = MESA_HANDLE_TO_TEX(TSS_DWORD);
+			}
 			ts->reload = TRUE;
 			break;
 		/* D3DTEXTUREOP - per-stage blending controls for color channels */

@@ -148,6 +148,15 @@ void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf);
 void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf);
 void SurfaceFlipMesa(LPDDRAWI_DDRAWSURFACE_LCL curr, LPDDRAWI_DDRAWSURFACE_LCL targ);
 
+DWORD SurfaceNestCreate(LPDDRAWI_DDRAWSURFACE_LCL surf, void *ddlcl);
+void SurfaceNestDestroy(DWORD nest, BOOL call_destructor);
+LPDDRAWI_DDRAWSURFACE_LCL SurfaceNestSurface(DWORD nest);
+void SurfaceNestCleanupCtx(void *mesa_ctx);
+void SurfaceNestCleanupAll(void *ddlcl);
+
+// need GL block
+void *SurfaceNestTexture(DWORD nest, void *mesa_ctx);
+
 inline static DWORD SurfacePitch(DWORD width, DWORD bpp)
 {
 	DWORD bp = (bpp + 7) / 8;

@@ -78,6 +78,13 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 	dst = dstx->lpGbl;			         // destination data
 	
 	dwFlags = pbd->dwFlags;
+	
+	if(dwFlags & (DDBLT_ZBUFFER | DDBLT_ZBUFFERDESTCONSTOVERRIDE | 
+		DDBLT_ZBUFFERDESTOVERRIDE | DDBLT_ZBUFFERSRCCONSTOVERRIDE |
+		DDBLT_ZBUFFERSRCOVERRIDE))
+	{
+		return DDHAL_DRIVER_NOTHANDLED;
+	}
 
 	isInFront = IsInFront(ddhal, (void*)dst->fpVidMem);
 

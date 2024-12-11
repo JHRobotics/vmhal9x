@@ -75,6 +75,7 @@ static BOOL ValidateCtx(DWORD dwhContext)
 
 #define VALIDATE(_d3d) if(!ValidateCtx((_d3d)->dwhContext)){ \
 		(_d3d)->ddrval = D3DHAL_CONTEXT_BAD; \
+		ERR("Invalid context");\
 		return DDHAL_DRIVER_HANDLED;}
 
 DWORD __stdcall SetRenderTarget32(LPD3DHAL_SETRENDERTARGETDATA lpSetRenderData)
@@ -257,6 +258,8 @@ DWORD __stdcall ValidateTextureStageState32(LPD3DHAL_VALIDATETEXTURESTAGESTATEDA
 DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 {
 	TRACE_ENTRY
+	
+	TRACE("context id=%X", pd->dwhContext);
 
 	VALIDATE(pd)
 
@@ -266,6 +269,8 @@ DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 	insStart = (LPBYTE)(pd->lpDDCommands->lpGbl->fpVidMem);
 	if (insStart == NULL)
 	{
+		ERR("DrawPrimitives2_32: insStart == NULL, pd->dwFlags=%X", pd->dwFlags);
+		
 		pd->dwErrorOffset   = 0;
 		pd->ddrval          = DDERR_INVALIDPARAMS;
 		return DDHAL_DRIVER_HANDLED;
@@ -282,7 +287,7 @@ DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 			vertices = ((LPBYTE)pd->lpDDVertex->lpGbl->fpVidMem) + pd->dwVertexOffset;
 		}
   }
-  
+
 	LPBYTE cmdBufferStart    = insStart + pd->dwCommandOffset;
 	LPBYTE cmdBufferEnd      = cmdBufferStart + pd->dwCommandLength;
 	BOOL rc = FALSE;
@@ -291,7 +296,7 @@ DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 		MesaFVFSet(ctx, pd->dwVertexType);
 		rc = MesaDraw6(ctx, cmdBufferStart, cmdBufferEnd, vertices, &pd->dwErrorOffset);
 	GL_BLOCK_END
-	
+
 	if(rc)
 	{
 		pd->ddrval = DD_OK;
@@ -396,14 +401,14 @@ DWORD __stdcall GetDriverState32(LPDDHAL_GETDRIVERSTATEDATA pGDSData)
  *      DDHAL_DRIVER_NOTHANDLE
  *
  */
-
 DWORD __stdcall CreateSurfaceEx32(LPDDHAL_CREATESURFACEEXDATA lpcsxd)
 {
 	TRACE_ENTRY
 	
 	LPDDRAWI_DDRAWSURFACE_LCL lpSurf = lpcsxd->lpDDSLcl;
 	
-	lpSurf->lpSurfMore->dwSurfaceHandle = lpSurf->dwReserved1;
+	//lpSurf->lpSurfMore->dwSurfaceHandle = lpSurf->dwReserved1;
+	SurfaceNestCreate(lpSurf, lpcsxd->lpDDLcl);
 	
 	lpcsxd->ddRVal = DD_OK;
 	return DDHAL_DRIVER_HANDLED;
@@ -449,10 +454,12 @@ DWORD __stdcall CreateSurfaceEx32(LPDDHAL_CREATESURFACEEXDATA lpcsxd)
  *      DDHAL_DRIVER_HANDLED
  *      DDHAL_DRIVER_NOTHANDLED
  */
-
 DWORD __stdcall DestroyDDLocal32(LPDDHAL_DESTROYDDLOCALDATA lpdddd)
 {
 	TRACE_ENTRY
+
+	SurfaceNestCleanupAll(lpdddd->pDDLcl);
+
 	lpdddd->ddRVal = DD_OK;
 	return DDHAL_DRIVER_HANDLED;
 }
@@ -545,6 +552,12 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 		misccb2.GetDriverState  = GetDriverState32;
 		misccb2.CreateSurfaceEx = CreateSurfaceEx32;
 		misccb2.DestroyDDLocal  = DestroyDDLocal32;
+		
+		mesa3d_entry_t *entry = Mesa3DGet(GetCurrentProcessId(), TRUE);
+		if(entry)
+		{
+			entry->dx7 = TRUE;
+		}
 		
 		COPY_INFO(lpInput, misccb2, DDHAL_DDMISCELLANEOUS2CALLBACKS);
 		TRACE("GUID_Miscellaneous2Callbacks success");
@@ -725,26 +738,45 @@ DWORD __stdcall ContextCreate32(LPD3DHAL_CONTEXTCREATEDATA pccd)
 	mesa3d_entry_t *entry = Mesa3DGet(GetCurrentProcessId(), TRUE);
 	if(entry)
 	{
-		LPDDRAWI_DDRAWSURFACE_INT dss_int = (LPDDRAWI_DDRAWSURFACE_INT)pccd->lpDDS;
-		LPDDRAWI_DDRAWSURFACE_INT dsz_int = (LPDDRAWI_DDRAWSURFACE_INT)pccd->lpDDSZ;
-		LPDDRAWI_DDRAWSURFACE_LCL dss = dss_int->lpLcl;
-		LPDDRAWI_DDRAWSURFACE_LCL dsz = NULL;
-	
-		if(dsz_int)
-			dsz = dsz_int->lpLcl;
+		mesa3d_ctx_t *ctx = NULL;
+		
+		if(entry->dx7)
+		{
+			TRACE("ContextCreate32 DX7+");
+			ctx = MesaCreateCtx(entry, pccd->lpDDSLcl, pccd->lpDDSZLcl);
+		}
+		else
+		{
+			TRACE("ContextCreate32 -DX6");
+			
+			LPDDRAWI_DDRAWSURFACE_INT dss_int = (LPDDRAWI_DDRAWSURFACE_INT)pccd->lpDDS;
+			LPDDRAWI_DDRAWSURFACE_INT dsz_int = (LPDDRAWI_DDRAWSURFACE_INT)pccd->lpDDSZ;
+			LPDDRAWI_DDRAWSURFACE_LCL dss = dss_int->lpLcl;
+			LPDDRAWI_DDRAWSURFACE_LCL dsz = NULL;
 
-		mesa3d_ctx_t *ctx = MesaCreateCtx(entry, dss, dsz);
+			if(dsz_int)
+				dsz = dsz_int->lpLcl;
+						
+			ctx = MesaCreateCtx(entry, dss, dsz);
+		}
+		
 		if(ctx)
 		{
-			TOPIC("GL", "MesaCreateCtx(entry, %X, %X)", dss, dsz);
 			SurfaceAttachCtx(ctx);
 			pccd->dwhContext = MESA_CTX_TO_HANDLE(ctx);
 			pccd->ddrval = DD_OK;
-			ctx->dd = pccd->lpDDGbl;
+			if(entry->dx7)
+			{
+				ctx->dd = NULL;
+			}
+			else
+			{
+				ctx->dd = pccd->lpDDGbl;
+			}
 		}
 	}
 
-	if(pccd->ddrval != DD_OK)
+	if(pccd->ddrval != DD_OK || pccd->dwhContext == 0)
 	{
 		ERR("ContextCreate32 FAILED");
 	}
@@ -755,12 +787,14 @@ DWORD __stdcall ContextCreate32(LPD3DHAL_CONTEXTCREATEDATA pccd)
 DWORD __stdcall ContextDestroy32(LPD3DHAL_CONTEXTDESTROYDATA pcdd)
 {
 	TRACE_ENTRY
-	
+
 	mesa3d_ctx_t *ctx = MESA_HANDLE_TO_CTX(pcdd->dwhContext);
 	SurfaceDeattachCtx(ctx);
-	MesaDestroyCtx(ctx);
+	MesaDestroyCtx(ctx);	
+	SurfaceNestCleanupCtx(ctx);
+
 	pcdd->dwhContext = 0;
-	
+
 	pcdd->ddrval = DD_OK;
 	return DDHAL_DRIVER_HANDLED;
 }

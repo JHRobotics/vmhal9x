@@ -208,12 +208,28 @@ typedef struct _D3DI_LIGHT {
 
  
 typedef struct _D3DHAL_CONTEXTCREATEDATA {
-    LPDDRAWI_DIRECTDRAW_GBL lpDDGbl;	// in:  Driver struct
-    LPDIRECTDRAWSURFACE	lpDDS;		// in:  Surface to be used as target
-    LPDIRECTDRAWSURFACE	lpDDSZ;		// in:  Surface to be used as Z
-    DWORD		dwPID;		// in:  Current process id
-    DWORD		dwhContext;	// out: Context handle
-    HRESULT		ddrval;		// out: Return value
+	union
+	{
+		LPDDRAWI_DIRECTDRAW_GBL lpDDGbl;    // in:  Driver struct (legacy)
+		LPDDRAWI_DIRECTDRAW_LCL lpDDLcl;    // in:  For DX7 driver onwards
+	};
+	union
+	{
+		LPDIRECTDRAWSURFACE lpDDS;      // in:  Surface to be used as target
+		LPDDRAWI_DDRAWSURFACE_LCL lpDDSLcl; // For DX7 onwards
+	};
+	union
+	{
+		LPDIRECTDRAWSURFACE lpDDSZ;     // in:  Surface to be used as Z
+		LPDDRAWI_DDRAWSURFACE_LCL lpDDSZLcl; // For DX7 onwards
+	};
+	union
+	{
+		DWORD	dwPID;      // in:  Current process id
+		ULONG_PTR dwrstates;  // Sundown: hack so we can send ptr back
+	};
+	ULONG_PTR dwhContext; // out: Context handle
+	HRESULT   ddrval;     // out: Return value
 } D3DHAL_CONTEXTCREATEDATA;
 typedef D3DHAL_CONTEXTCREATEDATA *LPD3DHAL_CONTEXTCREATEDATA;
 

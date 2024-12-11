@@ -73,7 +73,7 @@ static struct
 	FBHDA_access_end_t pFBHDA_access_end;
 	FBHDA_access_rect_t pFBHDA_access_rect;
 	FBHDA_swap_t pFBHDA_swap;
-} fbhda_lib = {NULL};
+} fbhda_lib = {NULL, 0};
 
 static void FBHDA_call_lock()
 {
@@ -93,6 +93,8 @@ static void FBHDA_call_unlock()
 
 static BOOL FBHDA_handle()
 {
+	TRACE_ENTRY
+	
 	HMODULE mod = GetModuleHandle(VMDISP9X_LIB);
 	BOOL need_load = TRUE;
 	if(mod)
@@ -104,11 +106,13 @@ static BOOL FBHDA_handle()
 		else
 		{
 			fbhda_lib.lib = mod;
+			WARN("Library on wrong address");
 		}
 	}
 	else
 	{
 		fbhda_lib.lib = LoadLibraryA(VMDISP9X_LIB);
+		TRACE("LoadLibraryA(%s)", VMDISP9X_LIB);
 	}
 	
 	if(fbhda_lib.lib)
@@ -121,6 +125,8 @@ static BOOL FBHDA_handle()
 			LoadAddress(FBHDA_access_rect);
 			LoadAddress(FBHDA_swap);
 		}
+		
+		TRACE("FBHDA_handle() = TRUE");
 
 		return TRUE;
 	}

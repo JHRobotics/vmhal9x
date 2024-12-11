@@ -586,23 +586,14 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				// Map a new rendering target surface and depth buffer in
 				// the current context.  This replaces the old D3dSetRenderTarget
 				// callback. 
-#if 0
+				if(entry->dx7)
 				{
 					D3DHAL_DP2SETRENDERTARGET *pSRTData = (D3DHAL_DP2SETRENDERTARGET*)prim;
-					mesa3d_texture_t *front_tex = MESA_HANDLE_TO_TEX(pSRTData->hRenderTarget);
-					mesa3d_texture_t *depth_tex = MESA_HANDLE_TO_TEX(pSRTData->hZBuffer);
-					if(front_tex)
-					{
-						LPDDRAWI_DDRAWSURFACE_INT front_dds = front_tex->ddsurf;
-						LPDDRAWI_DDRAWSURFACE_INT depth_dds = NULL;
-						if(depth_tex)
-						{
-							depth_dds = depth_tex->ddsurf;
-						}
-						MesaSetTarget(ctx, front_dds, depth_dds);
-					}
+					
+					LPDDRAWI_DDRAWSURFACE_LCL front_dds = SurfaceNestSurface(pSRTData->hRenderTarget);
+					LPDDRAWI_DDRAWSURFACE_LCL depth_dds = SurfaceNestSurface(pSRTData->hZBuffer);
+					MesaSetTarget(ctx, front_dds, depth_dds);
 				}
-#endif
 				
 				NEXT_INST(sizeof(D3DHAL_DP2SETRENDERTARGET));
 				break;
