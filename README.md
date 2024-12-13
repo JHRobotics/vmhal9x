@@ -11,7 +11,7 @@ Binaries will be included with [VMDisp9x releases](https://github.com/JHRobotics
 
 ## DirectDraw
 
-Microsoft DirectDraw (**DD**) is relatively simple API for HW accelerated drawing (2D only). Often used by 2D games (usually real-time strategies, adventures) without request of 3D rendering and requirement to DirectX. Or by earlier games 3D games with software renderer and with demand for fast frame-buffer rendering/double buffering.
+Microsoft DirectDraw (**DD**) is relatively simple API for HW accelerated drawing (2D only). Often used by 2D games (usually real-time strategies, adventures) without request of 3D rendering and requirement to DirectX. Or by earlier 3D games with software renderer and with demand for fast frame-buffer rendering/double buffering.
 
 
 ## Limitation
