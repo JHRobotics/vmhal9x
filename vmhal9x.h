@@ -146,7 +146,6 @@ void SurfaceDeattachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_tex);
 void SurfaceDeattachCtx(void *mesa_ctx);
 void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf);
 void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf);
-void SurfaceFlipMesa(LPDDRAWI_DDRAWSURFACE_LCL curr, LPDDRAWI_DDRAWSURFACE_LCL targ);
 
 DWORD SurfaceNestCreate(LPDDRAWI_DDRAWSURFACE_LCL surf, void *ddlcl);
 void SurfaceNestDestroy(DWORD nest, BOOL call_destructor);
@@ -174,6 +173,8 @@ typedef struct _VMHAL_enviroment
 	DWORD texture_max_height;
 	DWORD texture_num_units;
 } VMHAL_enviroment_t;
+
+#define DX7_SURFACE_NEST_TYPES (DDSCAPS_TEXTURE | DDSCAPS_3DDEVICE | DDSCAPS_ZBUFFER)
 
 extern VMHAL_enviroment_t VMHALenv;
 

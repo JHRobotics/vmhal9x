@@ -94,6 +94,8 @@ struct mesa3d_tmustate
 	BOOL update; // update texture params
 };
 
+#define MESA3D_MAX_FLIPS 8
+
 typedef struct mesa3d_ctx
 {
 	LONG thread_lock;
@@ -108,10 +110,11 @@ typedef struct mesa3d_ctx
 	DWORD thread_id;
 	GLint front_bpp;
 	GLint depth_bpp;
-	LPDDRAWI_DDRAWSURFACE_LCL front;
+	LPDDRAWI_DDRAWSURFACE_LCL flips[MESA3D_MAX_FLIPS];
+	int flips_cnt;
 	LPDDRAWI_DDRAWSURFACE_LCL depth;
 	LPDDRAWI_DIRECTDRAW_GBL dd;
-	BOOL depth_stencil;
+	BOOL depth_stencil;	
 	int tmu_count;
 
 	/* render state */
@@ -282,7 +285,7 @@ mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_LCL
 void MesaReloadTexture(mesa3d_texture_t *tex, int tmu);
 void MesaDestroyTexture(mesa3d_texture_t *tex);
 
-void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state);
+void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates);
 void MesaDraw(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype, LPVOID vertices, DWORD verticesCnt);
 void MesaDrawIndex(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype,
 	LPVOID vertices, DWORD verticesCnt,
@@ -295,7 +298,7 @@ void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value);
 
 void MesaDrawRefreshState(mesa3d_ctx_t *ctx);
 void MesaDrawSetSurfaces(mesa3d_ctx_t *ctx);
-BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LPBYTE vertices, DWORD *error_offset);
+BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LPBYTE vertices, DWORD *error_offset, LPDWORD RStates);
 
 void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, DWORD stencil, int rects_cnt, RECT *rects);
 DWORD DDSurf_GetBPP(LPDDRAWI_DDRAWSURFACE_LCL surf);

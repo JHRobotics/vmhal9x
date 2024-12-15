@@ -205,7 +205,7 @@ DWORD __stdcall DrawPrimitives32(LPD3DHAL_DRAWPRIMITIVESDATA lpDrawData)
 		for(j = drawPrimitiveCounts->wNumStateChanges; j > 0; j--)
 		{
 			state = (LPD3DSTATE)lpData;
-			MesaSetRenderState(ctx, state);
+			MesaSetRenderState(ctx, state, NULL);
 			lpData += sizeof(D3DSTATE);
 		}
 		
@@ -287,6 +287,12 @@ DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 			vertices = ((LPBYTE)pd->lpDDVertex->lpGbl->fpVidMem) + pd->dwVertexOffset;
 		}
   }
+  
+	LPDWORD RStates;
+	if(pd->dwFlags & D3DHALDP2_EXECUTEBUFFER)
+		RStates = pd->lpdwRStates;
+	else
+		RStates = NULL;
 
 	LPBYTE cmdBufferStart    = insStart + pd->dwCommandOffset;
 	LPBYTE cmdBufferEnd      = cmdBufferStart + pd->dwCommandLength;
@@ -294,7 +300,7 @@ DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 
 	GL_BLOCK_BEGIN(pd->dwhContext)
 		MesaFVFSet(ctx, pd->dwVertexType);
-		rc = MesaDraw6(ctx, cmdBufferStart, cmdBufferEnd, vertices, &pd->dwErrorOffset);
+		rc = MesaDraw6(ctx, cmdBufferStart, cmdBufferEnd, vertices, &pd->dwErrorOffset, RStates);
 	GL_BLOCK_END
 
 	if(rc)
@@ -400,17 +406,65 @@ DWORD __stdcall GetDriverState32(LPDDHAL_GETDRIVERSTATEDATA pGDSData)
  *      DDHAL_DRIVER_HANDLE
  *      DDHAL_DRIVER_NOTHANDLE
  *
+ * JH: pcsxd->lpDDSLcl->lpSurfMore->dwSurfaceHandle is prealocated by
+ *     runtime/system/HEL/whatever so don't write to this variable your own numbers.
+ *
  */
 DWORD __stdcall CreateSurfaceEx32(LPDDHAL_CREATESURFACEEXDATA lpcsxd)
 {
 	TRACE_ENTRY
 	
-	LPDDRAWI_DDRAWSURFACE_LCL lpSurf = lpcsxd->lpDDSLcl;
-	
-	//lpSurf->lpSurfMore->dwSurfaceHandle = lpSurf->dwReserved1;
-	SurfaceNestCreate(lpSurf, lpcsxd->lpDDLcl);
-	
 	lpcsxd->ddRVal = DD_OK;
+	
+	if(lpcsxd->lpDDSLcl == NULL || lpcsxd->lpDDLcl == NULL)
+	{
+		return DDHAL_DRIVER_HANDLED;
+	}
+	
+	LPDDRAWI_DDRAWSURFACE_LCL surf = lpcsxd->lpDDSLcl;
+	
+	if(surf->ddsCaps.dwCaps & DX7_SURFACE_NEST_TYPES)
+	{
+		SurfaceNestCreate(surf, lpcsxd->lpDDLcl);
+	}
+	
+	if(!((surf->ddsCaps.dwCaps & DDSCAPS_MIPMAP) || (surf->lpSurfMore->ddsCapsEx.dwCaps2 & DDSCAPS2_CUBEMAP)))
+	{
+		/* 
+		 * from DDK ME:
+		 * for some surfaces other than MIPMAP or CUBEMAP, such as
+		 * flipping chains, we make a slot for every surface, as
+		 * they are not as interleaved
+		 */
+		
+		LPATTACHLIST curr = surf->lpAttachList;
+		while(curr)
+		{
+			if(curr->lpAttached == surf)
+			{
+				break;
+			}
+			
+			if(curr->lpAttached)
+			{
+				TRACE("LOOP %d", curr->lpAttached->lpSurfMore->dwSurfaceHandle);
+				if(curr->lpAttached->ddsCaps.dwCaps & DX7_SURFACE_NEST_TYPES)
+				{
+					SurfaceNestCreate(curr->lpAttached, lpcsxd->lpDDLcl);
+				}
+				
+				curr = curr->lpAttached->lpAttachList;
+			}
+			else
+			{
+				curr = NULL;
+				//curr = curr->lpLink;
+			}
+			//curr = curr->lpLink;
+			
+		}
+	}
+	
 	return DDHAL_DRIVER_HANDLED;
 }
 
@@ -828,7 +882,7 @@ DWORD __stdcall RenderState32(LPD3DHAL_RENDERSTATEDATA prd)
 		
 		for(i = 0; i < prd->dwCount; i++)
 		{
-			MesaSetRenderState(ctx, lpState);
+			MesaSetRenderState(ctx, lpState, NULL);
 			lpState++;
 		}
 	GL_BLOCK_END

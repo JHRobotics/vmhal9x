@@ -205,11 +205,14 @@ DWORD __stdcall DestroySurface(LPDDHAL_DESTROYSURFACEDATA lpd)
 		lpd->lpDDSurface->lpGbl->ddpfSurface.dwFlags);
 	TOPIC("DESTROY", "VRAM ptr: 0x%X", lpd->lpDDSurface->lpGbl->fpVidMem);
 
-	if(lpd->lpDDSurface->lpSurfMore->dwSize >= sizeof(DDRAWI_DDRAWSURFACE_MORE))
+	if(lpd->lpDDSurface->ddsCaps.dwCaps & DX7_SURFACE_NEST_TYPES)
 	{
-		if(lpd->lpDDSurface->lpSurfMore->dwSurfaceHandle)
+		if(lpd->lpDDSurface->lpSurfMore->dwSize >= sizeof(DDRAWI_DDRAWSURFACE_MORE))
 		{
-		 	SurfaceNestDestroy(lpd->lpDDSurface->lpSurfMore->dwSurfaceHandle, TRUE);
+			if(lpd->lpDDSurface->lpSurfMore->dwSurfaceHandle)
+			{
+			 	SurfaceNestDestroy(lpd->lpDDSurface->lpSurfMore->dwSurfaceHandle, TRUE);
+			}
 		}
 	}
 

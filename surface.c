@@ -107,16 +107,14 @@ DWORD SurfaceTableCreate(LPDDRAWI_DDRAWSURFACE_LCL surf)
 		info->first = NULL;
 	}
 
-	//surf->lpSurfMore->dwSurfaceHandle = (DWORD)info;
 	surf->dwReserved1 = (DWORD)info;
-	
-	//return surf->lpSurfMore->dwSurfaceHandle;
+
 	return surf->dwReserved1;
 }
 
 static surface_info_t *SurfaceGetInfo(LPDDRAWI_DDRAWSURFACE_LCL surf)
 {
-	if(surf->dwReserved1 >= 0x80000000) /* hack: allocation from shared heap resides in shared memory */
+	if(surf != NULL && surf->dwReserved1 >= 0x80000000) /* hack: allocation from shared heap resides in shared memory */
 	{
 		surface_info_t *info = (surface_info_t*)surf->dwReserved1;
 		if(info)
@@ -148,6 +146,7 @@ void SurfaceAttachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *tex, int level)
 				item->texture.level == level
 			){
 				/* texture already attached */
+				WARN("SurfaceAttachTexture already exists, level %d", level);
 				return;
 			}
 			
@@ -242,9 +241,10 @@ void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf)
 	{
 		if(citem->pid == pid)
 		{
-			if(citem->ctx->front)
+			int i;
+			for(i = 0; i < citem->ctx->flips_cnt; i++)
 			{
-				if(citem->ctx->front->lpGbl->fpVidMem == vidmem)
+				if(citem->ctx->flips[i]->lpGbl->fpVidMem == vidmem)
 				{
 					GL_BLOCK_BEGIN(citem->ctx)
 						MesaBufferUploadColor(ctx, (void*)vidmem);
@@ -298,13 +298,14 @@ void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf)
 	{
 		if(citem->pid == pid)
 		{
-			if(citem->ctx->render.dirty && citem->ctx->front)
+			int i;
+			for(i = 0; i < citem->ctx->flips_cnt; i++)
 			{
-				if(citem->ctx->front->lpGbl->fpVidMem == vidmem)
+				if(citem->ctx->flips[i]->lpGbl->fpVidMem == vidmem)
 				{
 					GL_BLOCK_BEGIN(citem->ctx)
 						MesaBufferDownloadColor(ctx, (void*)vidmem);
-						ctx->render.dirty = FALSE;
+						ctx->render.dirty = TRUE;
 					GL_BLOCK_END
 				}
 			}
@@ -342,47 +343,6 @@ void SurfaceTableDestroy(LPDDRAWI_DDRAWSURFACE_LCL surf)
 	
 	HeapFree(hSharedHeap, 0, info);
 	surf->dwReserved1 = 0;
-}
-
-/*
-	This is a bit headache, in time when DD Flip is called DX runtime switch
-	primary pointer to the front buffer surface. So pointers are now:
-		ctx->front->lpGbl->fpVidMem == targ->lpGbl->fpVidMem
-		So we can copy GL color buffer to "targ" surface,
-
-		but in same we should read back from "curr" back to GL
-		but this seems to be pretty ineffective
-*/
-void SurfaceFlipMesa(LPDDRAWI_DDRAWSURFACE_LCL curr, LPDDRAWI_DDRAWSURFACE_LCL targ)
-{
-	TRACE_ENTRY
-
-	context_attachment_t *item = contexts.first;
-	
-	DWORD pid = GetCurrentProcessId();
-	
-	while(item)
-	{
-		if(item->pid == pid)
-		{
-			GL_BLOCK_BEGIN(item->ctx)
-				if(item->ctx->render.dirty)
-				{
-					MesaBufferDownloadColor(ctx, (void*)ctx->front->lpGbl->fpVidMem);
-					ctx->render.dirty = FALSE;
-				}
-#if 0
-				if(ctx->front->lpGbl->fpVidMem == targ->lpGbl->fpVidMem)
-				{
-					MesaBufferUploadColor(ctx, (void*)curr->lpGbl->fpVidMem);
-					ctx->render.dirty = TRUE;
-				}
-#endif
-			GL_BLOCK_END
-		}
-		
-		item = item->next;
-	}
 }
 
 void SurfaceDeattachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_tex)
@@ -477,45 +437,45 @@ typedef struct surface_nests_table
 
 static surface_nests_table_t nests = {0};
 
-static BOOL SurfaceNestAlloc(surface_nest_t **info, DWORD *id)
+static BOOL SurfaceNestAlloc(surface_nest_t **info, DWORD id)
 {
-	DWORD i;
-	BOOL have_id = FALSE;
-	for(i = 0; i < nests.size; i++)
-	{
-		if(nests.nests[i] == NULL)
-		{
-			*id = i;
-			have_id = TRUE;
-			break;
-		}
-	}
+	DWORD index = id - 1;
 	
-	if(!have_id)
+	surface_nest_t **oldptr = nests.nests;
+	
+	if(index >= nests.size)
 	{
-		*id = nests.size;
-
+		nests.size = ((index + NESTS_TABLE_POOL)/NESTS_TABLE_POOL) * NESTS_TABLE_POOL;
+		
 		if(nests.nests == NULL)
 		{
-			nests.size += NESTS_TABLE_POOL;
 			nests.nests = HeapAlloc(hSharedHeap, HEAP_ZERO_MEMORY, sizeof(surface_nest_t*)*nests.size);
 		}
 		else
 		{
-			nests.size += NESTS_TABLE_POOL;
 			nests.nests = HeapReAlloc(hSharedHeap, HEAP_ZERO_MEMORY, 
 				nests.nests, sizeof(surface_nest_t*)*nests.size);
 		}
+	}
+	
+	if(nests.nests == NULL)
+	{
+		nests.nests = oldptr;
+		return FALSE;
+	}
+	
+	if(nests.nests[index] != NULL)
+	{
+		/* someone is already here, clear this first */
+		SurfaceNestDestroy(id, FALSE);
 	}
 	
 	surface_nest_t *nest = HeapAlloc(hSharedHeap, HEAP_ZERO_MEMORY, sizeof(surface_nest_t));
 	if(nest)
 	{
 		nest->first = NULL;
-	
-		nests.nests[*id] = nest;
+		nests.nests[index] = nest;
 		*info = nest;
-		*id = (*id) + 1;
 		
 		return TRUE;
 	}
@@ -538,18 +498,20 @@ DWORD SurfaceNestCreate(LPDDRAWI_DDRAWSURFACE_LCL surf, void *ddlcl)
 	TRACE_ENTRY
 
 	surface_nest_t *info;
-	DWORD id;
+
+	if(surf->lpSurfMore->dwSurfaceHandle == 0)
+	{
+		return 0;
+	}
 	
-	if(SurfaceNestAlloc(&info, &id))
+	if(SurfaceNestAlloc(&info, surf->lpSurfMore->dwSurfaceHandle))
 	{
 		info->first = NULL;
 		info->surf  = surf;
 		info->ddlcl = ddlcl;
+		TRACE("SurfaceNestCreate: nest=%d", surf->lpSurfMore->dwSurfaceHandle);
 		
-		surf->lpSurfMore->dwSurfaceHandle = id;
-		TRACE("SurfaceNestCreate = %d", id);
-		
-		return id;
+		return surf->lpSurfMore->dwSurfaceHandle;
 	}
 	
 	return 0;
@@ -558,6 +520,8 @@ DWORD SurfaceNestCreate(LPDDRAWI_DDRAWSURFACE_LCL surf, void *ddlcl)
 void SurfaceNestDestroy(DWORD nest, BOOL call_destructor)
 {
 	TRACE_ENTRY
+	
+	TRACE("SurfaceNestDestroy: nest=%d", nest);
 
 	DWORD pid = GetCurrentProcessId();
 	

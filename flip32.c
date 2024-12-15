@@ -194,7 +194,7 @@ DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
 			(uint32_t)pfd->lpSurfCurr->lpGbl->fpVidMem,
 			(uint32_t)pfd->lpSurfTarg->lpGbl->fpVidMem);
 
-		SurfaceFlipMesa(pfd->lpSurfCurr, pfd->lpSurfTarg);
+		//SurfaceFlipMesa(pfd->lpSurfCurr, pfd->lpSurfTarg);
 
 		DoFlipping(ddhal, (void*)pfd->lpSurfCurr->lpGbl->fpVidMem, (void*)pfd->lpSurfTarg->lpGbl->fpVidMem,
 			pfd->lpSurfCurr->lpGbl->lPitch, pfd->lpSurfTarg->lpGbl->lPitch);

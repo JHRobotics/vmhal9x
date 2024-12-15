@@ -81,7 +81,7 @@ static D3DPRIMITIVETYPE DP2OP_to_PT(D3DHAL_DP2OPERATION Dp2Op)
 #define PRIM_ALIGN prim = (LPBYTE)((ULONG_PTR)(prim + 3) & ~3)
 #define COMMAND(_s) case _s: TRACE("%s", #_s);
 
-BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LPBYTE vertices, DWORD *error_offset)
+BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LPBYTE vertices, DWORD *error_offset, LPDWORD RStates)
 {
 	TOPIC("READBACK", "MesaDraw6");
 	
@@ -430,7 +430,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 
 				for(i = inst->wStateCount; i > 0; i--)
 				{
-					MesaSetRenderState(ctx, (LPD3DSTATE)prim);
+					MesaSetRenderState(ctx, (LPD3DSTATE)prim, RStates);
 					prim += sizeof(D3DHAL_DP2RENDERSTATE);
 				}
 				
@@ -464,9 +464,9 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				// rectangle (i.e. the viewing rectangle) is specified 
 				// by the D3DHAL_DP2 VIEWPORTINFO structures following 
 				// D3DHAL_DP2COMMAND
-				
+				prim += inst->wStateCount * sizeof(D3DHAL_DP2VIEWPORTINFO);
 				// skipped
-				NEXT_INST(sizeof(D3DHAL_DP2VIEWPORTINFO));
+				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_WINFO)
 				// Specifies the w-range for W buffering. It is specified
@@ -572,6 +572,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 						case D3DHAL_STATESETEXECUTE:
 						case D3DHAL_STATESETCAPTURE:
 						default:
+							TOPIC("READBACK", "D3DDP2OP_STATESET: %d", pStateSetOp->dwOperation);
 							break;
 					}
 					prim += sizeof(LPD3DHAL_DP2STATESET);
@@ -590,9 +591,19 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				{
 					D3DHAL_DP2SETRENDERTARGET *pSRTData = (D3DHAL_DP2SETRENDERTARGET*)prim;
 					
+					TRACE("hRenderTarget=%d, hZBuffer=%d", pSRTData->hRenderTarget, pSRTData->hZBuffer);
+					
 					LPDDRAWI_DDRAWSURFACE_LCL front_dds = SurfaceNestSurface(pSRTData->hRenderTarget);
 					LPDDRAWI_DDRAWSURFACE_LCL depth_dds = SurfaceNestSurface(pSRTData->hZBuffer);
-					MesaSetTarget(ctx, front_dds, depth_dds);
+					
+					if(front_dds)
+					{
+						MesaSetTarget(ctx, front_dds, depth_dds);
+					}
+					else
+					{
+						WARN("render target (%d) is NULL", pSRTData->hRenderTarget);
+					}
 				}
 				
 				NEXT_INST(sizeof(D3DHAL_DP2SETRENDERTARGET));
