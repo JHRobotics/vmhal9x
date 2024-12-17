@@ -578,6 +578,12 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 		D3DCallbacks3.Clear2                    = Clear2_32;
 		D3DCallbacks3.dwFlags                  |= D3DHAL3_CB32_CLEAR2;
 
+		mesa3d_entry_t *entry = Mesa3DGet(GetCurrentProcessId(), TRUE);
+		if(entry)
+		{
+			entry->dx6 = TRUE;
+		}
+
   	COPY_INFO(lpInput, D3DCallbacks3, D3DHAL_CALLBACKS3);
     TRACE("GUID_D3DCallbacks3 success");
 	}
@@ -611,6 +617,7 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 		if(entry)
 		{
 			entry->dx7 = TRUE;
+			entry->dx6 = TRUE;
 		}
 		
 		COPY_INFO(lpInput, misccb2, DDHAL_DDMISCELLANEOUS2CALLBACKS);

@@ -42,10 +42,35 @@ extern HANDLE hSharedHeap;
 
 #define MESA_HT_MOD 113
 
+#define MESA_LIB_SW_NAME "mesa3d.dll"
+#define MESA_LIB_SVGA_NAME "vmwsgl32.dll"
+
+static char *MesaLibName()
+{
+	FBHDA_t *hda = FBHDA_setup();
+	if(hda)
+	{
+		if(hda->flags & FB_ACCEL_VMSVGA3D)
+		{
+			return MESA_LIB_SVGA_NAME;
+		}
+	}
+	
+	return MESA_LIB_SW_NAME;
+}
+
 static mesa3d_entry_t *mesa_entry_ht[MESA_HT_MOD] = {};
 
 #define MESA_API(_n, _t, _p) \
-	mesa->proc.p ## _n = (_n ## _h)mesa->GetProcAddress(#_n); if(!mesa->proc.p ## _n){valid = FALSE; break;}
+	mesa->proc.p ## _n = (_n ## _h)mesa->GetProcAddress(#_n); if(!mesa->proc.p ## _n){valid = FALSE; ERR("GetProcAddress fail for %s", #_n); break;}
+
+#define MESA_API_OS(_n, _t, _p) \
+	if(mesa->os){MESA_API(_n, _t, _p)}else{mesa->proc.p ## _n = NULL;}
+
+#define MESA_API_DRV(_n, _t, _p) \
+	if(!mesa->os){ \
+		mesa->proc.p ## _n = (_n ## _h)GetProcAddress(mesa->lib, #_n); if(!mesa->proc.p ## _n){valid = FALSE; ERR("GetProcAddress fail for %s", #_n); break;} \
+	}else{mesa->proc.p ## _n = NULL;}
 
 static mesa3d_entry_t *Mesa3DCreate(DWORD pid, mesa3d_entry_t *mesa)
 {
@@ -59,17 +84,30 @@ static mesa3d_entry_t *Mesa3DCreate(DWORD pid, mesa3d_entry_t *mesa)
 
 	do
 	{
-		TRACE("LoadLibraryA(%s)", MESA_LIB_NAME);
-		mesa->lib = LoadLibraryA(MESA_LIB_NAME);
+		TRACE("LoadLibraryA(%s)", MesaLibName());
+		mesa->lib = LoadLibraryA(MesaLibName());
 		if(!mesa->lib)
 		{
 			valid = FALSE; break;
 		}
 
-		mesa->GetProcAddress = (OSMesaGetProcAddress_h)GetProcAddress(mesa->lib, "OSMesaGetProcAddress");
+		//mesa->GetProcAddress = (OSMesaGetProcAddress_h)GetProcAddress(mesa->lib, "OSMesaGetProcAddress");
+		mesa->GetProcAddress = NULL;
 		if(!mesa->GetProcAddress)
 		{
-			valid = FALSE; break;
+			mesa->GetProcAddress = (OSMesaGetProcAddress_h)GetProcAddress(mesa->lib, "DrvGetProcAddress");
+			if(!mesa->GetProcAddress)
+			{
+				valid = FALSE;
+			}
+			else
+			{
+				mesa->os = FALSE;
+			}
+		}
+		else
+		{
+			mesa->os = TRUE;
 		}
 			
 		#include "mesa3d_api.h"
@@ -78,7 +116,7 @@ static mesa3d_entry_t *Mesa3DCreate(DWORD pid, mesa3d_entry_t *mesa)
 
 	if(!valid)
 	{
-		ERR("Can't load library %s", MESA_LIB_NAME);
+		ERR("Can't load library %s", MesaLibName());
 
 		mesa = NULL;
 	}
@@ -87,6 +125,24 @@ static mesa3d_entry_t *Mesa3DCreate(DWORD pid, mesa3d_entry_t *mesa)
 }
 
 #undef MESA_API
+#undef MESA_API_OS
+#undef MESA_API_DRV
+
+#define FBO_WND_CLASS_NAME "vmhal9x_fbo_win"
+
+static HWND MesaCreateWindow(int w, int h)
+{
+	WNDCLASS wc      = {0};
+	wc.lpfnWndProc   = DefWindowProc;
+	wc.hbrBackground = (HBRUSH)(COLOR_BACKGROUND);
+	wc.lpszClassName = FBO_WND_CLASS_NAME;
+	wc.style         = CS_OWNDC;
+	wc.hInstance     = GetModuleHandle(NULL);
+	
+	RegisterClass(&wc);
+	
+	return CreateWindowA(FBO_WND_CLASS_NAME, "fbo", WS_OVERLAPPEDWINDOW|WS_VISIBLE, 0,0, w,h, 0,0, NULL, 0);
+}
 
 mesa3d_entry_t *Mesa3DGet(DWORD pid, BOOL create)
 {
@@ -100,7 +156,7 @@ mesa3d_entry_t *Mesa3DGet(DWORD pid, BOOL create)
 	{
 		if(entry->pid == pid)
 		{
-			HMODULE h_test = GetModuleHandleA(MESA_LIB_NAME);
+			HMODULE h_test = GetModuleHandleA(MesaLibName());
 			if(h_test)
 			{
 				return entry;
@@ -583,17 +639,40 @@ mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry,
 	GLenum ostype = OSMESA_BGRA;
 	GLenum gltype = GL_UNSIGNED_BYTE;
 	
+	PIXELFORMATDESCRIPTOR pfd =
+	{
+		sizeof(PIXELFORMATDESCRIPTOR),
+		1,
+		PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,
+		PFD_TYPE_RGBA,
+		32,
+		0, 0, 0, 0, 0, 0,
+		0,
+		0,
+		0,
+		0, 0, 0, 0,
+		24,
+		8,
+		0,
+		PFD_MAIN_PLANE,
+		0,
+		0, 0, 0
+	};
+	
 	switch(bpp)
 	{
 		case 8:
 			ostype = OSMESA_COLOR_INDEX;
+			pfd.cColorBits = 8;
 			break;
 		case 16:
 			ostype = OSMESA_RGB_565;
 			gltype = GL_UNSIGNED_SHORT_5_6_5;
+			pfd.cColorBits = 16;
 			break;
 		case 24:
 			ostype = OSMESA_BGR;
+			pfd.cColorBits = 24;
 			break;
 	}
 	
@@ -621,30 +700,73 @@ mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry,
 				ctx->state.sw = width;
 				ctx->state.sh = height;
 				
-				TOPIC("RS", "OSMesaCreateContextExt(0x%X, %d, 0, 0, NULL)", ostype, bpp_depth);
-				
-				/* create context every time with 24bit depth buffer and 8bit stencil buffer,
-				 * because we can't dynamicaly change depth and stencil plane.
-				 */
-				ctx->mesactx = entry->proc.pOSMesaCreateContextExt(ostype, 32, 8, 0, NULL);
-				if(ctx->mesactx == NULL)
-					break;
-
-				ctx->ossize = SurfacePitch(width, bpp)*height;
-				ctx->osbuf = HeapAlloc(hSharedHeap, 0, ctx->ossize);
-				if(ctx->osbuf == NULL)
-					break;
-
-				if(!entry->proc.pOSMesaMakeCurrent(ctx->mesactx, ctx->osbuf, ctx->gltype, width, height))
-					break;
+				if(entry->os)
+				{
+					TOPIC("RS", "OSMesaCreateContextExt(0x%X, %d, 0, 0, NULL)", ostype, bpp_depth);
 					
-				entry->proc.pOSMesaPixelStore(OSMESA_Y_UP, 1);
+					/* create context every time with 24bit depth buffer and 8bit stencil buffer,
+					 * because we can't dynamicaly change depth and stencil plane.
+					 */
+					ctx->osctx = entry->proc.pOSMesaCreateContextExt(ostype, 32, 8, 0, NULL);
+					if(ctx->osctx == NULL)
+						break;
+	
+					ctx->ossize = SurfacePitch(width, bpp)*height;
+					ctx->osbuf = HeapAlloc(hSharedHeap, 0, ctx->ossize);
+					if(ctx->osbuf == NULL)
+						break;
+	
+					if(!entry->proc.pOSMesaMakeCurrent(ctx->osctx, ctx->osbuf, ctx->gltype, width, height))
+						break;
+						
+					entry->proc.pOSMesaPixelStore(OSMESA_Y_UP, 1);
+				}
+				else
+				{
+					int ipixel;
+					
+					ctx->fbo_win = MesaCreateWindow(width, height);
+					if(ctx->fbo_win == NULL)
+						break;
+
+					ctx->dc = GetDC(ctx->fbo_win);
+					if(ctx->dc == NULL)
+						break;
+
+					ipixel = entry->proc.pDrvDescribePixelFormat(ctx->dc, 0, 0, NULL);
+					if(ipixel == 0)
+					{
+						ipixel = ChoosePixelFormat(ctx->dc, &pfd); 
+					}
+					entry->proc.pDrvSetPixelFormat(ctx->dc, ipixel);
+
+					ctx->glrc = entry->proc.pDrvCreateLayerContext(ctx->dc, 0);
+					if(ctx->glrc == NULL)
+						break;
+
+					entry->proc.pDrvSetContext(ctx->dc, ctx->glrc, NULL);
+				}
+				
 				entry->proc.pglGenTextures(1, &ctx->fbo.color_tex);
 				entry->proc.pglGenTextures(1, &ctx->fbo.depth_tex);
 				entry->proc.pglGenTextures(1, &ctx->fbo.stencil_tex);
 				entry->proc.pglGenFramebuffers(1, &ctx->fbo.color_fb);
 				entry->proc.pglGenFramebuffers(1, &ctx->fbo.depth_fb);
 				entry->proc.pglGenFramebuffers(1, &ctx->fbo.stencil_fb);
+				
+#ifdef TRACE_ON
+				{
+					const GLubyte *s;
+					
+					TRACE("Context ON, os = %d", entry->os);
+					s = entry->proc.pglGetString(GL_VENDOR);
+					TRACE("GL_VENDOR=%s", s);
+					s = entry->proc.pglGetString(GL_RENDERER);
+					TRACE("GL_RENDERER=%s", s);
+					s = entry->proc.pglGetString(GL_VERSION);
+					TRACE("GL_VERSION=%s", s);
+				}
+#endif
 				
 				ctx->thread_id = GetCurrentThreadId();
 				
@@ -662,11 +784,22 @@ mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry,
 				
 				if(ctx)
 				{
-					if(ctx->mesactx)
-						entry->proc.pOSMesaDestroyContext(ctx->mesactx);
-
-					if(ctx->osbuf)
-						HeapFree(hSharedHeap, 0, ctx->osbuf);
+					if(entry->os)
+					{
+						if(ctx->osctx)
+							entry->proc.pOSMesaDestroyContext(ctx->osctx);
+	
+						if(ctx->osbuf)
+							HeapFree(hSharedHeap, 0, ctx->osbuf);
+					}
+					else
+					{
+						if(ctx->glrc)
+							entry->proc.pDrvDeleteContext(ctx->glrc);
+						
+						if(ctx->fbo_win)
+							DestroyWindow(ctx->fbo_win);
+					}
 
 					HeapFree(hSharedHeap, 0, ctx);
 
@@ -695,27 +828,34 @@ BOOL MesaSetTarget(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_LCL dds, LPDDRAWI_DD
 
 	if(ctx->state.sw != width || ctx->state.sh != height || ctx->front_bpp != bpp)
 	{
-		entry->proc.pOSMesaMakeCurrent(NULL, NULL, 0, 0, 0);
-		
-		DWORD new_ossize =  SurfacePitch(width, bpp)*height;
-		if(new_ossize > ctx->ossize)
+		if(entry->os)
 		{
-			void *new_buf;
-			new_buf = HeapReAlloc(hSharedHeap, 0, ctx->osbuf, new_ossize);
-			if(new_buf != NULL)
+			entry->proc.pOSMesaMakeCurrent(NULL, NULL, 0, 0, 0);
+			
+			DWORD new_ossize =  SurfacePitch(width, bpp)*height;
+			if(new_ossize > ctx->ossize)
 			{
-				ctx->osbuf = new_buf;
-				ctx->ossize = new_ossize;
+				void *new_buf;
+				new_buf = HeapReAlloc(hSharedHeap, 0, ctx->osbuf, new_ossize);
+				if(new_buf != NULL)
+				{
+					ctx->osbuf = new_buf;
+					ctx->ossize = new_ossize;
+				}
+				else
+				{
+					return FALSE;
+				}
 			}
-			else
+			
+			if(!entry->proc.pOSMesaMakeCurrent(ctx->osctx, ctx->osbuf, ctx->gltype, width, height))
 			{
 				return FALSE;
 			}
 		}
-		
-		if(!entry->proc.pOSMesaMakeCurrent(ctx->mesactx, ctx->osbuf, ctx->gltype, width, height))
+		else
 		{
-			return FALSE;
+			MoveWindow(ctx->fbo_win, 0, 0, width, height, TRUE);
 		}
 		
 		GL_CHECK(entry->proc.pglViewport(0, 0, width, height));
@@ -756,10 +896,21 @@ void MesaDestroyCtx(mesa3d_ctx_t *ctx)
 
 	if(entry->pid == GetCurrentProcessId())
 	{
-		if(ctx->mesactx != NULL)
+		if(ctx->osctx != NULL)
 		{
-			entry->proc.pOSMesaDestroyContext(ctx->mesactx);
+			entry->proc.pOSMesaDestroyContext(ctx->osctx);
 		}
+		
+		if(ctx->glrc)
+		{
+			entry->proc.pDrvDeleteContext(ctx->glrc);
+		}
+		
+		if(ctx->fbo_win)
+		{
+			DestroyWindow(ctx->fbo_win);
+		}
+		
 	}
 #ifdef WARN_ON
 	else
@@ -854,12 +1005,24 @@ BOOL MesaSetCtx(mesa3d_ctx_t *ctx)
 	
 	if(ctx->entry->pid == GetCurrentProcessId())
 	{
-		if(ctx->entry->proc.pOSMesaMakeCurrent(
-			ctx->mesactx, ctx->osbuf, ctx->gltype, ctx->state.sw, ctx->state.sh))
+		if(ctx->entry->os)
 		{
-			UpdateScreenCoords(ctx, ctx->state.sw, ctx->state.sh);
-			ctx->thread_id = GetCurrentThreadId();
-			return TRUE;
+			if(ctx->entry->proc.pOSMesaMakeCurrent(
+				ctx->osctx, ctx->osbuf, ctx->gltype, ctx->state.sw, ctx->state.sh))
+			{
+				UpdateScreenCoords(ctx, ctx->state.sw, ctx->state.sh);
+				ctx->thread_id = GetCurrentThreadId();
+				return TRUE;
+			}
+		}
+		else
+		{
+			if(ctx->entry->proc.pDrvSetContext(ctx->dc, ctx->glrc, NULL))
+			{
+				UpdateScreenCoords(ctx, ctx->state.sw, ctx->state.sh);
+				ctx->thread_id = GetCurrentThreadId();
+				return TRUE;
+			}
 		}
 	}
 #ifdef WARN_ON

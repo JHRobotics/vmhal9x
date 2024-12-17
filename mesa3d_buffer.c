@@ -119,8 +119,15 @@ void MesaBufferDownloadColor(mesa3d_ctx_t *ctx, void *dst)
 
 	if(front_surface)
 		FBHDA_access_begin(0);
+	
+	mesa3d_entry_t *entry = entry = ctx->entry;
 
-	ctx->entry->proc.pglReadPixels(0, 0, ctx->state.sw, ctx->state.sh, format, type, dst);
+	if(!entry->os)
+	{
+		entry->proc.pDrvSwapBuffers(ctx->dc);
+	}
+
+	GL_CHECK(entry->proc.pglReadPixels(0, 0, ctx->state.sw, ctx->state.sh, format, type, dst));
 	
 	if(front_surface)
 		FBHDA_access_end(0);

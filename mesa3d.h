@@ -17,9 +17,13 @@ typedef OSMESAproc (APIENTRYP OSMesaGetProcAddress_h)(const char *funcName);
 
 #define MESA_API(_n, _t, _p) \
 	typedef _t (APIENTRYP _n ## _h)_p;
+#define MESA_API_OS  MESA_API
+#define MESA_API_DRV MESA_API
 
 #include "mesa3d_api.h"
 #undef MESA_API
+#undef MESA_API_OS
+#undef MESA_API_DRV
 
 #define MESA3D_MAX_TEXS 65536
 #define MESA3D_MAX_CTXS 128
@@ -102,11 +106,19 @@ typedef struct mesa3d_ctx
 	mesa3d_texture_t tex[MESA3D_MAX_TEXS];
 	struct mesa3d_entry *entry;
 	int id; /* mesa3d_entry.ctx[_id_] */
-	OSMesaContext *mesactx;
+	
+	/* offscreen context */
+	OSMesaContext *osctx;
 	GLenum gltype; /* GL_UNSIGNED_BYTE, GL_UNSIGNED_SHORT_5_6_5 */
 	/* OS buffers (extra memory, don't map it directly to surfaces) */
 	void *osbuf;
 	DWORD ossize;
+	
+	/* device context */
+	HDC dc;
+	HGLRC glrc;
+	HWND fbo_win;
+	
 	DWORD thread_id;
 	GLint front_bpp;
 	GLint depth_bpp;
@@ -200,11 +212,15 @@ typedef struct mesa3d_ctx
 #define CONV_V_TO_T(_v) (_v)
 
 #define MESA_API(_n, _t, _p) _n ## _h p ## _n;
+#define MESA_API_OS MESA_API
+#define MESA_API_DRV MESA_API
 typedef struct mesa3d_entry
 {
 	DWORD pid;
 	struct mesa3d_entry *next;
 	HANDLE lib;
+	BOOL os; // offscreen rendering
+	BOOL dx6; 
 	BOOL dx7; // latch set by GetDriverInfo32
 	mesa3d_ctx_t *ctx[MESA3D_MAX_CTXS];
 	OSMesaGetProcAddress_h GetProcAddress;
@@ -214,8 +230,8 @@ typedef struct mesa3d_entry
 	DWORD D3DParseUnknownCommand;
 } mesa3d_entry_t;
 #undef MESA_API
-
-#define MESA_LIB_NAME "mesa3d.dll"
+#undef MESA_API_OS
+#undef MESA_API_DRV
 
 mesa3d_entry_t *Mesa3DGet(DWORD pid, BOOL create);
 void Mesa3DFree(DWORD pid);
@@ -224,21 +240,27 @@ void Mesa3DFree(DWORD pid);
 	do{ \
 		mesa3d_ctx_t *ctx = MESA_HANDLE_TO_CTX(_ctx_h); \
 		mesa3d_entry_t *entry = ctx->entry; \
-		OSMesaContext *oldmesa = NULL; \
+		OSMesaContext oldos = NULL; \
 		MesaBlockLock(ctx); \
 		do { \
 			if(ctx->thread_id != GetCurrentThreadId()){ \
 				TOPIC("GL", "Thread switch %s:%d", __FILE__, __LINE__); \
 				if(!MesaSetCtx(ctx)){break;} \
 			}else{ \
-			oldmesa = entry->proc.pOSMesaGetCurrentContext(); \
-			if(oldmesa != ctx->mesactx){ \
-				WARN("Wrong context in %s:%d", __FILE__, __LINE__); \
-				if(!MesaSetCtx(ctx)){break;}}}
+			if(entry->os){ \
+				oldos = entry->proc.pOSMesaGetCurrentContext(); \
+				if(oldos != ctx->osctx){ \
+					WARN("Wrong context in %s:%d", __FILE__, __LINE__); \
+					if(!MesaSetCtx(ctx)){break;}}\
+			}else{ \
+				if(entry->proc.pDrvSetContext(ctx->dc, ctx->glrc, NULL) == NULL){ \
+				if(!MesaSetCtx(ctx)){break;}} \
+			} }
 
 #define GL_BLOCK_END \
-			if(oldmesa != ctx->mesactx && oldmesa != NULL){ \
-				entry->proc.pOSMesaMakeCurrent(NULL, NULL, 0, 0, 0);} \
+			if(entry->os){ \
+				if(oldos != ctx->osctx && oldos != NULL){ \
+					entry->proc.pOSMesaMakeCurrent(NULL, NULL, 0, 0, 0);}} \
 		}while(0); \
 		MesaBlockUnlock(ctx); \
 	} while(0);
