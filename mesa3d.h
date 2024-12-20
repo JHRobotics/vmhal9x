@@ -109,8 +109,6 @@ typedef struct mesa3d_ctx
 	
 	/* offscreen context */
 	OSMesaContext *osctx;
-	GLenum gltype; /* GL_UNSIGNED_BYTE, GL_UNSIGNED_SHORT_5_6_5 */
-	/* OS buffers (extra memory, don't map it directly to surfaces) */
 	void *osbuf;
 	DWORD ossize;
 	
@@ -180,12 +178,22 @@ typedef struct mesa3d_ctx
 
 	/* fbo */
 	struct {
+		/* dimensions */
+		GLuint width;
+		GLuint height;
+		/* main plain */
+		GLuint plane_fb;
+		GLuint plane_color_tex;
+		GLuint plane_depth_tex;
+		/* conversion and blit */
 		GLuint color_tex;
 		GLuint color_fb;
+		GLenum color_format;
 		GLuint depth_tex;
 		GLuint depth_fb;
 		GLuint stencil_tex;
 		GLuint stencil_fb;
+		GLenum depth_type;
 		int tmu; /* can be higher than tmu_count, if using extra TMU for FBO operations */
 	} fbo;
 
@@ -241,6 +249,7 @@ void Mesa3DFree(DWORD pid);
 		mesa3d_ctx_t *ctx = MESA_HANDLE_TO_CTX(_ctx_h); \
 		mesa3d_entry_t *entry = ctx->entry; \
 		OSMesaContext oldos = NULL; \
+		HGLRC oldgrc = NULL; \
 		MesaBlockLock(ctx); \
 		do { \
 			if(ctx->thread_id != GetCurrentThreadId()){ \
@@ -253,14 +262,19 @@ void Mesa3DFree(DWORD pid);
 					WARN("Wrong context in %s:%d", __FILE__, __LINE__); \
 					if(!MesaSetCtx(ctx)){break;}}\
 			}else{ \
-				if(entry->proc.pDrvSetContext(ctx->dc, ctx->glrc, NULL) == NULL){ \
-				if(!MesaSetCtx(ctx)){break;}} \
+				oldgrc = entry->proc.pDrvGetCurrentContext(); \
+				if(oldgrc != ctx->glrc){ \
+					WARN("Wrong context in %s:%d", __FILE__, __LINE__); \
+					if(!MesaSetCtx(ctx)){break;}}\
 			} }
 
 #define GL_BLOCK_END \
 			if(entry->os){ \
 				if(oldos != ctx->osctx && oldos != NULL){ \
-					entry->proc.pOSMesaMakeCurrent(NULL, NULL, 0, 0, 0);}} \
+					entry->proc.pOSMesaMakeCurrent(NULL, NULL, 0, 0, 0);} \
+			}else{ \
+				if(oldgrc != ctx->glrc && oldgrc != NULL){ \
+					entry->proc.pDrvSetContext(NULL, NULL, NULL);}} \
 		}while(0); \
 		MesaBlockUnlock(ctx); \
 	} while(0);
@@ -334,6 +348,7 @@ void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src);
 void MesaBufferDownloadDepth(mesa3d_ctx_t *ctx, void *dst);
 void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level, int tmu);
 void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level, int tmu, DWORD chroma_lw, DWORD chroma_hi);
+BOOL MesaBufferFBOSetup(mesa3d_ctx_t *ctx, int width, int height);
 
 /* calculation */
 void MesaUnproject(mesa3d_ctx_t *ctx, GLfloat winx, GLfloat winy, GLfloat winz,

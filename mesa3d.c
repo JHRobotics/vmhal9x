@@ -45,6 +45,11 @@ extern HANDLE hSharedHeap;
 #define MESA_LIB_SW_NAME "mesa3d.dll"
 #define MESA_LIB_SVGA_NAME "vmwsgl32.dll"
 
+#define OS_WIDTH   320
+#define OS_HEIGHT  240
+#define OS_FORMAT  OSMESA_RGBA
+#define OS_TYPE    GL_UNSIGNED_BYTE
+
 static char *MesaLibName()
 {
 	FBHDA_t *hda = FBHDA_setup();
@@ -55,7 +60,7 @@ static char *MesaLibName()
 			return MESA_LIB_SVGA_NAME;
 		}
 	}
-	
+
 	return MESA_LIB_SW_NAME;
 }
 
@@ -91,8 +96,8 @@ static mesa3d_entry_t *Mesa3DCreate(DWORD pid, mesa3d_entry_t *mesa)
 			valid = FALSE; break;
 		}
 
-		//mesa->GetProcAddress = (OSMesaGetProcAddress_h)GetProcAddress(mesa->lib, "OSMesaGetProcAddress");
-		mesa->GetProcAddress = NULL;
+		//mesa->GetProcAddress = NULL;
+		mesa->GetProcAddress = (OSMesaGetProcAddress_h)GetProcAddress(mesa->lib, "OSMesaGetProcAddress");
 		if(!mesa->GetProcAddress)
 		{
 			mesa->GetProcAddress = (OSMesaGetProcAddress_h)GetProcAddress(mesa->lib, "DrvGetProcAddress");
@@ -130,6 +135,14 @@ static mesa3d_entry_t *Mesa3DCreate(DWORD pid, mesa3d_entry_t *mesa)
 
 #define FBO_WND_CLASS_NAME "vmhal9x_fbo_win"
 
+/* for HW opengl we need some DC to retrieve GL functions, create context,
+ * and set FBO without touching real frame buffer. Probably safest way is
+ * create hidden window. Alternatives are:
+ *  1) use system window - e.g. GetDC(NULL), but could be problem if there
+ *     are more contexts from multiple threads.
+ *  2) Call CreateDC(...), but this is supported until 98/Me and I'm not
+ *     sure how well. 
+ */
 static HWND MesaCreateWindow(int w, int h)
 {
 	WNDCLASS wc      = {0};
@@ -141,7 +154,7 @@ static HWND MesaCreateWindow(int w, int h)
 	
 	RegisterClass(&wc);
 	
-	return CreateWindowA(FBO_WND_CLASS_NAME, "fbo", WS_OVERLAPPEDWINDOW|WS_VISIBLE, 0,0, w,h, 0,0, NULL, 0);
+	return CreateWindowA(FBO_WND_CLASS_NAME, "vmhal9x dummy", /*WS_OVERLAPPEDWINDOW|WS_VISIBLE*/0, 0,0, w,h, 0,0, NULL, 0);
 }
 
 mesa3d_entry_t *Mesa3DGet(DWORD pid, BOOL create)
@@ -636,8 +649,6 @@ mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry,
 	int height = dds->lpGbl->wHeight;
 	
 	mesa3d_ctx_t *ctx = NULL;
-	GLenum ostype = OSMESA_BGRA;
-	GLenum gltype = GL_UNSIGNED_BYTE;
 	
 	PIXELFORMATDESCRIPTOR pfd =
 	{
@@ -659,22 +670,6 @@ mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry,
 		0, 0, 0
 	};
 	
-	switch(bpp)
-	{
-		case 8:
-			ostype = OSMESA_COLOR_INDEX;
-			pfd.cColorBits = 8;
-			break;
-		case 16:
-			ostype = OSMESA_RGB_565;
-			gltype = GL_UNSIGNED_SHORT_5_6_5;
-			pfd.cColorBits = 16;
-			break;
-		case 24:
-			ostype = OSMESA_BGR;
-			pfd.cColorBits = 24;
-			break;
-	}
 	
 	for(i = 0; i < MESA3D_MAX_CTXS; i++)
 	{
@@ -690,7 +685,6 @@ mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry,
 				ctx->thread_lock = 0;
 				ctx->entry = entry;
 				ctx->id = i;
-				ctx->gltype = gltype;
 				ctx->front_bpp = bpp;
 				ctx->depth_bpp = bpp_depth;
 				if(ddz)
@@ -702,21 +696,22 @@ mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry,
 				
 				if(entry->os)
 				{
-					TOPIC("RS", "OSMesaCreateContextExt(0x%X, %d, 0, 0, NULL)", ostype, bpp_depth);
+					TOPIC("RS", "OSMesaCreateContextExt(OSMESA_RGBA, 24, 8, 0, NULL)");
 					
 					/* create context every time with 24bit depth buffer and 8bit stencil buffer,
 					 * because we can't dynamicaly change depth and stencil plane.
 					 */
-					ctx->osctx = entry->proc.pOSMesaCreateContextExt(ostype, 32, 8, 0, NULL);
+					ctx->osctx = entry->proc.pOSMesaCreateContextExt(OS_FORMAT, 24, 8, 0, NULL);
 					if(ctx->osctx == NULL)
 						break;
 	
-					ctx->ossize = SurfacePitch(width, bpp)*height;
+					//ctx->ossize = SurfacePitch(width, bpp)*height;
+					ctx->ossize = SurfacePitch(320, 4)*240;
 					ctx->osbuf = HeapAlloc(hSharedHeap, 0, ctx->ossize);
 					if(ctx->osbuf == NULL)
 						break;
 	
-					if(!entry->proc.pOSMesaMakeCurrent(ctx->osctx, ctx->osbuf, ctx->gltype, width, height))
+					if(!entry->proc.pOSMesaMakeCurrent(ctx->osctx, ctx->osbuf, OS_TYPE, OS_WIDTH, OS_HEIGHT))
 						break;
 						
 					entry->proc.pOSMesaPixelStore(OSMESA_Y_UP, 1);
@@ -746,14 +741,9 @@ mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry,
 
 					entry->proc.pDrvSetContext(ctx->dc, ctx->glrc, NULL);
 				}
-				
-				entry->proc.pglGenTextures(1, &ctx->fbo.color_tex);
-				entry->proc.pglGenTextures(1, &ctx->fbo.depth_tex);
-				entry->proc.pglGenTextures(1, &ctx->fbo.stencil_tex);
-				entry->proc.pglGenFramebuffers(1, &ctx->fbo.color_fb);
-				entry->proc.pglGenFramebuffers(1, &ctx->fbo.depth_fb);
-				entry->proc.pglGenFramebuffers(1, &ctx->fbo.stencil_fb);
-				
+
+				MesaBufferFBOSetup(ctx, width, height);
+
 #ifdef TRACE_ON
 				{
 					const GLubyte *s;
@@ -820,45 +810,14 @@ mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry,
 
 BOOL MesaSetTarget(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_LCL dds, LPDDRAWI_DDRAWSURFACE_LCL ddz)
 {
-	mesa3d_entry_t *entry = ctx->entry;
 	int width  = dds->lpGbl->wWidth;
 	int height = dds->lpGbl->wHeight;
 	int bpp = DDSurf_GetBPP(dds);
 	int bpp_depth = DDSurf_GetBPP(ddz);
 
-	if(ctx->state.sw != width || ctx->state.sh != height || ctx->front_bpp != bpp)
+	if(ctx->state.sw != width || ctx->state.sh != height/* || ctx->front_bpp != bpp*/)
 	{
-		if(entry->os)
-		{
-			entry->proc.pOSMesaMakeCurrent(NULL, NULL, 0, 0, 0);
-			
-			DWORD new_ossize =  SurfacePitch(width, bpp)*height;
-			if(new_ossize > ctx->ossize)
-			{
-				void *new_buf;
-				new_buf = HeapReAlloc(hSharedHeap, 0, ctx->osbuf, new_ossize);
-				if(new_buf != NULL)
-				{
-					ctx->osbuf = new_buf;
-					ctx->ossize = new_ossize;
-				}
-				else
-				{
-					return FALSE;
-				}
-			}
-			
-			if(!entry->proc.pOSMesaMakeCurrent(ctx->osctx, ctx->osbuf, ctx->gltype, width, height))
-			{
-				return FALSE;
-			}
-		}
-		else
-		{
-			MoveWindow(ctx->fbo_win, 0, 0, width, height, TRUE);
-		}
-		
-		GL_CHECK(entry->proc.pglViewport(0, 0, width, height));
+		MesaBufferFBOSetup(ctx, width, height);
 	}
 	
 	TOPIC("GL", "New target bpp %d, bpz %d", bpp, bpp_depth);
@@ -1008,7 +967,7 @@ BOOL MesaSetCtx(mesa3d_ctx_t *ctx)
 		if(ctx->entry->os)
 		{
 			if(ctx->entry->proc.pOSMesaMakeCurrent(
-				ctx->osctx, ctx->osbuf, ctx->gltype, ctx->state.sw, ctx->state.sh))
+				ctx->osctx, ctx->osbuf, OS_TYPE, OS_WIDTH, OS_HEIGHT))
 			{
 				UpdateScreenCoords(ctx, ctx->state.sw, ctx->state.sh);
 				ctx->thread_id = GetCurrentThreadId();
@@ -1117,6 +1076,7 @@ mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_LCL
 				tex->height = surf->lpGbl->wHeight;
 				
 				GL_CHECK(entry->proc.pglGenTextures(1, &tex->gltex));
+				TOPIC("FRAMEBUFFER", "new texture: %d", tex->gltex);
 				
 				if((surf->dwFlags & DDRAWISURF_HASCKEYSRCBLT) && ctx->state.tmu[0].colorkey)
 				{

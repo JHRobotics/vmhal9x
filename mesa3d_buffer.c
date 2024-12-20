@@ -37,6 +37,59 @@
 
 #include "nocrt.h"
 
+#define RESET_COLOR 1
+#define RESET_DEPTH 2
+
+static void FBOConvReset(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, DWORD flags)
+{
+	if(flags & RESET_COLOR)
+	{
+		if(ctx->fbo.color_fb)
+		{
+			GL_CHECK(entry->proc.pglDeleteFramebuffers(1, &ctx->fbo.color_fb));
+			ctx->fbo.color_fb = 0;
+		}
+		
+
+		if(ctx->fbo.color_tex)
+		{
+			GL_CHECK(entry->proc.pglDeleteTextures(1, &ctx->fbo.color_tex));
+			ctx->fbo.color_tex = 0;
+		}
+		
+		ctx->fbo.color_format = 0;
+	}
+	
+	if(flags & RESET_DEPTH)
+	{
+		if(ctx->fbo.depth_fb)
+		{
+			GL_CHECK(entry->proc.pglDeleteFramebuffers(1, &ctx->fbo.depth_fb));
+			ctx->fbo.depth_fb = 0;
+		}
+		
+		if(ctx->fbo.stencil_fb)
+		{
+			GL_CHECK(entry->proc.pglDeleteFramebuffers(1, &ctx->fbo.stencil_fb));
+			ctx->fbo.stencil_fb = 0;
+		}
+		
+		if(ctx->fbo.depth_tex)
+		{
+			GL_CHECK(entry->proc.pglDeleteFramebuffers(1, &ctx->fbo.depth_tex));
+			ctx->fbo.depth_tex = 0;
+		}
+		
+		if(ctx->fbo.stencil_tex)
+		{
+			GL_CHECK(entry->proc.pglDeleteFramebuffers(1, &ctx->fbo.stencil_tex));
+			ctx->fbo.stencil_tex = 0;
+		}
+		
+		ctx->fbo.depth_type = 0;
+	}
+}
+
 void MesaBufferUploadColor(mesa3d_ctx_t *ctx, const void *src)
 {
 	TRACE_ENTRY
@@ -61,23 +114,47 @@ void MesaBufferUploadColor(mesa3d_ctx_t *ctx, const void *src)
 			format = GL_BGRA;
 			break;
 	}
-	
-	GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0+ctx->fbo.tmu));
-	GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
-	GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.color_fb));
-	GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.color_tex));
-	GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, ctx->state.sw, ctx->state.sh, 0, format, type, src));
-	GL_CHECK(entry->proc.pglFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->fbo.color_tex, 0));
-	
-	GL_CHECK(entry->proc.pglBindFramebuffer(GL_READ_FRAMEBUFFER, ctx->fbo.color_fb));
-	GL_CHECK(entry->proc.pglBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0));
-	GL_CHECK(entry->proc.pglBlitFramebuffer(
-		0, 0, ctx->state.sw, ctx->state.sh,
-		0, 0, ctx->state.sw, ctx->state.sh,
-  	GL_COLOR_BUFFER_BIT, GL_NEAREST));
-	
-	GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, 0));
-	//ctx->state.last_tex = ctx->fbo.color_tex;
+
+	GL_CHECK(entry->proc.pglFinish());
+
+	if(ctx->front_bpp == 32)
+	{
+		GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0+ctx->fbo.tmu));
+		GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
+		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.plane_color_tex));
+		GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, ctx->state.sw, ctx->state.sh, 0, format, type, src));
+	}
+	else
+	{
+		if(ctx->fbo.color_format != format)
+		{
+			TOPIC("FAMEBUFFER", "different color - %d vs %d", ctx->fbo.color_format, format);
+			FBOConvReset(entry, ctx, RESET_COLOR);
+			
+			GL_CHECK(entry->proc.pglGenTextures(1, &ctx->fbo.color_tex));
+			TOPIC("FRAMEBUFFER", "new texture: %d", ctx->fbo.color_tex);
+			GL_CHECK(entry->proc.pglGenFramebuffers(1, &ctx->fbo.color_fb));
+			TOPIC("FRAMEBUFFER", "new frambuffer: %d", ctx->fbo.color_fb);
+			
+			ctx->fbo.color_format = format;
+		}
+		
+		GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0+ctx->fbo.tmu));
+		GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
+		GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.color_fb));
+		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.color_tex));
+		GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, ctx->state.sw, ctx->state.sh, 0, format, type, src));
+		GL_CHECK(entry->proc.pglFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->fbo.color_tex, 0));
+		
+		GL_CHECK(entry->proc.pglBindFramebuffer(GL_READ_FRAMEBUFFER, ctx->fbo.color_fb));
+		GL_CHECK(entry->proc.pglBindFramebuffer(GL_DRAW_FRAMEBUFFER, ctx->fbo.plane_fb));
+		GL_CHECK(entry->proc.pglBlitFramebuffer(
+			0, 0, ctx->state.sw, ctx->state.sh,
+			0, 0, ctx->state.sw, ctx->state.sh,
+	  	GL_COLOR_BUFFER_BIT, GL_NEAREST));
+		
+		GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.plane_fb));
+	}
 	
 	if(ctx->fbo.tmu < ctx->tmu_count)
 	{
@@ -122,11 +199,6 @@ void MesaBufferDownloadColor(mesa3d_ctx_t *ctx, void *dst)
 	
 	mesa3d_entry_t *entry = entry = ctx->entry;
 
-	if(!entry->os)
-	{
-		entry->proc.pDrvSwapBuffers(ctx->dc);
-	}
-
 	GL_CHECK(entry->proc.pglReadPixels(0, 0, ctx->state.sw, ctx->state.sh, format, type, dst));
 	
 	if(front_surface)
@@ -150,14 +222,14 @@ void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 			format = GL_DEPTH_COMPONENT;
 			break;
 		case 24:
-			type = GL_FLOAT_32_UNSIGNED_INT_24_8_REV;
+			type = GL_UNSIGNED_INT_24_8;
 			format = GL_DEPTH_STENCIL;
 			break;
 		case 32:
 		default:
 			if(ctx->depth_stencil)
 			{
-				type = GL_FLOAT_32_UNSIGNED_INT_24_8_REV;
+				type = GL_UNSIGNED_INT_24_8;
 				format = GL_DEPTH_STENCIL;
 			}
 			else
@@ -169,51 +241,82 @@ void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 	}
 	
 	TRACE("depth_bpp=%d, type=0x%X, format=0x%X, ?stencil = %d", ctx->depth_bpp, type, format, ctx->depth_stencil);
+	GL_CHECK(entry->proc.pglFinish());
 	
-	GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0+ctx->fbo.tmu));
-	GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
-
-	GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.depth_fb));
-	GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.depth_tex));
-	GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, ctx->state.sw, ctx->state.sh, 0, format, type, src));
-	GL_CHECK(entry->proc.pglFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, ctx->fbo.depth_tex, 0));
-
-	GL_CHECK(entry->proc.pglBindFramebuffer(GL_READ_FRAMEBUFFER, ctx->fbo.depth_fb));
-	GL_CHECK(entry->proc.pglBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0));
-
-#ifdef TRACE_ON
-	GLenum test = entry->proc.pglCheckFramebufferStatus(GL_READ_FRAMEBUFFER);
-	TOPIC("GL", "(depth) glCheckFramebufferStatus = 0x%X", test);
-#endif
-	
-	GL_CHECK(entry->proc.pglBlitFramebuffer(
-		0, 0, ctx->state.sw, ctx->state.sh,
-		0, 0, ctx->state.sw, ctx->state.sh,
-  	GL_DEPTH_BUFFER_BIT, GL_NEAREST));
-	
-	if(ctx->depth_stencil)
+	if(type == GL_UNSIGNED_INT_24_8)
 	{
-		GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.stencil_fb));
-		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.stencil_tex));
-		GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_STENCIL_INDEX, ctx->state.sw, ctx->state.sh, 0, format, type, src));
-		GL_CHECK(entry->proc.pglFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, ctx->fbo.stencil_tex, 0));
-	
-		GL_CHECK(entry->proc.pglBindFramebuffer(GL_READ_FRAMEBUFFER, ctx->fbo.stencil_fb));
-		GL_CHECK(entry->proc.pglBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0));
+		GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0+ctx->fbo.tmu));
+		GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
+		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.plane_depth_tex));
+		GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, ctx->state.sw, ctx->state.sh, 0, format, type, src));
+	}
+	else
+	{
+		if(ctx->fbo.depth_type != type)
+		{
+			TOPIC("FRAMEBUFFER", "differnt fb type %d vs %d, FBOConvReset()", ctx->fbo.depth_type, type);
+			FBOConvReset(entry, ctx, RESET_DEPTH);
+			
+			GL_CHECK(entry->proc.pglGenTextures(1, &ctx->fbo.depth_tex));
+			TOPIC("FRAMEBUFFER", "new texture: %d", ctx->fbo.depth_tex);
+			
+			GL_CHECK(entry->proc.pglGenFramebuffers(1, &ctx->fbo.depth_fb));
+			TOPIC("FRAMEBUFFER", "new frambuffer: %d", ctx->fbo.depth_fb);
+			
+			GL_CHECK(entry->proc.pglGenTextures(1, &ctx->fbo.stencil_tex));
+			TOPIC("FRAMEBUFFER", "new texture: %d", ctx->fbo.depth_tex);
+			
+			GL_CHECK(entry->proc.pglGenFramebuffers(1, &ctx->fbo.stencil_fb));
+			TOPIC("FRAMEBUFFER", "new frambuffer: %d", ctx->fbo.stencil_fb);
+			
+			ctx->fbo.depth_type = type;
+		}
 		
-#ifdef TRACE_ON
+		GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0+ctx->fbo.tmu));
+		GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
+	
+		GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.depth_fb));
+		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.depth_tex));
+		GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, ctx->state.sw, ctx->state.sh, 0, format, type, src));
+		GL_CHECK(entry->proc.pglFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, ctx->fbo.depth_tex, 0));
+	
+		GL_CHECK(entry->proc.pglBindFramebuffer(GL_READ_FRAMEBUFFER, ctx->fbo.depth_fb));
+		GL_CHECK(entry->proc.pglBindFramebuffer(GL_DRAW_FRAMEBUFFER, ctx->fbo.plane_fb));
+	
+	#ifdef TRACE_ON
 		GLenum test = entry->proc.pglCheckFramebufferStatus(GL_READ_FRAMEBUFFER);
-		TOPIC("GL", "(stencil) glCheckFramebufferStatus = 0x%X", test);
-#endif
+		TOPIC("GL", "(depth) glCheckFramebufferStatus = 0x%X", test);
+	#endif
 		
 		GL_CHECK(entry->proc.pglBlitFramebuffer(
 			0, 0, ctx->state.sw, ctx->state.sh,
-			0, 0, ctx->state.sw, ctx->state.sh, GL_STENCIL_BUFFER_BIT, GL_NEAREST));
+			0, 0, ctx->state.sw, ctx->state.sh,
+	  	GL_DEPTH_BUFFER_BIT, GL_NEAREST));
+		
+		if(ctx->depth_stencil)
+		{
+			GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.stencil_fb));
+			GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.stencil_tex));
+			GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_STENCIL_INDEX, ctx->state.sw, ctx->state.sh, 0, format, type, src));
+			GL_CHECK(entry->proc.pglFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, ctx->fbo.stencil_tex, 0));
+		
+			GL_CHECK(entry->proc.pglBindFramebuffer(GL_READ_FRAMEBUFFER, ctx->fbo.stencil_fb));
+			GL_CHECK(entry->proc.pglBindFramebuffer(GL_DRAW_FRAMEBUFFER, ctx->fbo.plane_fb));
+			
+	#ifdef TRACE_ON
+			GLenum test = entry->proc.pglCheckFramebufferStatus(GL_READ_FRAMEBUFFER);
+			TOPIC("GL", "(stencil) glCheckFramebufferStatus = 0x%X", test);
+	#endif
+			
+			GL_CHECK(entry->proc.pglBlitFramebuffer(
+				0, 0, ctx->state.sw, ctx->state.sh,
+				0, 0, ctx->state.sw, ctx->state.sh, GL_STENCIL_BUFFER_BIT, GL_NEAREST));
+		}
+		
+		// default buffer binding
+		GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.plane_fb));
 	}
-	
-	// default buffer binding
-	GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, 0));
-	
+		
 	if(ctx->fbo.tmu < ctx->tmu_count)
 	{
 		ctx->state.tmu[ctx->fbo.tmu].update = TRUE;
@@ -226,6 +329,7 @@ void MesaBufferDownloadDepth(mesa3d_ctx_t *ctx, void *dst)
 {
 	TRACE_ENTRY
 
+	mesa3d_entry_t *entry = ctx->entry;
 	GLenum type;
 	GLenum format = GL_DEPTH_COMPONENT;
 	
@@ -236,23 +340,23 @@ void MesaBufferDownloadDepth(mesa3d_ctx_t *ctx, void *dst)
 			break;
 		case 24:
 			 /* we silently increase ZBUFF 24 -> 32 bpp */
-			type = GL_FLOAT_32_UNSIGNED_INT_24_8_REV;
+			type = GL_UNSIGNED_INT_24_8;
 			break;
 		case 32:
 		default:
 			if(ctx->depth_stencil)
 			{
-				type = GL_FLOAT_32_UNSIGNED_INT_24_8_REV;
+				type = GL_UNSIGNED_INT_24_8;
 				format = GL_DEPTH_STENCIL;
 			}
 			else
 			{
-				type = GL_FLOAT;
+				type = GL_FLOAT; // sure?
 			}
 			break;
 	}
 
-	ctx->entry->proc.pglReadPixels(0, 0, ctx->state.sw, ctx->state.sh, format, type, dst);
+	GL_CHECK(entry->proc.pglReadPixels(0, 0, ctx->state.sw, ctx->state.sh, format, type, dst));
 	
 	TOPIC("READBACK", "%X -> download depth!", dst);
 }
@@ -383,4 +487,61 @@ void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int
 		MesaChromaFree(data);
 	}
 	ctx->state.tmu[tmu].update = TRUE;
+}
+
+BOOL MesaBufferFBOSetup(mesa3d_ctx_t *ctx, int width, int height)
+{
+	mesa3d_entry_t *entry = ctx->entry;
+	
+	if(ctx->fbo.width != width || ctx->fbo.height != height)
+	{
+		GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, 0));
+
+		if(ctx->fbo.plane_fb)
+		{
+			GL_CHECK(entry->proc.pglDeleteFramebuffers(1, &ctx->fbo.plane_fb));
+		}
+
+		if(ctx->fbo.plane_color_tex)
+		{
+			GL_CHECK(entry->proc.pglDeleteTextures(1, &ctx->fbo.plane_color_tex));
+		}
+		
+		if(ctx->fbo.plane_depth_tex)
+		{
+			GL_CHECK(entry->proc.pglDeleteTextures(1, &ctx->fbo.plane_depth_tex));
+		}
+
+		GL_CHECK(entry->proc.pglGenFramebuffers(1, &ctx->fbo.plane_fb));
+		TOPIC("FRAMEBUFFER", "new frambuffer: %d", ctx->fbo.plane_fb);
+		GL_CHECK(entry->proc.pglGenTextures(1, &ctx->fbo.plane_color_tex));
+		TOPIC("FRAMEBUFFER", "new texture: %d", ctx->fbo.plane_color_tex);
+		GL_CHECK(entry->proc.pglGenTextures(1, &ctx->fbo.plane_depth_tex));
+		TOPIC("FRAMEBUFFER", "new texture: %d", ctx->fbo.plane_depth_tex);
+
+		GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0 + ctx->fbo.tmu));
+		GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.plane_fb));
+	
+		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.plane_color_tex));
+		GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL));
+
+		GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
+		GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
+		GL_CHECK(entry->proc.pglFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->fbo.plane_color_tex, 0));
+
+		GL_CHECK(entry->proc.pglBindRenderbuffer(GL_RENDERBUFFER, ctx->fbo.plane_depth_tex));
+		GL_CHECK(entry->proc.pglRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height));
+		GL_CHECK(entry->proc.pglFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, ctx->fbo.plane_depth_tex));
+
+		ctx->fbo.width = width;
+		ctx->fbo.height = height;
+
+		FBOConvReset(entry, ctx, RESET_COLOR|RESET_DEPTH);
+		
+		GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.plane_fb));
+
+		GL_CHECK(entry->proc.pglViewport(0, 0, width, height));
+	}
+	
+	return TRUE;
 }
