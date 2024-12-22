@@ -140,6 +140,7 @@ DWORD __stdcall CreateSurface(LPDDHAL_CREATESURFACEDATA pcsd)
 				lpSurf->lpGbl->dwBlockSizeY = 1;
 				lpSurf->lpGbl->fpVidMem     = DDHAL_PLEASEALLOC_BLOCKSIZE;
 
+				TOPIC("MIPMAP", "Alloc RGB %d x %d = %d (pitch %d)", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->lPitch);
 				TOPIC("ALLOC", "RGB %d x %d = %d (pitch %d)", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->lPitch);
 			}
 			else if(lpSurf->lpGbl->ddpfSurface.dwFlags & DDPF_ZBUFFER)
@@ -205,7 +206,7 @@ DWORD __stdcall DestroySurface(LPDDHAL_DESTROYSURFACEDATA lpd)
 		lpd->lpDDSurface->lpGbl->ddpfSurface.dwFlags);
 	TOPIC("DESTROY", "VRAM ptr: 0x%X", lpd->lpDDSurface->lpGbl->fpVidMem);
 
-	if(lpd->lpDDSurface->ddsCaps.dwCaps & DX7_SURFACE_NEST_TYPES)
+	if((lpd->lpDDSurface->ddsCaps.dwCaps & DX7_SURFACE_NEST_TYPES) != 0 && VMHALenv.ddi >= 7)
 	{
 		if(lpd->lpDDSurface->lpSurfMore->dwSize >= sizeof(DDRAWI_DDRAWSURFACE_MORE))
 		{
@@ -215,6 +216,8 @@ DWORD __stdcall DestroySurface(LPDDHAL_DESTROYSURFACEDATA lpd)
 			}
 		}
 	}
+
+	TOPIC("GARBAGE", "destroy surface vram=%X", lpd->lpDDSurface->lpGbl->fpVidMem);
 
 	SurfaceTableDestroy(lpd->lpDDSurface);
 	

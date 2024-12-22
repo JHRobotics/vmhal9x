@@ -643,7 +643,7 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 	else if(IsEqualIID(&lpInput->guidInfo, &GUID_D3DExtendedCaps))
 	{
 		D3DHAL_D3DEXTENDEDCAPS7 dxcaps;
-		
+
 		memset(&dxcaps, 0, sizeof(D3DHAL_D3DEXTENDEDCAPS7));
 		dxcaps.dwMinTextureWidth  = 1;
 		dxcaps.dwMinTextureHeight = 1;
@@ -653,10 +653,10 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 		dxcaps.dwMinStippleHeight = 32;
 		dxcaps.dwMaxStippleWidth  = 32;
 		dxcaps.dwMaxStippleHeight = 32;
-		
-		dxcaps.dwFVFCaps           = VMHALenv.texture_num_units;
-    dxcaps.wMaxTextureBlendStages      = VMHALenv.texture_num_units;
-    dxcaps.wMaxSimultaneousTextures    = VMHALenv.texture_num_units;
+
+		dxcaps.dwFVFCaps                   = MESA_TMU_CNT(); /* low 4 bits: 0 implies TLVERTEX only, 1..8 imply FVF aware */
+    dxcaps.wMaxTextureBlendStages      = MESA_TMU_CNT();
+    dxcaps.wMaxSimultaneousTextures    = MESA_TMU_CNT();
     dxcaps.dwMaxTextureRepeat          = 2048;
     dxcaps.dwTextureOpCaps = D3DTEXOPCAPS_DISABLE
 			| D3DTEXOPCAPS_SELECTARG1
@@ -672,9 +672,18 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 			| D3DTEXOPCAPS_BLENDTEXTUREALPHA
 			| D3DTEXOPCAPS_BLENDFACTORALPHA
 			| D3DTEXOPCAPS_BLENDCURRENTALPHA;
+			/* missing 
+			| D3DTEXOPCAPS_ADDSMOOTH
+			| D3DTEXOPCAPS_BLENDTEXTUREALPHAPM
+			| D3DTEXOPCAPS_PREMODULATE
+			| D3DTEXOPCAPS_MODULATEALPHA_ADDCOLOR
+			| D3DTEXOPCAPS_MODULATECOLOR_ADDALPHA
+			| D3DTEXOPCAPS_MODULATEINVALPHA_ADDCOLOR
+			| D3DTEXOPCAPS_MODULATEINVCOLOR_ADDALPHA
+			| D3DTEXOPCAPS_DOTPRODUCT3; */
 
-  	dxcaps.wMaxTextureBlendStages      = VMHALenv.texture_num_units;
-    dxcaps.wMaxSimultaneousTextures    = VMHALenv.texture_num_units;
+  	dxcaps.wMaxTextureBlendStages      = MESA_TMU_CNT();
+    dxcaps.wMaxSimultaneousTextures    = MESA_TMU_CNT();
 
 		// this need also Clear2 callback
 		dxcaps.dwStencilCaps = D3DSTENCILCAPS_KEEP
@@ -901,13 +910,20 @@ DWORD __stdcall RenderState32(LPD3DHAL_RENDERSTATEDATA prd)
 DWORD __stdcall RenderPrimitive32(LPD3DHAL_RENDERPRIMITIVEDATA prd)
 {
 	TRACE_ENTRY
-	
+
 	VALIDATE(prd)
-	
+
 	GL_BLOCK_BEGIN(prd->dwhContext)
 		LPBYTE lpData = (LPBYTE)(((LPDDRAWI_DDRAWSURFACE_INT)prd->lpExeBuf)->lpLcl->lpGbl->fpVidMem);
   	LPD3DINSTRUCTION lpIns = &prd->diInstruction;
   	LPBYTE prim = lpData + prd->dwOffset;
+  	LPBYTE vertices = NULL;
+  	
+  	if(prd->lpTLBuf != NULL)
+  	{
+  		LPBYTE lpVData = (LPBYTE)(((LPDDRAWI_DDRAWSURFACE_INT)prd->lpTLBuf)->lpLcl->lpGbl->fpVidMem);
+  		vertices = lpVData + prd->dwTLOffset;
+  	}
 		
 		if(ctx->state.zvisible)
 		{
@@ -916,24 +932,9 @@ DWORD __stdcall RenderPrimitive32(LPD3DHAL_RENDERPRIMITIVEDATA prd)
 			break;
 		}
 		
-		switch (lpIns->bOpcode)
-		{
-			case D3DOP_POINT:
-				LPD3DPOINT point = (LPD3DPOINT)prim;
-				break;
-			case D3DOP_SPAN:
-				LPD3DSPAN span = (LPD3DSPAN)prim;
-				break;
-			case D3DOP_LINE:
-				
-				break;
-			case D3DOP_TRIANGLE:
-				D3DTRIANGLE *triPtr = (D3DTRIANGLE *)prim;
-				
-				break;
-		}
+		MesaDraw3(ctx, lpIns->bOpcode, prim, vertices);
 	GL_BLOCK_END
-	
+
 	prd->ddrval = DD_OK;
 	return DDHAL_DRIVER_HANDLED;
 }
@@ -1171,12 +1172,10 @@ DWORD __stdcall SceneCapture32(LPD3DHAL_SCENECAPTUREDATA scdata)
 	switch(scdata->dwFlag)
 	{
 		case D3DHAL_SCENE_CAPTURE_START:
-			// TODO: reload system memory surfaces here?
-			//MesaReadback(ctx);
+			MesaSceneBegin(ctx);
 			break;
 		case D3DHAL_SCENE_CAPTURE_END:
-//			if(ctx->render.dirty)
-//				MesaRender(ctx);
+			MesaSceneEnd(ctx);
 			break;
 	}
 	GL_BLOCK_END
@@ -1196,7 +1195,7 @@ static D3DHAL_CALLBACKS myD3DHALCallbacks = {
 	ContextDestroyAll32,	// Required.
 
 	// Scene capture
-	NULL, //SceneCapture32,			// Optional. (JH: required when driver or HW do some buffering. ... JH #2: Not work for DX6+)
+	SceneCapture32,			// Optional. (JH: required when driver or HW do some buffering. ... JH #2: Not work for DX6+)
 	// Execution
 #ifdef IMPLEMENT_EXECUTE
 	Execute32,
@@ -1247,6 +1246,8 @@ static D3DHAL_CALLBACKS myD3DHALCallbacks = {
 	0L,				// Reserved, must be zero
 };
 
+static D3DHAL_CALLBACKS myD3DHALCallbacks7;
+
 #include "d3d_caps.h"
 
 BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, VMDAHAL_D3DCAPS_t *lpHALFlags)
@@ -1270,6 +1271,17 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, VM
 
 	*lplpGlobal = (DWORD)&myGlobalD3DHal;
 	*lplpHALCallbacks = (DWORD)&myD3DHALCallbacks;
+	
+	if(VMHALenv.ddi >= 7)
+	{
+		memcpy(&myD3DHALCallbacks7, &myD3DHALCallbacks, sizeof(myD3DHALCallbacks));
+		myD3DHALCallbacks7.SceneCapture = NULL;
+		*lplpHALCallbacks = (DWORD)&myD3DHALCallbacks7;
+	}
+	else
+	{
+		*lplpHALCallbacks = (DWORD)&myD3DHALCallbacks;
+	}
 	
 	lpHALFlags->ddscaps = DDSCAPS_3DDEVICE | DDSCAPS_TEXTURE | DDSCAPS_ZBUFFER | DDSCAPS_MIPMAP;
  	lpHALFlags->zcaps = DDBD_16 | DDBD_32;

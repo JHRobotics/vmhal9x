@@ -142,7 +142,7 @@ DWORD SurfaceTableCreate(LPDDRAWI_DDRAWSURFACE_LCL surf);
 void SurfaceTableDestroy(LPDDRAWI_DDRAWSURFACE_LCL surf);
 void SurfaceAttachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_tex, int level);
 void SurfaceAttachCtx(void *mesa_ctx);
-void SurfaceDeattachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_tex);
+void SurfaceDeattachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_tex, int level);
 void SurfaceDeattachCtx(void *mesa_ctx);
 void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf);
 void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf);

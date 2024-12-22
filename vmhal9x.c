@@ -51,7 +51,7 @@ VMHAL_enviroment_t VMHALenv = {
 	7, // DDI
 	2048, // tex w  (can be query by GL_MAX_TEXTURE_SIZE)
 	2048, // tex h
-	8 // tex units
+	9 // tex units
 };
 
 static DWORD CalcPitch(DWORD w, DWORD bpp)

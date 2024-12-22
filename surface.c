@@ -345,7 +345,7 @@ void SurfaceTableDestroy(LPDDRAWI_DDRAWSURFACE_LCL surf)
 	surf->dwReserved1 = 0;
 }
 
-void SurfaceDeattachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_tex)
+void SurfaceDeattachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_tex, int level)
 {
 	TRACE_ENTRY
 
@@ -357,7 +357,7 @@ void SurfaceDeattachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_tex)
 		
 		while(item)
 		{
-			if(item->type == SURF_TYPE_TEX && item->texture.tex == mesa_tex)
+			if(item->type == SURF_TYPE_TEX && item->texture.tex == mesa_tex && item->texture.level == level)
 			{
 				if(!last)
 				{
@@ -596,6 +596,13 @@ void *SurfaceNestTexture(DWORD nest, void *mesa_ctx)
 			}
 		}
 	}
+	
+#ifdef WARN_ON
+	if(tex == NULL && nest != 0)
+	{
+		WARN("Cannot load texture %d", nest);
+	}
+#endif
 	
 	return tex;
 }

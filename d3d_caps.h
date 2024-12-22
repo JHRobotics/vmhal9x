@@ -143,6 +143,7 @@
 	/* textureCaps */                     \
 	D3DPTEXTURECAPS_PERSPECTIVE           \
 	| D3DPTEXTURECAPS_POW2                \
+	| D3DPTEXTURECAPS_NONPOW2CONDITIONAL  \
 	| D3DPTEXTURECAPS_TRANSPARENCY        \
 	| D3DPTEXTURECAPS_ALPHA,              \
 	/* textureFilterCaps */               \

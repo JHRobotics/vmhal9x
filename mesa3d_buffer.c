@@ -386,18 +386,21 @@ void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level
 	mesa3d_entry_t *entry = ctx->entry;
 	GLuint w = tex->width;
 	GLuint h = tex->height;
-	
-	w /= (1 << level);
-	h /= (1 << level);
+
+	w >>= level;
+	h >>= level;
+
+	if(w == 0) w = 1;
+	if(h == 0) h = 1;
 
 	TOPIC("GL", "glTexImage2D(GL_TEXTURE_2D, %d, %X, %d, %d, 0, %X, %X, %X)",
 		level, tex->internalformat, w, h, tex->format, tex->type, tex->data_ptr[level]
 	);
-	
+
 	GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0+tmu));
 	GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
 	GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, tex->gltex));
-	
+
 	if(tex->compressed)
 	{
 		entry->proc.pglPixelStorei(GL_UNPACK_ALIGNMENT, 1);

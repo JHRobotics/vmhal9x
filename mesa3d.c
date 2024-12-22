@@ -908,8 +908,17 @@ void MesaInitCtx(mesa3d_ctx_t *ctx)
 	
 	entry->proc.pglClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 	
-	ctx->tmu_count = VMHALenv.texture_num_units;
-	ctx->fbo.tmu = 0;
+	ctx->tmu_count = MESA_TMU_CNT();
+	if(VMHALenv.texture_num_units > MESA_TMU_MAX)
+	{
+		ctx->fbo.tmu = MESA_TMU_MAX;
+	}
+	else
+	{
+		ctx->fbo.tmu = 0;
+	}
+	
+	
 	ctx->state.tmu[0].active = 1;
 
 	entry->proc.pglPixelStorei(GL_UNPACK_ALIGNMENT, FBHDA_ROW_ALIGN);
@@ -1106,6 +1115,8 @@ mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_LCL
 						tex->data_dirty[level] = TRUE;
 						tex->data_surf[level] = item->lpAttached;
 
+						TOPIC("MIPMAP", "Mipmap dim %d x %d", item->lpAttached->lpGbl->wWidth, item->lpAttached->lpGbl->wHeight);
+
 						SurfaceAttachTexture(surf, tex, level);
 
 						item = item->lpAttached->lpAttachList;
@@ -1113,7 +1124,7 @@ mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_LCL
 					
 					tex->mipmap_level = level-1;
 					tex->mipmap = (level > 1) ? TRUE : FALSE;
-					TOPIC("RELOAD", "Created %d with mipmap, at level: %d", tex->gltex, tex->mipmap_level);
+					TOPIC("MIPMAP", "Created %d with mipmap, at level: %d", tex->gltex, tex->mipmap_level);
 				} // mipmaps
 				else
 				{
@@ -1208,8 +1219,8 @@ void MesaDestroyTexture(mesa3d_texture_t *tex)
 		GL_CHECK(entry->proc.pglDeleteTextures(1, &tex->gltex));
 		for(i = 0; i <= tex->mipmap_level; i++)
 		{
-			TRACE("level=%d, ptr=%p, vram=%X", i, tex->data_surf[i], tex->data_ptr[i]);
-			//SurfaceDeattachTexture(tex->data_surf[i], tex);
+			TOPIC("GARBAGE", "level=%d, ptr=%p, vram=%X", i, tex->data_surf[i], tex->data_ptr[i]);
+			//SurfaceDeattachTexture(tex->data_surf[i], tex, i);
 			//FIXME: ^double free here!
 		}
 		
@@ -1475,10 +1486,14 @@ void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value)
 		/* D3DVALUE Mipmap LOD bias */
 		RENDERSTATE(D3DTSS_MIPMAPLODBIAS)
 			ts->miplodbias = TSS_FLOAT;
+			ts->dx6_filter = TRUE;
+			ts->update = TRUE;
 			break;
 		/* DWORD 0..(n-1) LOD index of largest map to use (0 == largest) */
 		RENDERSTATE(D3DTSS_MAXMIPLEVEL)
 			ts->mipmaxlevel = TSS_DWORD;
+			ts->dx6_filter = TRUE;
+			ts->update = TRUE;
 			break;
 		/* DWORD maximum anisotropy */
 		RENDERSTATE(D3DTSS_MAXANISOTROPY)
@@ -1877,6 +1892,7 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 			break;
 		RENDERSTATE(D3DRENDERSTATE_MIPMAPLODBIAS) /* D3DVALUE Mipmap LOD bias */
 			ctx->state.tmu[0].miplodbias = state->dwArg[0];
+			ctx->state.tmu[0].update = TRUE;
 			break;
 		RENDERSTATE(D3DRENDERSTATE_ZBIAS) /* LONG Z bias */
 			break;
@@ -1892,27 +1908,35 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 		/* d3d6 */
 		RENDERSTATE(D3DRENDERSTATE_STENCILENABLE) /* BOOL enable/disable stenciling */
 			ctx->state.stencil.enabled = state->dwArg[0] == 0 ? FALSE : TRUE;
+			MesaStencilApply(ctx);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_STENCILFAIL) /* D3DSTENCILOP to do if stencil test fails */
 			ctx->state.stencil.sfail = DXSencilToGL(state->dwArg[0]);
+			MesaStencilApply(ctx);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_STENCILZFAIL) /* D3DSTENCILOP to do if stencil test passes and Z test fails */
 			ctx->state.stencil.dpfail = DXSencilToGL(state->dwArg[0]);
+			MesaStencilApply(ctx);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_STENCILPASS) /* D3DSTENCILOP to do if both stencil and Z tests pass */
 			ctx->state.stencil.dppass = DXSencilToGL(state->dwArg[0]);
+			MesaStencilApply(ctx);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_STENCILFUNC) /* D3DCMPFUNC fn.  Stencil Test passes if ((ref & mask) stencilfn (stencil & mask)) is true */
 			ctx->state.stencil.func = GetGLCmpFunc(state->dwArg[0]);
+			MesaStencilApply(ctx);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_STENCILREF) /* Reference value used in stencil test */
 			ctx->state.stencil.ref = state->dwArg[0];
+			MesaStencilApply(ctx);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_STENCILMASK) /* Mask value used in stencil test */
 			ctx->state.stencil.mask = state->dwArg[0];
+			MesaStencilApply(ctx);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_STENCILWRITEMASK) /* Write mask applied to values written to stencil buffer */
 			ctx->state.stencil.writemask = state->dwArg[0];
+			MesaStencilApply(ctx);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_TEXTUREFACTOR) /* D3DCOLOR used for multi-texture blend */
 		{
@@ -1980,20 +2004,10 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 					switch(state->dwArg[0])
 					{
 						case 0: /* just before flip (end scene) */
-							BOOL is_visible;
-							void *ptr = MesaFindBackbuffer(ctx, &is_visible);
-							if(ptr)
-							{
-								if(is_visible) /* fixme: check for DDSCAPS_PRIMARYSURFACE */
-									FBHDA_access_begin(0);
-
-								MesaBufferDownloadColor(ctx, ptr);
-
-								if(is_visible)
-									FBHDA_access_end(0);
-							}
+							MesaSceneEnd(ctx);
 							break;
 						case 1: /* after clear (start scene) */
+							MesaSceneBegin(ctx);
 							break;
 					}
 					break;
@@ -2114,7 +2128,13 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 			if(ts->image->mipmap)
 			{
 				GLint maxlevel = ts->image->mipmap_level;
+				GLint minlevel = ts->mipmaxlevel;
+				if(minlevel > maxlevel)
+				{
+					minlevel = maxlevel;
+				}
 
+				GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, minlevel));
 				GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, maxlevel));
 				GL_CHECK(entry->proc.pglTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, ts->miplodbias));
 
@@ -2569,6 +2589,53 @@ void MesaDraw(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype,
 	}
 }
 
+void MesaDraw3(mesa3d_ctx_t *ctx, DWORD op, void *prim, LPBYTE vertices)
+{
+	mesa3d_entry_t *entry = ctx->entry;
+	LPD3DTLVERTEX vertex = (LPD3DTLVERTEX)vertices;
+	int i;
+
+	switch(op)
+	{
+		case D3DOP_POINT:
+			LPD3DPOINT point = (LPD3DPOINT)prim;
+			entry->proc.pglBegin(GL_POINTS);
+			for(i = 0; i < point->wCount; i++)
+			{
+				MesaDrawTLVertex(ctx, &vertex[point->wFirst+i]);
+			}
+			entry->proc.pglEnd();
+			
+			break;
+		case D3DOP_SPAN:
+			LPD3DSPAN span = (LPD3DSPAN)prim;
+			entry->proc.pglBegin(GL_LINES);
+			for(i = 0; i < span->wCount; i++)
+			{
+				MesaDrawTLVertex(ctx, &vertex[span->wFirst+i]);
+			}
+			entry->proc.pglEnd();
+			
+			break;
+		case D3DOP_LINE:
+				
+			break;
+		case D3DOP_TRIANGLE:
+			LPD3DTRIANGLE triPtr = (LPD3DTRIANGLE)prim;
+
+			entry->proc.pglBegin(GL_TRIANGLES);
+			MesaDrawTLVertex(ctx, &vertex[triPtr->v1]);
+			MesaDrawTLVertex(ctx, &vertex[triPtr->v2]);
+			MesaDrawTLVertex(ctx, &vertex[triPtr->v3]);
+			entry->proc.pglEnd();
+			
+			break;
+	}
+	
+	ctx->render.dirty = TRUE;
+	ctx->render.zdirty = TRUE;
+}
+
 void MesaDrawIndex(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype,
 	LPVOID vertices, DWORD verticesCnt,
 	LPWORD indices, DWORD indicesCnt)
@@ -2740,4 +2807,26 @@ void MesaBlockUnlock(mesa3d_ctx_t *ctx)
 {
 	InterlockedExchange(&ctx->thread_lock, 0);
 }
+
+void MesaSceneBegin(mesa3d_ctx_t *ctx)
+{
+	// ...
+}
+
+void MesaSceneEnd(mesa3d_ctx_t *ctx)
+{
+	BOOL is_visible;
+	void *ptr = MesaFindBackbuffer(ctx, &is_visible);
+	if(ptr)
+	{
+		if(is_visible) /* fixme: check for DDSCAPS_PRIMARYSURFACE */
+			FBHDA_access_begin(0);
+
+		MesaBufferDownloadColor(ctx, ptr);
+
+		if(is_visible)
+			FBHDA_access_end(0);
+	}
+}
+
 

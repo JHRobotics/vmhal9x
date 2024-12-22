@@ -334,6 +334,7 @@ void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value);
 
 void MesaDrawRefreshState(mesa3d_ctx_t *ctx);
 void MesaDrawSetSurfaces(mesa3d_ctx_t *ctx);
+void MesaDraw3(mesa3d_ctx_t *ctx, DWORD op, void *prim, LPBYTE vertices);
 BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LPBYTE vertices, DWORD *error_offset, LPDWORD RStates);
 
 void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, DWORD stencil, int rects_cnt, RECT *rects);
@@ -367,6 +368,10 @@ void MesaDrawFVFIndex(mesa3d_ctx_t *ctx, void *vertices, int index);
 /* drawing sequence (needs GL_BLOCK) */
 void MesaDrawFVFs(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vertices, DWORD start, DWORD cnt);
 
+/* scene capture, nned GL block */
+void MesaSceneBegin(mesa3d_ctx_t *ctx);
+void MesaSceneEnd(mesa3d_ctx_t *ctx);
+
 /* chroma to alpha conversion */
 void *MesaChroma32(const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
 void *MesaChroma24(const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
@@ -382,5 +387,8 @@ void MesaChromaFree(void *ptr);
 	(_v)[1] = RGBA_GETGREEN(_c)*MESA_1OVER255; \
 	(_v)[2] = RGBA_GETBLUE(_c)*MESA_1OVER255; \
 	(_v)[3] = RGBA_GETALPHA(_c)*MESA_1OVER255
+
+#define MESA_TMU_CNT() ((VMHALenv.texture_num_units > MESA_TMU_MAX) ? MESA_TMU_MAX : VMHALenv.texture_num_units)
+
 
 #endif /* __MESA3D_H__INCLUDED__ */
