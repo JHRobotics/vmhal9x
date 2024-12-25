@@ -126,4 +126,17 @@ typedef struct _DDHAL_DESTROYDDLOCALDATA
 #define DDHAL_MISC2CB32_GETDRIVERSTATE         0x00000004l
 #define DDHAL_MISC2CB32_DESTROYDDLOCAL         0x00000008l
 
+/*
+ * structure for passing information to DDHAL SetColorKey fn
+ */
+typedef struct _DDHAL_SETCOLORKEYDATA
+{
+    LPDDRAWI_DIRECTDRAW_GBL	lpDD;		// driver struct
+    LPDDRAWI_DDRAWSURFACE_LCL	lpDDSurface;	// surface struct
+    DWORD 			dwFlags;	// flags
+    DDCOLORKEY 			ckNew;		// new color key
+    HRESULT			ddRVal;		// return value
+    LPDDHALSURFCB_SETCOLORKEY	SetColorKey;	// PRIVATE: ptr to callback
+} DDHAL_SETCOLORKEYDATA;
+
 #endif /* __DDRAWI_DDK_H__INCLUDED__ */

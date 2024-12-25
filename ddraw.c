@@ -423,3 +423,38 @@ DWORD __stdcall DestroyDriver32(LPDDHAL_DESTROYDRIVERDATA pdstr)
 	pdstr->ddRVal = DD_OK;
 	return DDHAL_DRIVER_HANDLED;
 }
+
+DWORD __stdcall SetColorKey32(LPDDHAL_SETCOLORKEYDATA lpSetColorKey)
+{
+	TRACE_ENTRY
+
+	VMDAHAL_t *ddhal = GetHAL(lpSetColorKey->lpDD);
+	
+	if(ddhal)
+	{
+		lpSetColorKey->lpDDSurface->dwFlags   |= DDRAWISURF_HASCKEYSRCBLT;
+		DWORD c1 = lpSetColorKey->ckNew.dwColorSpaceLowValue;
+		DWORD c2 = lpSetColorKey->ckNew.dwColorSpaceHighValue;
+		
+		/* convert keys to 32bpp */
+		switch(ddhal->pFBHDA32->bpp)
+		{
+			case 16:
+				lpSetColorKey->lpDDSurface->ddckCKSrcBlt.dwColorSpaceLowValue =
+					((c1 & 0x001F) << 3) | ((c1 & 0x07E0) << 5) | ((c1 & 0xF800) << 8);
+				lpSetColorKey->lpDDSurface->ddckCKSrcBlt.dwColorSpaceHighValue = 
+					((c2 & 0x001F) << 3) | ((c2 & 0x07E0) << 5) | ((c2 & 0xF800) << 8);
+				break;
+			case 24:
+			case 32:
+			default:
+				lpSetColorKey->lpDDSurface->ddckCKSrcBlt.dwColorSpaceLowValue  = c1 & 0x00FFFFFFUL;
+				lpSetColorKey->lpDDSurface->ddckCKSrcBlt.dwColorSpaceHighValue = c2 & 0x00FFFFFFUL;
+				break;
+		}
+	}
+
+	lpSetColorKey->ddRVal = DD_OK;
+	return DDHAL_DRIVER_HANDLED;	
+}
+

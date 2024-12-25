@@ -225,6 +225,9 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 	globalHal->cb32.GetBltStatus = GetBltStatus32;
 	globalHal->cb32.SetExclusiveMode = SetExclusiveMode32;
 //	globalHal->cb32.SetMode = SetMode32;
+	globalHal->cb32.SetColorKey = SetColorKey32;
+
+
 #ifdef D3DHAL
 	globalHal->cb32.GetDriverInfo = GetDriverInfo32;
 #endif

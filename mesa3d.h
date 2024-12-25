@@ -134,6 +134,7 @@ typedef struct mesa3d_ctx
 		GLint sh;
 		BOOL zvisible; // Z-visibility testing
 		BOOL specular;
+		BOOL blend;
 		GLenum blend_sfactor;
 		GLenum blend_dfactor;
 		GLenum alphafunc;

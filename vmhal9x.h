@@ -104,6 +104,7 @@ DWORD __stdcall GetBltStatus32(LPDDHAL_GETBLTSTATUSDATA pbd);
 DWORD __stdcall SetExclusiveMode32(LPDDHAL_SETEXCLUSIVEMODEDATA psem);
 DWORD __stdcall SetMode32(LPDDHAL_SETMODEDATA psmod);
 DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput);
+DWORD __stdcall SetColorKey32(LPDDHAL_SETCOLORKEYDATA lpSetColorKey);
 
 DWORD __stdcall DestroyDriver32(LPDDHAL_DESTROYDRIVERDATA pdstr);
 

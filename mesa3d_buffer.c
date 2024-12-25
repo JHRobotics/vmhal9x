@@ -393,6 +393,8 @@ void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level
 	if(w == 0) w = 1;
 	if(h == 0) h = 1;
 
+	TOPIC("CHROMA", "MesaBufferUploadTexture - level=%d", level);
+
 	TOPIC("GL", "glTexImage2D(GL_TEXTURE_2D, %d, %X, %d, %d, 0, %X, %X, %X)",
 		level, tex->internalformat, w, h, tex->format, tex->type, tex->data_ptr[level]
 	);
@@ -424,6 +426,8 @@ static void *chroma_convert(
 	DWORD chroma_lw, DWORD chroma_hi)
 {
 	void *data = NULL;
+	
+	TOPIC("CHROMA", "chroma - bpp: %d, chroma_lw=0x%X, chroma_hi=0x%X", bpp, chroma_lw, chroma_hi);
 	
 	switch(bpp)
 	{
@@ -468,8 +472,11 @@ void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int
 	GLuint w = tex->width;
 	GLuint h = tex->height;
 	
-	w /= (1 << level);
-	h /= (1 << level);
+	w >>= level;
+	h >>= level;
+	
+	if(w == 0) w = 1;
+	if(h == 0) h = 1;
 	
 	mesa3d_entry_t *entry = ctx->entry;
 
@@ -477,7 +484,7 @@ void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int
 	GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
 	GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, tex->gltex));
 
-	TRACE("FORMAT", "Chroma key (0x%08X 0x%08X)", chroma_lw, chroma_hi);
+	TOPIC("CHROMA", "MesaBufferUploadTextureChroma - level=%d", level);
 
 	void *data = chroma_convert(w, h, tex->bpp, tex->type, (void*)tex->data_ptr[level], chroma_lw, chroma_hi);
 	TOPIC("TEX", "downloaded chroma bpp: %d, success: %X", tex->bpp, data);
