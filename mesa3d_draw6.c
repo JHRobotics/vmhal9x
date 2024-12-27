@@ -469,13 +469,16 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_WINFO)
+			{
 				// Specifies the w-range for W buffering. It is specified
 				// by one or more D3DHAL_DP2WINFO structures following
 				// D3DHAL_DP2COMMAND.
-				
+				D3DHAL_DP2WINFO *winfo = (D3DHAL_DP2WINFO*)prim;
+				GL_CHECK(entry->proc.pglDepthRange(winfo->dvWNear, winfo->dvWFar));
 				// skipped
 				NEXT_INST(sizeof(D3DHAL_DP2WINFO));
 				break;
+			}
 			// two below are for pre-DX7 interface apps running DX7 driver
 			COMMAND(D3DDP2OP_SETPALETTE)
 				// Attach a palette to a texture, that is , map an association
@@ -527,12 +530,13 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				NEXT_INST(sizeof(D3DHAL_DP2CREATELIGHT));
 				break;
 			COMMAND(D3DDP2OP_SETTRANSFORM)
-			
-				// skipped
+			{
+				LPD3DHAL_DP2SETTRANSFORM stf = (LPD3DHAL_DP2SETTRANSFORM)prim;
+				MesaSetTransform(ctx, stf->xfrmType, &stf->matrix);
 				NEXT_INST(sizeof(D3DHAL_DP2SETTRANSFORM));
 				break;
+			}
 			COMMAND(D3DDP2OP_EXT)
-			
 				// skipped
 				NEXT_INST(sizeof(D3DHAL_DP2EXT));
 				break;

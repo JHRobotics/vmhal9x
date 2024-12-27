@@ -173,6 +173,7 @@ typedef struct _VMHAL_enviroment
 	DWORD texture_max_width;
 	DWORD texture_max_height;
 	DWORD texture_num_units;
+	DWORD num_light;
 } VMHAL_enviroment_t;
 
 #define DX7_SURFACE_NEST_TYPES (DDSCAPS_TEXTURE | DDSCAPS_3DDEVICE | DDSCAPS_ZBUFFER)

@@ -299,8 +299,18 @@ DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 	BOOL rc = FALSE;
 
 	GL_BLOCK_BEGIN(pd->dwhContext)
-		MesaFVFSet(ctx, pd->dwVertexType);
+		MesaFVFSet(ctx, pd->dwVertexType, pd->dwVertexSize);
+		if(pd->dwVertexType & D3DFVF_XYZRHW)
+		{
+			MesaSpaceIdentitySet(ctx);
+		}
+		
 		rc = MesaDraw6(ctx, cmdBufferStart, cmdBufferEnd, vertices, &pd->dwErrorOffset, RStates);
+		if(pd->dwVertexType & D3DFVF_XYZRHW)
+		{
+			MesaSpaceIdentityReset(ctx);
+		}
+		
 	GL_BLOCK_END
 
 	if(rc)
@@ -699,6 +709,7 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
     T&L:
     dxcaps.dwMaxActiveLights = 0;
     */
+    dxcaps.dwMaxActiveLights = VMHALenv.num_light;
     
     if(VMHALenv.ddi <= 5)
     {

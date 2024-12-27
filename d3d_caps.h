@@ -103,6 +103,7 @@
 	| D3DPRASTERCAPS_FOGVERTEX    \
 	| D3DPRASTERCAPS_STIPPLE      \
 	| D3DPRASTERCAPS_WFOG         \
+	| D3DPRASTERCAPS_WBUFFER      \
 	/* | D3DPRASTERCAPS_ZTEST*/,  \
 	/* zCmpCaps */                \
 	D3DPCMPCAPS_NEVER             \
@@ -244,7 +245,10 @@ static D3DDEVICEDESC_V1 myCaps7 = {
 	| D3DDEVCAPS_TLVERTEXSYSTEMMEMORY /* must be set */
 	| D3DDEVCAPS_DRAWPRIMTLVERTEX /* must be set */
 	| D3DDEVCAPS_EXECUTESYSTEMMEMORY /* must be set */
-	| D3DDEVCAPS_DRAWPRIMITIVES2EX, /* must be set for DX7 */
+	| D3DDEVCAPS_DRAWPRIMITIVES2EX /* must be set for DX7 */
+	| D3DDEVCAPS_HWTRANSFORMANDLIGHT
+	| D3DDEVCAPS_CANBLTSYSTONONLOCAL
+	| D3DDEVCAPS_HWRASTERIZATION,
 	{sizeof(D3DTRANSFORMCAPS), 0},		/* dtcTransformCaps */
 	FALSE,                      /* bClipping */
 	{sizeof(D3DLIGHTINGCAPS), 0},  /* dlcLightingCaps */

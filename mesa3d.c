@@ -243,28 +243,6 @@ void Mesa3DCleanProc()
 	Mesa3DFree(pid);
 }
 
-static void UpdateScreenCoords(mesa3d_ctx_t *ctx, GLfloat w, GLfloat h)
-{	
-	ctx->entry->proc.pglGetFloatv(GL_MODELVIEW_MATRIX, &ctx->matrix.model[0]);
-	ctx->entry->proc.pglGetFloatv(GL_PROJECTION_MATRIX, &ctx->matrix.proj[0]);
-	ctx->entry->proc.pglGetIntegerv(GL_VIEWPORT, &ctx->matrix.viewport[0]);
-	
-	TOPIC("MATRIX", "GL_MODELVIEW_MATRIX");
-	TOPIC("MATRIX", "[%f %f %f %f]", ctx->matrix.model[0], ctx->matrix.model[1], ctx->matrix.model[2], ctx->matrix.model[3]);
-	TOPIC("MATRIX", "[%f %f %f %f]", ctx->matrix.model[4], ctx->matrix.model[5], ctx->matrix.model[6], ctx->matrix.model[7]);
-	TOPIC("MATRIX", "[%f %f %f %f]", ctx->matrix.model[8], ctx->matrix.model[9], ctx->matrix.model[10], ctx->matrix.model[11]);
-	TOPIC("MATRIX", "[%f %f %f %f]", ctx->matrix.model[12], ctx->matrix.model[13], ctx->matrix.model[14], ctx->matrix.model[15]);
-	TOPIC("MATRIX", "GL_PROJECTION_MATRIX");
-	TOPIC("MATRIX", "[%f %f %f %f]", ctx->matrix.proj[0], ctx->matrix.proj[1], ctx->matrix.proj[2], ctx->matrix.proj[3]);
-	TOPIC("MATRIX", "[%f %f %f %f]", ctx->matrix.proj[4], ctx->matrix.proj[5], ctx->matrix.proj[6], ctx->matrix.proj[7]);
-	TOPIC("MATRIX", "[%f %f %f %f]", ctx->matrix.proj[8], ctx->matrix.proj[9], ctx->matrix.proj[10], ctx->matrix.proj[11]);
-	TOPIC("MATRIX", "[%f %f %f %f]", ctx->matrix.proj[12], ctx->matrix.proj[13], ctx->matrix.proj[14], ctx->matrix.proj[15]);
-	TOPIC("MATRIX", "GL_VIEWPORT");
-	TOPIC("MATRIX", "[%d %d %d %d]", ctx->matrix.viewport[0], ctx->matrix.viewport[1], ctx->matrix.viewport[2], ctx->matrix.viewport[3]);
-	
-	MesaUnprojectCalc(ctx);
-}
-
 static BOOL DDSurfaceToGL(LPDDRAWI_DDRAWSURFACE_LCL surf, GLuint *bpp, GLint *internalformat, GLenum *format, GLenum *type, BOOL *compressed)
 {
 	if((surf->dwFlags & DDRAWISURF_HASPIXELFORMAT) != 0)
@@ -762,7 +740,8 @@ mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry,
 				
 				MesaLoopFront(ctx, dds);
 				MesaInitCtx(ctx);
-				UpdateScreenCoords(ctx, (GLfloat)width, (GLfloat)height);
+				//UpdateScreenCoords(ctx, (GLfloat)width, (GLfloat)height);
+				MesaApplyViewport(ctx, 0, 0, width, height);
 
 				valid = TRUE;
 			} while(0);
@@ -839,7 +818,8 @@ BOOL MesaSetTarget(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_LCL dds, LPDDRAWI_DD
 	ctx->state.sw = width;
 	ctx->state.sh = height;
 	MesaLoopFront(ctx, dds);
-	UpdateScreenCoords(ctx, (GLfloat)width, (GLfloat)height);
+	//UpdateScreenCoords(ctx, (GLfloat)width, (GLfloat)height);
+	MesaApplyViewport(ctx, 0, 0, width, height);
 	MesaDepthReeval(ctx);
 	
 	return TRUE;
@@ -931,6 +911,17 @@ void MesaInitCtx(mesa3d_ctx_t *ctx)
   entry->proc.pglMatrixMode(GL_PROJECTION);
   entry->proc.pglLoadIdentity();
   
+  MesaIdentity(ctx->matrix.world[0]);
+  MesaIdentity(ctx->matrix.world[1]);
+  MesaIdentity(ctx->matrix.world[2]);
+  MesaIdentity(ctx->matrix.world[3]);
+
+  MesaIdentity(ctx->matrix.view);
+  MesaIdentity(ctx->matrix.proj);
+
+	MesaIdentity(ctx->matrix.modelview);
+	ctx->matrix.is_identity = TRUE;
+
 	entry->proc.pglDisable(GL_LIGHTING);
 
 	for(i = 0; i < ctx->tmu_count; i++)
@@ -947,6 +938,7 @@ void MesaInitCtx(mesa3d_ctx_t *ctx)
 		ctx->state.tmu[i].reload = TRUE;
 		ctx->state.tmu[i].update = TRUE;
 		ctx->state.tmu[i].texblend = D3DTBLEND_DECAL;
+		ctx->state.tmu[i].coordnum = 2;
 		
 		/*
 			defaults:
@@ -956,6 +948,8 @@ void MesaInitCtx(mesa3d_ctx_t *ctx)
 		ctx->state.tmu[i].dx_mip = D3DTFP_NONE;
 		ctx->state.tmu[i].dx_mag = D3DTFG_POINT;
 		ctx->state.tmu[i].dx_min = D3DTFN_POINT;
+		
+		MesaIdentity(ctx->state.tmu[i].matrix);
 	}
 
 	entry->proc.pglEnable(GL_BLEND);
@@ -990,7 +984,7 @@ BOOL MesaSetCtx(mesa3d_ctx_t *ctx)
 			if(ctx->entry->proc.pOSMesaMakeCurrent(
 				ctx->osctx, ctx->osbuf, OS_TYPE, OS_WIDTH, OS_HEIGHT))
 			{
-				UpdateScreenCoords(ctx, ctx->state.sw, ctx->state.sh);
+				//UpdateScreenCoords(ctx, ctx->state.sw, ctx->state.sh);
 				ctx->thread_id = GetCurrentThreadId();
 				return TRUE;
 			}
@@ -999,7 +993,7 @@ BOOL MesaSetCtx(mesa3d_ctx_t *ctx)
 		{
 			if(ctx->entry->proc.pDrvSetContext(ctx->dc, ctx->glrc, NULL))
 			{
-				UpdateScreenCoords(ctx, ctx->state.sw, ctx->state.sh);
+				//UpdateScreenCoords(ctx, ctx->state.sw, ctx->state.sh);
 				ctx->thread_id = GetCurrentThreadId();
 				return TRUE;
 			}
@@ -1525,7 +1519,40 @@ void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value)
 			break;
 		/* D3DTEXTURETRANSFORMFLAGS controls texture transform (DX7) */
 		RENDERSTATE(D3DTSS_TEXTURETRANSFORMFLAGS)
+		{
+			DWORD tflags = TSS_DWORD;
+			TOPIC("MATRIX", "D3DTSS_TEXTURETRANSFORMFLAGS=0x%X", tflags);
+			switch(tflags & (D3DTTFF_PROJECTED-1))
+			{
+				case D3DTTFF_DISABLE:// texture coordinates are passed directly
+					ts->coordnum = 2;
+					break;
+				case D3DTTFF_COUNT1: // rasterizer should expect 1-D texture coords
+					ts->coordnum = 1;
+					break;
+				case D3DTTFF_COUNT2: // rasterizer should expect 2-D texture coords
+					ts->coordnum = 2;
+					break;
+				case D3DTTFF_COUNT3: // rasterizer should expect 3-D texture coords
+					ts->coordnum = 3;
+					break;
+				case D3DTTFF_COUNT4: // rasterizer should expect 4-D texture coords
+					ts->coordnum = 4;
+					break;
+			}
+			if(tflags & D3DTTFF_PROJECTED)
+			{
+				ts->projected = TRUE;
+			}
+			else
+			{
+				ts->projected = FALSE;
+			}
+			
+			ctx->state.fvf.type = 0; // reset
+			
 			break;
+		}
 	} // switch
 }
 
@@ -1629,18 +1656,21 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 		RENDERSTATE(D3DRENDERSTATE_WRAPV) /* TRUE for wrapping in v */
 			/* nop */
 			break;
-		RENDERSTATE(D3DRENDERSTATE_ZENABLE) /* TRUE to enable z test */
+		RENDERSTATE(D3DRENDERSTATE_ZENABLE) /* TRUE to enable z test (DX7 = D3DZBUFFERTYPE) */
 			if(ctx->depth)
 			{
-				if(state->dwArg[0] == 0)
+				switch(state->dwArg[0])
 				{
-					ctx->entry->proc.pglDisable(GL_DEPTH_TEST);
-					ctx->state.depth.enabled = FALSE;
-				}
-				else
-				{
-					ctx->entry->proc.pglEnable(GL_DEPTH_TEST);
-					ctx->state.depth.enabled = TRUE;
+					case D3DZB_FALSE: /* disabled */
+						ctx->entry->proc.pglDisable(GL_DEPTH_TEST);
+						ctx->state.depth.enabled = FALSE;
+						break;
+					case D3DZB_TRUE: /* enabled Z */
+					case D3DZB_USEW: /* enabled W */
+					default:
+						ctx->entry->proc.pglEnable(GL_DEPTH_TEST);
+						ctx->state.depth.enabled = TRUE;
+						break;
 				}
 			}
 			break;
@@ -2009,6 +2039,22 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 		RENDERSTATE(D3DRENDERSTATE_EMISSIVEMATERIALSOURCE)
 			break;
 		RENDERSTATE(D3DRENDERSTATE_VERTEXBLEND)
+			switch(state->dwArg[0])
+			{
+				case D3DVBLEND_DISABLE: // Disable vertex blending
+					ctx->matrix.weight = 0;
+					break;
+				case D3DVBLEND_1WEIGHT: // blend between 2 matrices
+					ctx->matrix.weight = 1;
+					break;
+				case D3DVBLEND_2WEIGHTS: // blend between 3 matrices
+					ctx->matrix.weight = 2;
+					break;
+				case D3DVBLEND_3WEIGHTS: // blend between 4 matrices
+					ctx->matrix.weight = 3;
+					break;
+			}
+			MesaApplyTransform(ctx, MESA_TF_WORLD);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_CLIPPLANEENABLE)
 			break;
@@ -2617,6 +2663,15 @@ void MesaDrawRefreshState(mesa3d_ctx_t *ctx)
 			ApplyTextureState(ctx->entry, ctx, i);
 			ctx->state.tmu[i].update = FALSE;
 		}
+		
+		if(ctx->state.tmu[i].move)
+		{
+			ctx->entry->proc.pglActiveTexture(GL_TEXTURE0 + i);
+			ctx->entry->proc.pglMatrixMode(GL_TEXTURE);
+			ctx->entry->proc.pglLoadMatrixf(&ctx->state.tmu[i].matrix[0]);
+			ctx->state.tmu[i].move = FALSE;
+		}
+		
 	}
 }
 
@@ -2906,5 +2961,77 @@ void MesaSceneEnd(mesa3d_ctx_t *ctx)
 
 		if(is_visible)
 			FBHDA_access_end(0);
+	}
+}
+
+#define COPY_MATRIX(_srcdx, _dst) do{ \
+	(_dst)[ 0]=(_srcdx)->_11; (_dst[ 1])=(_srcdx)->_12; (_dst[ 2])=(_srcdx)->_13; (_dst[ 3])=(_srcdx)->_14; \
+	(_dst)[ 4]=(_srcdx)->_21; (_dst[ 5])=(_srcdx)->_22; (_dst[ 6])=(_srcdx)->_23; (_dst[ 7])=(_srcdx)->_24; \
+	(_dst)[ 8]=(_srcdx)->_31; (_dst[ 9])=(_srcdx)->_32; (_dst[10])=(_srcdx)->_33; (_dst[11])=(_srcdx)->_34; \
+	(_dst)[12]=(_srcdx)->_41; (_dst[13])=(_srcdx)->_42; (_dst[14])=(_srcdx)->_43; (_dst[15])=(_srcdx)->_44; \
+	}while(0)
+
+void MesaSetTransform(mesa3d_ctx_t *ctx, D3DTRANSFORMSTATETYPE state, D3DMATRIX *matrix)
+{
+	switch(state)
+	{
+		case D3DTRANSFORMSTATE_WORLD:
+			COPY_MATRIX(matrix, ctx->matrix.world[0]);
+			MesaApplyTransform(ctx, MESA_TF_WORLD);
+			break;
+		case D3DTRANSFORMSTATE_VIEW:
+			COPY_MATRIX(matrix, ctx->matrix.view);
+			MesaApplyTransform(ctx, MESA_TF_VIEW);
+			break;
+		case D3DTRANSFORMSTATE_PROJECTION:
+			COPY_MATRIX(matrix, ctx->matrix.proj);
+			MesaApplyTransform(ctx, MESA_TF_PROJECTION);
+			break;
+		case D3DTRANSFORMSTATE_WORLD1:
+			COPY_MATRIX(matrix, ctx->matrix.world[1]);
+			MesaApplyTransform(ctx, MESA_TF_WORLD);
+			break;
+		case D3DTRANSFORMSTATE_WORLD2:
+			COPY_MATRIX(matrix, ctx->matrix.world[2]);
+			MesaApplyTransform(ctx, MESA_TF_WORLD);
+			break;
+		case D3DTRANSFORMSTATE_WORLD3:
+			COPY_MATRIX(matrix, ctx->matrix.world[3]);
+			MesaApplyTransform(ctx, MESA_TF_WORLD);
+			break;
+		case D3DTRANSFORMSTATE_TEXTURE0:
+			COPY_MATRIX(matrix, ctx->state.tmu[0].matrix);
+			ctx->state.tmu[0].move = TRUE;
+			break;
+		case D3DTRANSFORMSTATE_TEXTURE1:
+			COPY_MATRIX(matrix, ctx->state.tmu[1].matrix);
+			ctx->state.tmu[1].move = TRUE;
+			break;
+		case D3DTRANSFORMSTATE_TEXTURE2:
+			COPY_MATRIX(matrix, ctx->state.tmu[2].matrix);
+			ctx->state.tmu[2].move = TRUE;
+			break;
+		case D3DTRANSFORMSTATE_TEXTURE3:
+			COPY_MATRIX(matrix, ctx->state.tmu[3].matrix);
+			ctx->state.tmu[3].move = TRUE;
+			break;
+		case D3DTRANSFORMSTATE_TEXTURE4:
+			COPY_MATRIX(matrix, ctx->state.tmu[4].matrix);
+			ctx->state.tmu[4].move = TRUE;
+			break;
+		case D3DTRANSFORMSTATE_TEXTURE5:
+			COPY_MATRIX(matrix, ctx->state.tmu[5].matrix);
+			ctx->state.tmu[5].move = TRUE;
+			break;
+		case D3DTRANSFORMSTATE_TEXTURE6:
+			COPY_MATRIX(matrix, ctx->state.tmu[6].matrix);
+			ctx->state.tmu[6].move = TRUE;
+			break;
+		case D3DTRANSFORMSTATE_TEXTURE7:
+			COPY_MATRIX(matrix, ctx->state.tmu[7].matrix);
+			ctx->state.tmu[7].move = TRUE;
+			break;
+		default:
+			break;
 	}
 }

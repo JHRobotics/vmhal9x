@@ -53,6 +53,24 @@ inline static void matmultvecf(const GLfloat matrix[16], const GLfloat in[4], GL
 	}
 }
 
+inline static void matmultdotf(const GLfloat matrix[16], GLfloat n, GLfloat out[16])
+{
+	int i;
+	for(i = 0; i < 16; i++)
+	{
+		out[i] = matrix[i] * n;
+	}
+}
+
+inline static void matadddotf(const GLfloat matrix[16], GLfloat n, GLfloat out[16])
+{
+	int i;
+	for(i = 0; i < 16; i++)
+	{
+		out[i] = matrix[i] + n;
+	}
+}
+
 inline static BOOL matinvf(const GLfloat m[16], GLfloat invOut[16])
 {
 	GLfloat inv[16], det;
@@ -119,8 +137,7 @@ inline static void matmultf(const GLfloat a[16], const GLfloat b[16], GLfloat r[
 	}
 }
 
-#if 0
-static BOOL unprojectf(GLfloat winx, GLfloat winy, GLfloat winz, GLfloat clipw,
+BOOL MesaUnprojectf(GLfloat winx, GLfloat winy, GLfloat winz, GLfloat clipw,
 	const GLfloat modelMatrix[16], 
 	const GLfloat projMatrix[16],
 	const GLint viewport[4],
@@ -168,9 +185,8 @@ static BOOL unprojectf(GLfloat winx, GLfloat winy, GLfloat winz, GLfloat clipw,
 
 	return TRUE;
 }
-#endif
 
-static BOOL matisidx(GLfloat matrix[16])
+BOOL MesaIsIdentity(GLfloat matrix[16])
 {
 	int i = 0;
 	for(i = 0; i < 16; i++)
@@ -190,105 +206,116 @@ static BOOL matisidx(GLfloat matrix[16])
 	return TRUE;
 }
 
-void MesaUnprojectCalc(mesa3d_ctx_t *ctx)
+void MesaIdentity(GLfloat matrix[16])
 {
-	matmultf(ctx->matrix.model, ctx->matrix.model, ctx->matrix.fnorm);
-	if(!matinvf(ctx->matrix.fnorm, ctx->matrix.fnorm))
+	int i;
+	for(i = 0; i < 16; i++)
 	{
-		/* OK use identity matrix */
-		int i;
-		for(i = 0; i < 16; i++)
-		{
-			ctx->matrix.fnorm[i] = (i % 5 == 0) ? 1.0f : 0.0f;
-		}
-		ctx->matrix.fnorm_is_idx = TRUE;
+		matrix[i] = (i % 5 == 0) ? 1.0f : 0.0f;
 	}
-	else
-	{
-		ctx->matrix.fnorm_is_idx = matisidx(ctx->matrix.fnorm);
-	}
-	
-	ctx->matrix.vnorm[0] = ctx->matrix.viewport[0];
-	ctx->matrix.vnorm[1] = ctx->matrix.viewport[1];
-	ctx->matrix.vnorm[2] = 2.0f / ctx->matrix.viewport[2];
-	ctx->matrix.vnorm[3] = 2.0f / ctx->matrix.viewport[3];
 }
 
-void MesaUnproject(mesa3d_ctx_t *ctx, GLfloat winx, GLfloat winy, GLfloat winz,
-	GLfloat *objx, GLfloat *objy, GLfloat *objz)
+#ifdef TRACE_ON
+void printmtx(const char *name, GLfloat m[16])
 {
-/*	return unprojectf(winx, winy, winz, 1.0f, ctx->matrix.model, ctx->matrix.proj, ctx->matrix.viewport,
-		objx, objy, objz, NULL);*/
-	
-	GLfloat in[4];
-	
-	/* Map x and y from window coordinates */
-	in[0] = ((winx - ctx->matrix.vnorm[0]) * ctx->matrix.vnorm[2]) - 1.0f;
-	in[1] = ((winy - ctx->matrix.vnorm[1]) * ctx->matrix.vnorm[3]) - 1.0f;
-	in[2] =  (winz * 2.0f) - 1.0f;
-	in[3] = 1.0f;
-
-	if(ctx->matrix.fnorm_is_idx)
-	{
-		*objx = in[0];
-		*objy = in[1];
-		*objz = in[2];
-		return;
-	}
-
-	GLfloat out[4];
-	matmultvecf(ctx->matrix.fnorm, in, out);
-	
-	if(out[3] == 0.0)
-	{
-		*objx = in[0];
-		*objy = in[1];
-		*objz = in[2];
-		return;
-	}
-
-	out[0] /= out[3];
-	out[1] /= out[3];
-	out[2] /= out[3];
-
-	*objx = out[0];
-	*objy = out[1];
-	*objz = out[2];
-}
-
-#if 0
-void MesaUnprojectw(mesa3d_ctx_t *ctx, GLfloat winx, GLfloat winy, GLfloat winz, GLfloat rw, GLfloat out[4])
-{
-	GLfloat in[4];
-	
-	/* Map x and y from window coordinates */
-	in[0] = ((winx - ctx->matrix.vnorm[0]) * ctx->matrix.vnorm[2]) - 1.0f;
-	in[1] = ((winy - ctx->matrix.vnorm[1]) * ctx->matrix.vnorm[3]) - 1.0f;
-	in[2] =  (winz * 2.0f) - 1.0f;
-	in[3] = rw;
-
-	if(ctx->matrix.fnorm_is_idx)
-	{
-		out[0] = in[0];
-		out[1] = in[1];
-		out[2] = in[2];
-		out[3] = in[3];
-		return;
-	}
-
-	matmultvecf(ctx->matrix.fnorm, in, out);
-	
-	if(out[3] == 0.0)
-	{
-		out[0] = in[0];
-		out[1] = in[1];
-		out[2] = in[2];
-		out[3] = in[3];
-		return;
-	}
-
-	out[0] /= out[3];
-	out[1] /= out[3];
-	out[2] /= out[3];
+	TOPIC("MATRIX", "Matrix: %s", name);
+	TOPIC("MATRIX", "[%f %f %f %f]",  m[0],  m[1],  m[2],  m[3]);
+	TOPIC("MATRIX", "[%f %f %f %f]",  m[4],  m[5],  m[6],  m[7]);
+	TOPIC("MATRIX", "[%f %f %f %f]",  m[8],  m[9], m[10], m[11]);
+	TOPIC("MATRIX", "[%f %f %f %f]", m[12], m[13], m[14], m[15]);
 }
 #endif
+
+void MesaApplyViewport(mesa3d_ctx_t *ctx, GLint x, GLint y, GLint w, GLint h)
+{
+	mesa3d_entry_t *entry = ctx->entry;
+	GL_CHECK(entry->proc.pglViewport(x, y, w, h));
+	
+	ctx->entry->proc.pglGetIntegerv(GL_VIEWPORT, &ctx->matrix.viewport[0]);
+	TOPIC("MATRIX", "GL_VIEWPORT");
+	TOPIC("MATRIX", "[%d %d %d %d]", ctx->matrix.viewport[0], ctx->matrix.viewport[1], ctx->matrix.viewport[2], ctx->matrix.viewport[3]);
+	
+	ctx->matrix.vpnorm[0] = ctx->matrix.viewport[0];
+	ctx->matrix.vpnorm[1] = ctx->matrix.viewport[1];
+	ctx->matrix.vpnorm[2] = 2.0f / ctx->matrix.viewport[2];
+	ctx->matrix.vpnorm[3] = 2.0f / ctx->matrix.viewport[3];
+}
+
+/*
+	DX to GL transformation discussion
+  https://community.khronos.org/t/converting-directx-transformations-to-opengl/62074/2
+*/
+static const GLfloat initmatrix[16] = 
+{
+	1.0,  0.0,  0.0,  0.0,
+	0.0, -1.0,  0.0,  0.0,
+	0.0,  0.0,  1.0,  0.0,
+	0.0,  0.0,  0.0,  1.0
+};
+
+static void CalcModelview(mesa3d_ctx_t *ctx)
+{	
+	GLfloat m[16];
+
+	//printmtx("projection", ctx->matrix.proj);
+	//printmtx("view", ctx->matrix.view);
+	matmultf(ctx->matrix.proj, initmatrix, m);
+	matmultf(ctx->matrix.view, m, ctx->matrix.modelview);
+}
+
+void MesaApplyTransform(mesa3d_ctx_t *ctx, DWORD changes)
+{
+	int i = 0;
+
+	mesa3d_entry_t *entry = ctx->entry;
+
+	ctx->matrix.is_identity = FALSE; /* for now this is only latch */
+
+	if(changes & (MESA_TF_PROJECTION | MESA_TF_VIEW))
+	{
+		CalcModelview(ctx);
+	}
+
+	entry->proc.pglMatrixMode(GL_MODELVIEW);
+#if 0
+	entry->proc.pglLoadMatrixf(&initmatrix[0]);
+	entry->proc.pglMultMatrixf(&ctx->matrix.proj[0]);
+	entry->proc.pglMultMatrixf(&ctx->matrix.view[0]);
+	
+	printmtx("modelview (cpu)", ctx->matrix.modelview);
+	GLfloat tmp[16];
+	entry->proc.pglGetFloatv(GL_MODELVIEW_MATRIX, &tmp[0]);
+	printmtx("modelview (gpu)", tmp);
+#else
+	entry->proc.pglLoadMatrixf(&ctx->matrix.modelview[0]);
+#endif
+
+	//TOPIC("MATRIX", "ctx->matrix.weight=%d", ctx->matrix.weight);
+
+	for(i = 0; i <= ctx->matrix.weight; i++)
+	{
+		//printmtx("world[i]", ctx->matrix.world[i]);
+		entry->proc.pglMultMatrixf(&ctx->matrix.world[i][0]);
+	}
+}
+
+void MesaSpaceIdentitySet(mesa3d_ctx_t *ctx)
+{
+	if(!ctx->matrix.is_identity)
+	{
+		mesa3d_entry_t *entry = ctx->entry;
+		entry->proc.pglMatrixMode(GL_MODELVIEW);
+		entry->proc.pglPushMatrix();
+	}
+}
+
+void MesaSpaceIdentityReset(mesa3d_ctx_t *ctx)
+{
+	if(!ctx->matrix.is_identity)
+	{
+		mesa3d_entry_t *entry = ctx->entry;
+		entry->proc.pglMatrixMode(GL_MODELVIEW);
+		entry->proc.pglPopMatrix();
+	}
+}
+

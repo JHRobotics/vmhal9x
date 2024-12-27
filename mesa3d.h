@@ -90,12 +90,16 @@ struct mesa3d_tmustate
 	
 	GLfloat border[4];
 	BOOL colorkey;
-	int coordindex;
+	int coordindex; /* D3DTSS_TEXCOORDINDEX */
+	int coordnum; /* D3DTSS_TEXTURETRANSFORMFLAGS */
+	BOOL projected;
+	GLfloat matrix[16];
 	
 	DWORD wrap;
 	
 	BOOL reload; // reload texture data (surface -> GPU)
 	BOOL update; // update texture params
+	BOOL move;   // reload texture matrix
 };
 
 #define MESA3D_MAX_FLIPS 8
@@ -206,13 +210,15 @@ typedef struct mesa3d_ctx
 
 	/* dimensions */
 	struct {
-		GLfloat model[16];
+		GLfloat view[16];
 		GLfloat proj[16];
+		GLfloat world[4][16];
 		GLint viewport[4];
 		/* precalculated values */
-		GLfloat fnorm[16];
-		GLfloat vnorm[4];
-		BOOL fnorm_is_idx;
+		GLfloat modelview[16]; /* flip_y * proj * view */
+		GLfloat vpnorm[4]; /* viewport for faster unproject */
+		BOOL is_identity;
+		int weight;
 	} matrix;
 	
 } mesa3d_ctx_t;
@@ -316,12 +322,19 @@ void MesaInitCtx(mesa3d_ctx_t *ctx);
 void MesaBlockLock(mesa3d_ctx_t *ctx);
 void MesaBlockUnlock(mesa3d_ctx_t *ctx);
 BOOL MesaSetCtx(mesa3d_ctx_t *ctx);
+void MesaSetTransform(mesa3d_ctx_t *ctx, D3DTRANSFORMSTATETYPE state, D3DMATRIX *matrix);
 
 /* needs GL_BLOCK */
 mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_LCL surf);
 void MesaReloadTexture(mesa3d_texture_t *tex, int tmu);
 void MesaDestroyTexture(mesa3d_texture_t *tex);
+void MesaApplyTransform(mesa3d_ctx_t *ctx, DWORD changes);
+void MesaApplyViewport(mesa3d_ctx_t *ctx, GLint x, GLint y, GLint w, GLint h);
 
+#define MESA_TF_PROJECTION 1
+#define MESA_TF_VIEW       2
+#define MESA_TF_WORLD      4
+//#define MESA_TF_TEXTURE    8
 void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates);
 void MesaDraw(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype, LPVOID vertices, DWORD verticesCnt);
 void MesaDrawIndex(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype,
@@ -353,16 +366,24 @@ void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int
 BOOL MesaBufferFBOSetup(mesa3d_ctx_t *ctx, int width, int height);
 
 /* calculation */
-void MesaUnproject(mesa3d_ctx_t *ctx, GLfloat winx, GLfloat winy, GLfloat winz,
-GLfloat *objx, GLfloat *objy, GLfloat *objz);
-void MesaUnprojectCalc(mesa3d_ctx_t *ctx);
+BOOL MesaUnprojectf(GLfloat winx, GLfloat winy, GLfloat winz, GLfloat clipw,
+	const GLfloat modelMatrix[16], 
+	const GLfloat projMatrix[16],
+	const GLint viewport[4],
+	GLfloat *objx, GLfloat *objy, GLfloat *objz, GLfloat *objw);
+void MesaIdentity(GLfloat matrix[16]);
+BOOL MesaIsIdentity(GLfloat matrix[16]);
+void MesaSpaceIdentitySet(mesa3d_ctx_t *ctx);
+void MesaSpaceIdentityReset(mesa3d_ctx_t *ctx);
+void MesaConvProjection(GLfloat m[16]);
+void MesaConvView(GLfloat m[16]);
 
 /* vertex (needs GL_BLOCK + glBegin) */
 void MesaDrawVertex(mesa3d_ctx_t *ctx, LPD3DVERTEX vertex);
 void MesaDrawLVertex(mesa3d_ctx_t *ctx, LPD3DLVERTEX vertex);
 void MesaDrawTLVertex(mesa3d_ctx_t *ctx, LPD3DTLVERTEX vertex);
 /* DX6 */
-void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD type);
+void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD type, DWORD size);
 void MesaDrawFVF(mesa3d_ctx_t *ctx, void *vertex);
 void MesaDrawFVFIndex(mesa3d_ctx_t *ctx, void *vertices, int index);
 

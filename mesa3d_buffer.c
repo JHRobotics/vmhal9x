@@ -491,7 +491,7 @@ void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int
 	
 	if(data)
 	{
-		GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
+		GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, level, GL_RGBA,
 			w, h, 0, GL_BGRA, GL_UNSIGNED_BYTE, data));
 		
 		MesaChromaFree(data);
@@ -538,9 +538,17 @@ BOOL MesaBufferFBOSetup(mesa3d_ctx_t *ctx, int width, int height)
 		GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
 		GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
 		GL_CHECK(entry->proc.pglFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->fbo.plane_color_tex, 0));
+		
+		GLenum depth_format = GL_DEPTH24_STENCIL8;
+#if 0
+		if(entry->dx6)
+		{
+			depth_format = GL_DEPTH32F_STENCIL8;
+		}
+#endif
 
 		GL_CHECK(entry->proc.pglBindRenderbuffer(GL_RENDERBUFFER, ctx->fbo.plane_depth_tex));
-		GL_CHECK(entry->proc.pglRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height));
+		GL_CHECK(entry->proc.pglRenderbufferStorage(GL_RENDERBUFFER, depth_format, width, height));
 		GL_CHECK(entry->proc.pglFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, ctx->fbo.plane_depth_tex));
 
 		ctx->fbo.width = width;

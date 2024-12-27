@@ -39,6 +39,18 @@
 
 #include "nocrt.h"
 
+#define SV_UNPROJECT(_v, _x, _y, _z, _w) \
+	_v[3] = 2.0f/(_w); \
+	_v[0] = ((((_x) - ctx->matrix.vpnorm[0]) * ctx->matrix.vpnorm[2]) - 1.0f)*_v[3]; \
+	_v[1] = ((((_y) - ctx->matrix.vpnorm[1]) * ctx->matrix.vpnorm[3]) - 1.0f)*_v[3]; \
+	_v[2] = (_z)*_v[3]
+
+#define SV_UNPROJECTD(_v, _x, _y, _z, _w) \
+	_v[3] = 2.0/((double)_w); \
+	_v[0] = (((((double)_x) - ctx->matrix.vpnorm[0]) * ctx->matrix.vpnorm[2]) - 1.0)*_v[3]; \
+	_v[1] = (((((double)_y) - ctx->matrix.vpnorm[1]) * ctx->matrix.vpnorm[3]) - 1.0)*_v[3]; \
+	_v[2] = ((double)_z)*_v[3]
+
 #define FVF_X 0
 #define FVF_Y 1
 #define FVF_Z 2
@@ -81,6 +93,7 @@ void MesaDrawTLVertex(mesa3d_ctx_t *ctx, LPD3DTLVERTEX vertex)
 		);
 	}
 
+#if 0
 	GLfloat x, y, z, w = 2.0;
 	MesaUnproject(ctx, vertex->sx, vertex->sy, vertex->sz, &x, &y, &z);
 	// w = (1.0/vertex->rhw) - 0.5; = currently best
@@ -91,6 +104,12 @@ void MesaDrawTLVertex(mesa3d_ctx_t *ctx, LPD3DTLVERTEX vertex)
 	
 	entry->proc.pglVertex4f(x*w, y*w, z*w, w);
 	TOPIC("TEX", "glVertex4f(%f, %f, %f, %f)", x, y, z, w);	
+#else
+	GLfloat v[4];
+	SV_UNPROJECT(v, vertex->sx, vertex->sy, vertex->sz, vertex->rhw);
+	entry->proc.pglVertex4fv(&v[0]);
+#endif
+
 }
 
 void MesaDrawLVertex(mesa3d_ctx_t *ctx, LPD3DLVERTEX vertex)
@@ -133,7 +152,7 @@ void MesaDrawVertex(mesa3d_ctx_t *ctx, LPD3DVERTEX vertex)
 	entry->proc.pglVertex3f(vertex->x, vertex->y, vertex->z);
 }
 
-void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD type)
+void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD type, DWORD size)
 {
 	if(ctx->state.fvf.type == type)
 	{
@@ -149,7 +168,7 @@ void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD type)
 	switch(type & D3DFVF_POSITION_MASK)
 	{
 		case D3DFVF_XYZ:
-			offset = 3;
+			offset = 3; // sizeof(D3DVECTOR) == 12
 			break;
 		case D3DFVF_XYZRHW:
 			offset = 4;
@@ -173,7 +192,8 @@ void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD type)
 	
 	if(type & D3DFVF_NORMAL)
 	{
-		ctx->state.fvf.pos_normal = offset++;
+		ctx->state.fvf.pos_normal = offset;
+		offset += 3;
 	}
 	else
 	{
@@ -209,28 +229,46 @@ void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD type)
 		if(tc > i)
 		{
 			ctx->state.fvf.pos_tmu[i] = offset;
-			offset += 2;
+			if(type & D3DFVF_XYZRHW)
+			{
+				offset += 2;
+			}
+			else
+			{
+				offset += ctx->state.tmu[i].coordnum;
+			}
 		}
 		else
 		{
 			ctx->state.fvf.pos_tmu[i] = 0;
 		}
 	}
-	
+/*
+	if(type & D3DFVF_S)
+	{
+		offset += 1;
+
+		if(type & D3DFVFP_EYENORMAL)
+			offset += 3;
+
+		if(type & D3DFVFP_EYEXYZ)
+			offset += 3;
+	}
+	*/
+	/*if(size != 0)
+	{
+		ctx->state.fvf.stride = size;
+	}
+	else
+	{
+		ctx->state.fvf.stride = offset * sizeof(D3DVALUE);
+	}*/
 	ctx->state.fvf.stride = offset * sizeof(D3DVALUE);
+	
+	TOPIC("MATRIX", "MesaFVFSet type=0x%X, size=%d, realsize=%d",
+		type, size, ctx->state.fvf.stride
+	);
 }
-
-#define SV_UNPROJECT(_v, _x, _y, _z, _w) \
-	_v[3] = 2.0f/(_w); \
-	_v[0] = ((((_x) - ctx->matrix.vnorm[0]) * ctx->matrix.vnorm[2]) - 1.0f)*_v[3]; \
-	_v[1] = ((((_y) - ctx->matrix.vnorm[1]) * ctx->matrix.vnorm[3]) - 1.0f)*_v[3]; \
-	_v[2] = (_z)*_v[3]
-
-#define SV_UNPROJECTD(_v, _x, _y, _z, _w) \
-	_v[3] = 2.0/((double)_w); \
-	_v[0] = (((((double)_x) - ctx->matrix.vnorm[0]) * ctx->matrix.vnorm[2]) - 1.0)*_v[3]; \
-	_v[1] = (((((double)_y) - ctx->matrix.vnorm[1]) * ctx->matrix.vnorm[3]) - 1.0)*_v[3]; \
-	_v[2] = ((double)_z)*_v[3]
 
 inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, FVF_t *vertex)
 {
@@ -241,12 +279,35 @@ inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx
 		if(ctx->state.tmu[i].image)
 		{
 			int coordindex = ctx->state.tmu[i].coordindex;
-			if(ctx->state.fvf.pos_tmu[coordindex])
+			int coordnum = ctx->state.tmu[i].coordnum;
+			if(ctx->state.fvf.pos_tmu[coordindex] && coordnum > 0)
 			{
-				entry->proc.pglMultiTexCoord2f(GL_TEXTURE0 + i,
-					CONV_U_TO_S(vertex->fv[ctx->state.fvf.pos_tmu[coordindex] + 0]),
-					CONV_V_TO_T(vertex->fv[ctx->state.fvf.pos_tmu[coordindex] + 1])
-				);
+				switch(coordnum)
+				{
+					// TODO: use glMultiTexCoord2fv
+					case 1:
+						entry->proc.pglMultiTexCoord1f(GL_TEXTURE0 + i,
+							vertex->fv[ctx->state.fvf.pos_tmu[coordindex] + 0]);
+						break;
+					case 2:
+						entry->proc.pglMultiTexCoord2f(GL_TEXTURE0 + i,
+							vertex->fv[ctx->state.fvf.pos_tmu[coordindex] + 0],
+							vertex->fv[ctx->state.fvf.pos_tmu[coordindex] + 1]);
+						break;
+					case 3:
+						entry->proc.pglMultiTexCoord3f(GL_TEXTURE0 + i,
+							vertex->fv[ctx->state.fvf.pos_tmu[coordindex] + 0],
+							vertex->fv[ctx->state.fvf.pos_tmu[coordindex] + 1],
+							vertex->fv[ctx->state.fvf.pos_tmu[coordindex] + 2]);
+						break;
+					case 4:
+						entry->proc.pglMultiTexCoord4f(GL_TEXTURE0 + i,
+							vertex->fv[ctx->state.fvf.pos_tmu[coordindex] + 0],
+							vertex->fv[ctx->state.fvf.pos_tmu[coordindex] + 1],
+							vertex->fv[ctx->state.fvf.pos_tmu[coordindex] + 2],
+							vertex->fv[ctx->state.fvf.pos_tmu[coordindex] + 3]);
+						break;
+				} // switch(coordnum)
 			}
 		}
 	}
@@ -274,30 +335,17 @@ inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx
 
 	if(ctx->state.fvf.type & D3DFVF_XYZRHW)
 	{
-#if 0
-		GLfloat x, y, z, w = 2.0;
-		MesaUnproject(ctx, vertex->fv[FVF_X], vertex->fv[FVF_Y], vertex->fv[FVF_Z], &x, &y, &z);
-		if(vertex->fv[FVF_RHW] != 0)
-		{
-			w = 2.0/vertex->fv[FVF_RHW];
-		}
-		entry->proc.pglVertex4f(x*w, y*w, z*w, w);
-#else
 		GLfloat v[4];
 		SV_UNPROJECT(v, vertex->fv[FVF_X], vertex->fv[FVF_Y], vertex->fv[FVF_Z], vertex->fv[FVF_RHW]);		
 		entry->proc.pglVertex4fv(&v[0]);
-/*
-		GLdouble v[4];
-		SV_UNPROJECTD(v, vertex->fv[FVF_X], vertex->fv[FVF_Y], vertex->fv[FVF_Z], vertex->fv[FVF_RHW]);		
-		entry->proc.pglVertex4dv(&v[0]);
-*/
-#endif
 	}
 	else
 	{
-		entry->proc.pglVertex4f(vertex->fv[FVF_X], vertex->fv[FVF_Y], vertex->fv[FVF_Z], 1.0);
-		
-		TOPIC("DEPTH", "D3DFVF_XYZ: %f", vertex->fv[FVF_Z]);
+		if(ctx->state.fvf.pos_normal)
+		{
+			entry->proc.pglNormal3fv(&vertex->fv[ctx->state.fvf.pos_normal]);
+		}
+		entry->proc.pglVertex3fv(&vertex->fv[FVF_X]);
 	}
 }
 
