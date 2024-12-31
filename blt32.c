@@ -266,8 +266,8 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 			}
 			else
 			{
-				TRACE("Blt: rop3 (%02X) from %08X %dx%d (pitch: %d) -> %08X %dx%dx (pitch: %d)", 
-						rop3_code, dwSrcOffset, dwSrcWidth, dwSrcHeight, spitch, dwDstOffset, dwDstWidth, dwDstHeight, dpitch);
+				TRACE("Blt: rop3 (%02X) from %08X %dx%d (pitch: %d) -> %08X %dx%d (pitch: %d)", 
+						rop3_code, src->fpVidMem, dwSrcWidth, dwSrcHeight, spitch, dst->fpVidMem, dwDstWidth, dwDstHeight, dpitch);
 				
 				TRACE("Rect: %dx%d (%dx%d)|pitch %d -> %dx%d|pitch %d|flags %X",
 						pbd->rSrc.left, pbd->rSrc.top, dwSrcWidth, dwSrcHeight, spitch,

@@ -341,10 +341,18 @@ inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx
 	}
 	else
 	{
+		//GLfloat vp[3];
 		if(ctx->state.fvf.pos_normal)
 		{
+			//MesaProjectWorlds(ctx, &vertex->fv[ctx->state.fvf.pos_normal], vp);
+			//entry->proc.pglNormal3fv(&vp[0]);
+			
 			entry->proc.pglNormal3fv(&vertex->fv[ctx->state.fvf.pos_normal]);
 		}
+		
+		//MesaProjectWorlds(ctx, &vertex->fv[FVF_X], vp);
+		//entry->proc.pglVertex3fv(&vp[0]);
+		
 		entry->proc.pglVertex3fv(&vertex->fv[FVF_X]);
 	}
 }

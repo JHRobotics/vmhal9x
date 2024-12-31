@@ -306,11 +306,7 @@ DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 		}
 		
 		rc = MesaDraw6(ctx, cmdBufferStart, cmdBufferEnd, vertices, &pd->dwErrorOffset, RStates);
-		if(pd->dwVertexType & D3DFVF_XYZRHW)
-		{
-			MesaSpaceIdentityReset(ctx);
-		}
-		
+		MesaSpaceIdentityReset(ctx);
 	GL_BLOCK_END
 
 	if(rc)
@@ -588,11 +584,7 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 		D3DCallbacks3.Clear2                    = Clear2_32;
 		D3DCallbacks3.dwFlags                  |= D3DHAL3_CB32_CLEAR2;
 
-		mesa3d_entry_t *entry = Mesa3DGet(GetCurrentProcessId(), TRUE);
-		if(entry)
-		{
-			entry->dx6 = TRUE;
-		}
+		VMHALenv.dx6 = TRUE;
 
   	COPY_INFO(lpInput, D3DCallbacks3, D3DHAL_CALLBACKS3);
     TRACE("GUID_D3DCallbacks3 success");
@@ -622,13 +614,9 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 		misccb2.GetDriverState  = GetDriverState32;
 		misccb2.CreateSurfaceEx = CreateSurfaceEx32;
 		misccb2.DestroyDDLocal  = DestroyDDLocal32;
-		
-		mesa3d_entry_t *entry = Mesa3DGet(GetCurrentProcessId(), TRUE);
-		if(entry)
-		{
-			entry->dx7 = TRUE;
-			entry->dx6 = TRUE;
-		}
+
+		VMHALenv.dx7 = TRUE;
+		VMHALenv.dx6 = TRUE;
 		
 		COPY_INFO(lpInput, misccb2, DDHAL_DDMISCELLANEOUS2CALLBACKS);
 		TRACE("GUID_Miscellaneous2Callbacks success");
@@ -705,11 +693,25 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 			| D3DSTENCILCAPS_INCR
 			| D3DSTENCILCAPS_DECR;
 
+		dxcaps.dvMaxVertexW = 1.0e10;
 		/*
     T&L:
     dxcaps.dwMaxActiveLights = 0;
     */
-    dxcaps.dwMaxActiveLights = VMHALenv.num_light;
+    if(VMHALenv.hw_tl && VMHALenv.ddi >= 7)
+  	{
+    	dxcaps.dwMaxActiveLights = VMHALenv.num_light;
+    	dxcaps.wMaxUserClipPlanes = VMHALenv.num_clips; // ref driver = 6
+    	dxcaps.wMaxVertexBlendMatrices = 4;
+
+    	dxcaps.dwVertexProcessingCaps = 
+    		//D3DVTXPCAPS_TEXGEN |
+    		//D3DVTXPCAPS_LOCALVIEWER |
+				D3DVTXPCAPS_MATERIALSOURCE7   |
+				D3DVTXPCAPS_VERTEXFOG         |
+				D3DVTXPCAPS_DIRECTIONALLIGHTS |
+				D3DVTXPCAPS_POSITIONALLIGHTS;
+    }
     
     if(VMHALenv.ddi <= 5)
     {
@@ -821,7 +823,18 @@ DWORD __stdcall ContextCreate32(LPD3DHAL_CONTEXTCREATEDATA pccd)
 	{
 		mesa3d_ctx_t *ctx = NULL;
 		
-		if(entry->dx7)
+		entry->runtime_ver = 5;
+		if(VMHALenv.dx6 && VMHALenv.ddi >= 6)
+		{
+			entry->runtime_ver = 6;
+		}
+
+		if(VMHALenv.dx7 && VMHALenv.ddi >= 7)
+		{
+			entry->runtime_ver = 7;
+		}
+
+		if(entry->runtime_ver >= 7)
 		{
 			TRACE("ContextCreate32 DX7+");
 			ctx = MesaCreateCtx(entry, pccd->lpDDSLcl, pccd->lpDDSZLcl);
@@ -846,7 +859,7 @@ DWORD __stdcall ContextCreate32(LPD3DHAL_CONTEXTCREATEDATA pccd)
 			SurfaceAttachCtx(ctx);
 			pccd->dwhContext = MESA_CTX_TO_HANDLE(ctx);
 			pccd->ddrval = DD_OK;
-			if(entry->dx7)
+			if(entry->runtime_ver >= 7)
 			{
 				ctx->dd = NULL;
 			}
@@ -1274,6 +1287,17 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, VM
 	if(VMHALenv.ddi >= 7)
 	{
 		myGlobalD3DHal.hwCaps = myCaps7;
+		if(VMHALenv.hw_tl)
+		{
+			myGlobalD3DHal.hwCaps.dlcLightingCaps.dwCaps = D3DLIGHTCAPS_POINT | D3DLIGHTCAPS_SPOT | D3DLIGHTCAPS_DIRECTIONAL;
+			myGlobalD3DHal.hwCaps.dlcLightingCaps.dwLightingModel = D3DLIGHTINGMODEL_RGB;
+			myGlobalD3DHal.hwCaps.dlcLightingCaps.dwNumLights = 0;
+		
+			myGlobalD3DHal.hwCaps.dwDevCaps |= 
+				D3DDEVCAPS_HWTRANSFORMANDLIGHT /* Device can support transformation and lighting in hardware and DRAWPRIMITIVES2EX must be also */
+				| D3DDEVCAPS_CANBLTSYSTONONLOCAL /* Device supports a Tex Blt from system memory to non-local vidmem */
+				| D3DDEVCAPS_HWRASTERIZATION; /* Device has HW acceleration for rasterization */
+		}
 	}
 	else if(VMHALenv.ddi >= 6)
 	{
@@ -1296,6 +1320,8 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, VM
 	
 	lpHALFlags->ddscaps = DDSCAPS_3DDEVICE | DDSCAPS_TEXTURE | DDSCAPS_ZBUFFER | DDSCAPS_MIPMAP;
  	lpHALFlags->zcaps = DDBD_16 | DDBD_32;
+ 	
+ 	//lpHALFlags->caps2 = DDCAPS2_NO2DDURING3DSCENE;
 
 /*
 	if(VMHALenv.ddi >= 6)

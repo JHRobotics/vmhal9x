@@ -48,11 +48,16 @@ BOOL halVSync = FALSE;
 
 VMHAL_enviroment_t VMHALenv = {
 	FALSE,
-	7, // DDI
+	FALSE,
+	FALSE,
+	7, // DDI (maximum)
+	TRUE, // HW T&L
+	TRUE, // broken triple buffering
 	2048, // tex w  (can be query by GL_MAX_TEXTURE_SIZE)
 	2048, // tex h
 	9, // tex units
-	4 // lights
+	8, // lights (GL min. is 8)
+	6, // clip planes (GL min. is 6), GL_MAX_CLIP_PLANES
 };
 
 static DWORD CalcPitch(DWORD w, DWORD bpp)

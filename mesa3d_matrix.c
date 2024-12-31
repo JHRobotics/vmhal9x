@@ -230,21 +230,32 @@ void MesaApplyViewport(mesa3d_ctx_t *ctx, GLint x, GLint y, GLint w, GLint h)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 	GL_CHECK(entry->proc.pglViewport(x, y, w, h));
-	
+
 	ctx->entry->proc.pglGetIntegerv(GL_VIEWPORT, &ctx->matrix.viewport[0]);
 	TOPIC("MATRIX", "GL_VIEWPORT");
 	TOPIC("MATRIX", "[%d %d %d %d]", ctx->matrix.viewport[0], ctx->matrix.viewport[1], ctx->matrix.viewport[2], ctx->matrix.viewport[3]);
-	
+
 	ctx->matrix.vpnorm[0] = ctx->matrix.viewport[0];
 	ctx->matrix.vpnorm[1] = ctx->matrix.viewport[1];
 	ctx->matrix.vpnorm[2] = 2.0f / ctx->matrix.viewport[2];
 	ctx->matrix.vpnorm[3] = 2.0f / ctx->matrix.viewport[3];
 }
 
-/*
-	DX to GL transformation discussion
-  https://community.khronos.org/t/converting-directx-transformations-to-opengl/62074/2
-*/
+/**
+ * DX to GL transformation discussion
+ * https://community.khronos.org/t/converting-directx-transformations-to-opengl/62074/2
+ *
+ * GL TF = projection * modelview
+ *
+ * DX TF = projection * view * world0 (* worldN)
+ *
+ * Also require flip Y axis (!)
+ *
+ * For fast matrix switching I'm multiplying matices this way:
+ *   GL_projection = flip_y * DX_projection * DX_view
+ *   GL_modelview  = DX_world0 (* DX_worldN)
+ *
+ **/
 static const GLfloat initmatrix[16] = 
 {
 	1.0,  0.0,  0.0,  0.0,
@@ -253,69 +264,70 @@ static const GLfloat initmatrix[16] =
 	0.0,  0.0,  0.0,  1.0
 };
 
-static void CalcModelview(mesa3d_ctx_t *ctx)
-{	
-	GLfloat m[16];
-
-	//printmtx("projection", ctx->matrix.proj);
-	//printmtx("view", ctx->matrix.view);
-	matmultf(ctx->matrix.proj, initmatrix, m);
-	matmultf(ctx->matrix.view, m, ctx->matrix.modelview);
-}
-
 void MesaApplyTransform(mesa3d_ctx_t *ctx, DWORD changes)
 {
 	int i = 0;
-
 	mesa3d_entry_t *entry = ctx->entry;
 
-	ctx->matrix.is_identity = FALSE; /* for now this is only latch */
+	if(changes & MESA_TF_PROJECTION)
+	{
+		matmultf(ctx->matrix.proj, initmatrix, ctx->matrix.projfix);
+	}
+	
+	if(ctx->matrix.identity_mode)
+	{
+		ctx->matrix.outdated_stack = TRUE;
+		return;
+	}
 
 	if(changes & (MESA_TF_PROJECTION | MESA_TF_VIEW))
 	{
-		CalcModelview(ctx);
+		entry->proc.pglMatrixMode(GL_PROJECTION);
+		entry->proc.pglLoadMatrixf(&ctx->matrix.projfix[0]);
+		entry->proc.pglMultMatrixf(&ctx->matrix.view[0]);
 	}
 
-	entry->proc.pglMatrixMode(GL_MODELVIEW);
-#if 0
-	entry->proc.pglLoadMatrixf(&initmatrix[0]);
-	entry->proc.pglMultMatrixf(&ctx->matrix.proj[0]);
-	entry->proc.pglMultMatrixf(&ctx->matrix.view[0]);
-	
-	printmtx("modelview (cpu)", ctx->matrix.modelview);
-	GLfloat tmp[16];
-	entry->proc.pglGetFloatv(GL_MODELVIEW_MATRIX, &tmp[0]);
-	printmtx("modelview (gpu)", tmp);
-#else
-	entry->proc.pglLoadMatrixf(&ctx->matrix.modelview[0]);
-#endif
-
-	//TOPIC("MATRIX", "ctx->matrix.weight=%d", ctx->matrix.weight);
-
-	for(i = 0; i <= ctx->matrix.weight; i++)
+	if(changes & MESA_TF_WORLD)
 	{
-		//printmtx("world[i]", ctx->matrix.world[i]);
-		entry->proc.pglMultMatrixf(&ctx->matrix.world[i][0]);
+		entry->proc.pglMatrixMode(GL_MODELVIEW);
+		entry->proc.pglLoadMatrixf(&ctx->matrix.world[0][0]);
+
+		for(i = 1; i <= ctx->matrix.weight; i++)
+		{
+			entry->proc.pglMultMatrixf(&ctx->matrix.world[i][0]);
+		}
 	}
 }
 
 void MesaSpaceIdentitySet(mesa3d_ctx_t *ctx)
 {
-	if(!ctx->matrix.is_identity)
-	{
-		mesa3d_entry_t *entry = ctx->entry;
-		entry->proc.pglMatrixMode(GL_MODELVIEW);
-		entry->proc.pglPushMatrix();
-	}
+	mesa3d_entry_t *entry = ctx->entry;
+	GL_CHECK(entry->proc.pglMatrixMode(GL_MODELVIEW));
+	GL_CHECK(entry->proc.pglPushMatrix());
+	GL_CHECK(entry->proc.pglLoadIdentity());
+	GL_CHECK(entry->proc.pglMatrixMode(GL_PROJECTION));
+	GL_CHECK(entry->proc.pglPushMatrix());
+	GL_CHECK(entry->proc.pglLoadIdentity());
+
+	ctx->matrix.identity_mode = TRUE;
 }
 
 void MesaSpaceIdentityReset(mesa3d_ctx_t *ctx)
 {
-	if(!ctx->matrix.is_identity)
+	if(ctx->matrix.identity_mode)
 	{
 		mesa3d_entry_t *entry = ctx->entry;
-		entry->proc.pglMatrixMode(GL_MODELVIEW);
-		entry->proc.pglPopMatrix();
+		GL_CHECK(entry->proc.pglMatrixMode(GL_PROJECTION));
+		GL_CHECK(entry->proc.pglPopMatrix());
+		GL_CHECK(entry->proc.pglMatrixMode(GL_MODELVIEW));
+		GL_CHECK(entry->proc.pglPopMatrix());
+
+		ctx->matrix.identity_mode = FALSE;
+
+		if(ctx->matrix.outdated_stack)
+		{
+			MesaApplyTransform(ctx, MESA_TF_VIEW | MESA_TF_WORLD);
+			ctx->matrix.outdated_stack = FALSE;
+		}
 	}
 }
-

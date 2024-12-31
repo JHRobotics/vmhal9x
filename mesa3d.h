@@ -30,6 +30,7 @@ typedef OSMESAproc (APIENTRYP OSMesaGetProcAddress_h)(const char *funcName);
 #define MESA3D_MAX_MIPS 16
 
 #define MESA_TMU_MAX 8
+#define MESA_CLIPS_MAX 8
 
 typedef struct mesa3d_texture
 {
@@ -177,7 +178,18 @@ typedef struct mesa3d_ctx
 		struct {
 			BOOL enabled;
 			BOOL writable;
+			BOOL wbuffer;
 		} depth;
+		struct {
+			D3DMATERIALCOLORSOURCE diffuse_source;
+			D3DMATERIALCOLORSOURCE specular_source;
+			D3DMATERIALCOLORSOURCE ambient_source;
+			D3DMATERIALCOLORSOURCE emissive_source;
+		} light;
+		struct {
+			BOOL enabled;
+			BOOL activeplane[MESA_CLIPS_MAX];
+		} clipping;
 		struct mesa3d_tmustate tmu[MESA_TMU_MAX];
 	} state;
 
@@ -210,14 +222,16 @@ typedef struct mesa3d_ctx
 
 	/* dimensions */
 	struct {
-		GLfloat view[16];
 		GLfloat proj[16];
+		GLfloat view[16];
 		GLfloat world[4][16];
 		GLint viewport[4];
 		/* precalculated values */
-		GLfloat modelview[16]; /* flip_y * proj * view */
+		GLfloat projfix[16];
+		//GLfloat modelview[16]; /* flip_y * proj * view */
 		GLfloat vpnorm[4]; /* viewport for faster unproject */
-		BOOL is_identity;
+		BOOL identity_mode;
+		BOOL outdated_stack;
 		int weight;
 	} matrix;
 	
@@ -235,8 +249,7 @@ typedef struct mesa3d_entry
 	struct mesa3d_entry *next;
 	HANDLE lib;
 	BOOL os; // offscreen rendering
-	BOOL dx6; 
-	BOOL dx7; // latch set by GetDriverInfo32
+	BOOL runtime_ver; // 3, 5, 6, 7
 	mesa3d_ctx_t *ctx[MESA3D_MAX_CTXS];
 	OSMesaGetProcAddress_h GetProcAddress;
 	struct {
@@ -375,8 +388,9 @@ void MesaIdentity(GLfloat matrix[16]);
 BOOL MesaIsIdentity(GLfloat matrix[16]);
 void MesaSpaceIdentitySet(mesa3d_ctx_t *ctx);
 void MesaSpaceIdentityReset(mesa3d_ctx_t *ctx);
-void MesaConvProjection(GLfloat m[16]);
-void MesaConvView(GLfloat m[16]);
+//void MesaConvProjection(GLfloat m[16]);
+//void MesaConvView(GLfloat m[16]);
+void MesaProjectWorlds(mesa3d_ctx_t *ctx, GLfloat *in3, GLfloat *out3);
 
 /* vertex (needs GL_BLOCK + glBegin) */
 void MesaDrawVertex(mesa3d_ctx_t *ctx, LPD3DVERTEX vertex);
@@ -390,7 +404,7 @@ void MesaDrawFVFIndex(mesa3d_ctx_t *ctx, void *vertices, int index);
 /* drawing sequence (needs GL_BLOCK) */
 void MesaDrawFVFs(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vertices, DWORD start, DWORD cnt);
 
-/* scene capture, nned GL block */
+/* scene capture, need GL block */
 void MesaSceneBegin(mesa3d_ctx_t *ctx);
 void MesaSceneEnd(mesa3d_ctx_t *ctx);
 
@@ -410,7 +424,14 @@ void MesaChromaFree(void *ptr);
 	(_v)[2] = RGBA_GETBLUE(_c)*MESA_1OVER255; \
 	(_v)[3] = RGBA_GETALPHA(_c)*MESA_1OVER255
 
+#define MESA_D3DCOLORVALUE_TO_FV(_dxcv, _v) \
+	(_v)[0] = (_dxcv).r; \
+	(_v)[1] = (_dxcv).g; \
+	(_v)[2] = (_dxcv).b; \
+	(_v)[3] = (_dxcv).a
+
 #define MESA_TMU_CNT() ((VMHALenv.texture_num_units > MESA_TMU_MAX) ? MESA_TMU_MAX : VMHALenv.texture_num_units)
 
+#define D3DFVF_INVALID 0x80000000
 
 #endif /* __MESA3D_H__INCLUDED__ */

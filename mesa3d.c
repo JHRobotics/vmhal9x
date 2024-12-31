@@ -585,34 +585,66 @@ static void MesaLoopFront(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_LCL dds)
 	ctx->flips_cnt = p;
 }
 
-static void *MesaFindBackbuffer(mesa3d_ctx_t *ctx, BOOL *is_visible)
+static void *MesaFindBackbuffer(mesa3d_ctx_t *ctx, BOOL *is_visible, BOOL get_spare)
 {
 	int i;
-	void *front = NULL;
-	
+	LPDDRAWI_DDRAWSURFACE_LCL front = NULL;
+	LPDDRAWI_DDRAWSURFACE_LCL back = NULL;
+	LPDDRAWI_DDRAWSURFACE_LCL primary = NULL;
+	LPDDRAWI_DDRAWSURFACE_LCL chosen = NULL;
+	LPDDRAWI_DDRAWSURFACE_LCL spare = NULL;
+
+	TOPIC("READBACK", "MesaFindBackbuffer: ctx->flips_cnt=%d", ctx->flips_cnt);
 	for(i = 0; i < ctx->flips_cnt; i++)
 	{
+		TOPIC("READBACK", "MesaFindBackbuffer: dwCaps=%X, ptr=0x%X", ctx->flips[i]->ddsCaps.dwCaps, ctx->flips[i]->lpGbl->fpVidMem);
 		if(ctx->flips[i]->ddsCaps.dwCaps & DDSCAPS_BACKBUFFER)
 		{
-			if(is_visible != NULL)
-			{
-				*is_visible = (ctx->flips[i]->ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE) ? TRUE : FALSE;
-			}
-			TOPIC("READBACK", "MesaFindBackbuffer: dwCaps=%X", ctx->flips[i]->ddsCaps.dwCaps);
-			return (void*)ctx->flips[i]->lpGbl->fpVidMem;
+			TOPIC("READBACK", "=> backbuffer");
+			back = ctx->flips[i];
 		}
-		
-		if(ctx->flips[i]->ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
+		else if(ctx->flips[i]->ddsCaps.dwCaps & DDSCAPS_FRONTBUFFER)
 		{
-			TOPIC("READBACK", "MesaFindBackbuffer: FRONT - dwCaps=%X", ctx->flips[i]->ddsCaps.dwCaps);
-			front = (void*)ctx->flips[i]->lpGbl->fpVidMem;
+			TOPIC("READBACK", "=> frontbuffer");
+			front = ctx->flips[i];
+		}
+		else if(ctx->flips[i]->ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
+		{
+			TOPIC("READBACK", "=> primary");
+			primary = ctx->flips[i];
+		}
+		else
+		{
+			TOPIC("READBACK", "=> spare");
+			spare = ctx->flips[i];
 		}
 	}
 	
-	if(is_visible != NULL)
-		*is_visible = TRUE;
+	if(get_spare)
+	{
+		if(spare)
+			return (void*)spare->lpGbl->fpVidMem;
+		
+		return NULL;
+	}
+	
+	chosen = back;
+	if(chosen == NULL)
+		chosen = front;
+	
+	if(chosen == NULL)
+		chosen = primary;
+	
+	if(chosen != NULL)
+	{
+		if(is_visible != NULL)
+		{
+			*is_visible = (chosen->ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE) ? TRUE : FALSE;
+		}
+		return (void*)chosen->lpGbl->fpVidMem;
+	}
 
-	return front;
+	return NULL;
 }
 
 mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry,
@@ -904,23 +936,23 @@ void MesaInitCtx(mesa3d_ctx_t *ctx)
 	entry->proc.pglPixelStorei(GL_UNPACK_ALIGNMENT, FBHDA_ROW_ALIGN);
 	entry->proc.pglPixelStorei(GL_PACK_ALIGNMENT, FBHDA_ROW_ALIGN);
 
-  entry->proc.pglFrontFace(GL_CCW);
-  
-  entry->proc.pglMatrixMode(GL_MODELVIEW);
-  entry->proc.pglLoadIdentity();
-  entry->proc.pglMatrixMode(GL_PROJECTION);
-  entry->proc.pglLoadIdentity();
-  
-  MesaIdentity(ctx->matrix.world[0]);
-  MesaIdentity(ctx->matrix.world[1]);
-  MesaIdentity(ctx->matrix.world[2]);
-  MesaIdentity(ctx->matrix.world[3]);
+	entry->proc.pglFrontFace(GL_CCW);
 
-  MesaIdentity(ctx->matrix.view);
-  MesaIdentity(ctx->matrix.proj);
+	entry->proc.pglMatrixMode(GL_MODELVIEW);
+	entry->proc.pglLoadIdentity();
+	entry->proc.pglMatrixMode(GL_PROJECTION);
+	entry->proc.pglLoadIdentity();
+  
+	MesaIdentity(ctx->matrix.world[0]);
+	MesaIdentity(ctx->matrix.world[1]);
+	MesaIdentity(ctx->matrix.world[2]);
+	MesaIdentity(ctx->matrix.world[3]);
 
-	MesaIdentity(ctx->matrix.modelview);
-	ctx->matrix.is_identity = TRUE;
+	MesaIdentity(ctx->matrix.view);
+	MesaIdentity(ctx->matrix.proj);
+
+	//MesaIdentity(ctx->matrix.modelview);
+	//ctx->matrix.is_identity = TRUE;
 
 	entry->proc.pglDisable(GL_LIGHTING);
 
@@ -1177,6 +1209,7 @@ void MesaReloadTexture(mesa3d_texture_t *tex, int tmu)
 	
 	for(level = 0; level <= tex->mipmap_level; level++)
 	{
+		/* TODO: now we're realoading all levels, even there is change only on one */
 		if(reload || tex->data_dirty[level])
 		{
 			if(tex->ctx->state.tmu[tmu].colorkey && 
@@ -1373,6 +1406,35 @@ static void MesaSetFog(mesa3d_ctx_t *ctx)
 	TOPIC("FOG", "pglDisable(GL_FOG)");
 }
 
+static void MesaSetClipping(mesa3d_ctx_t *ctx)
+{
+	mesa3d_entry_t *entry = ctx->entry;
+
+	int i;
+	int cnt = NOCRT_MIN(MESA_CLIPS_MAX, VMHALenv.num_clips);
+	if(ctx->state.clipping.enabled)
+	{
+		for(i = 0; i < cnt; i++)
+		{
+			if(ctx->state.clipping.activeplane[i])
+			{
+				GL_CHECK(entry->proc.pglEnable(GL_CLIP_PLANE0 + i));
+			}
+			else
+			{
+				GL_CHECK(entry->proc.pglDisable(GL_CLIP_PLANE0 + i));
+			}
+		}
+	}
+	else
+	{
+		for(i = 0; i < cnt; i++)
+		{
+			GL_CHECK(entry->proc.pglDisable(GL_CLIP_PLANE0 + i));
+		}
+	}
+}
+
 #define TSS_DWORD (*((DWORD*)value))
 #define TSS_FLOAT (*((D3DVALUE*)value))
 
@@ -1391,7 +1453,7 @@ void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value)
 	{
 		/* texture resource */
 		RENDERSTATE(D3DTSS_TEXTUREMAP)
-			if(ctx->entry->dx7)
+			if(ctx->entry->runtime_ver >= 7)
 			{
 				ts->image = SurfaceNestTexture(TSS_DWORD, ctx);
 			}
@@ -1549,7 +1611,7 @@ void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value)
 				ts->projected = FALSE;
 			}
 			
-			ctx->state.fvf.type = 0; // reset
+			ctx->state.fvf.type |= D3DFVF_INVALID;
 			
 			break;
 		}
@@ -1623,7 +1685,7 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 		RENDERSTATE(D3DRENDERSTATE_TEXTUREHANDLE) /* Texture handle */
 			if(state->dwArg[0] != 0)
 			{
-				if(ctx->entry->dx7)
+				if(ctx->entry->runtime_ver >= 7)
 				{
 					ctx->state.tmu[0].image = SurfaceNestTexture(state->dwArg[0], ctx);
 				}
@@ -1664,12 +1726,18 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 					case D3DZB_FALSE: /* disabled */
 						ctx->entry->proc.pglDisable(GL_DEPTH_TEST);
 						ctx->state.depth.enabled = FALSE;
+						ctx->state.depth.wbuffer = FALSE;
 						break;
-					case D3DZB_TRUE: /* enabled Z */
 					case D3DZB_USEW: /* enabled W */
-					default:
 						ctx->entry->proc.pglEnable(GL_DEPTH_TEST);
 						ctx->state.depth.enabled = TRUE;
+						ctx->state.depth.wbuffer = TRUE;
+						break;
+					case D3DZB_TRUE: /* enabled Z */
+					default: /* != FALSE */
+						ctx->entry->proc.pglEnable(GL_DEPTH_TEST);
+						ctx->state.depth.enabled = TRUE;
+						ctx->state.depth.wbuffer = FALSE;
 						break;
 				}
 			}
@@ -2010,13 +2078,28 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 		}
   /* d3d7 */
 		RENDERSTATE(D3DRENDERSTATE_CLIPPING)
+			ctx->state.clipping.enabled = (state->dwArg[0] == 0) ? FALSE : TRUE;
+			MesaSetClipping(ctx);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_LIGHTING)
+			if(state->dwArg[0])
+			{
+				ctx->entry->proc.pglEnable(GL_LIGHTING);
+			}
+			else
+			{
+				ctx->entry->proc.pglDisable(GL_LIGHTING);
+			}
 			break;
 		RENDERSTATE(D3DRENDERSTATE_EXTENTS)
 			break;
 		RENDERSTATE(D3DRENDERSTATE_AMBIENT)
+		{
+			GLfloat v[4];
+			MESA_D3DCOLOR_TO_FV(state->dwArg[0], v);
+			ctx->entry->proc.pglLightModelfv(GL_LIGHT_MODEL_AMBIENT, &v[0]);
 			break;
+		}
 		RENDERSTATE(D3DRENDERSTATE_FOGVERTEXMODE)
 			TOPIC("FOG", "D3DRENDERSTATE_FOGVERTEXMODE=0x%X", state->dwArg[0]);
 			ctx->state.fog.vmode = GetGLFogMode(state->dwArg[0]);
@@ -2031,12 +2114,18 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 		RENDERSTATE(D3DRENDERSTATE_COLORKEYBLENDENABLE)
 			break;
 		RENDERSTATE(D3DRENDERSTATE_DIFFUSEMATERIALSOURCE)
+			ctx->state.light.diffuse_source = state->dwArg[0];
 			break;
 		RENDERSTATE(D3DRENDERSTATE_SPECULARMATERIALSOURCE)
+			ctx->state.light.specular_source = state->dwArg[0];
 			break;
 		RENDERSTATE(D3DRENDERSTATE_AMBIENTMATERIALSOURCE)
+			ctx->state.light.ambient_source = state->dwArg[0];
+			// D3DMATERIALCOLORSOURCE
 			break;
 		RENDERSTATE(D3DRENDERSTATE_EMISSIVEMATERIALSOURCE)
+			ctx->state.light.emissive_source = state->dwArg[0];
+			// D3DMATERIALCOLORSOURCE
 			break;
 		RENDERSTATE(D3DRENDERSTATE_VERTEXBLEND)
 			switch(state->dwArg[0])
@@ -2057,7 +2146,18 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 			MesaApplyTransform(ctx, MESA_TF_WORLD);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_CLIPPLANEENABLE)
+		{
+			int i;
+			int cnt = NOCRT_MIN(MESA_CLIPS_MAX, VMHALenv.num_clips);
+			DWORD b = state->dwArg[0];
+			for(i = 0; i < cnt; i++)
+			{
+				ctx->state.clipping.activeplane[i] = ((b & 0x1) == 0) ? FALSE : TRUE;
+				b >>= 1;
+			}
+			MesaSetClipping(ctx);
 			break;
+		}
 		default:
 			switch((DWORD)type)
 			{
@@ -2231,36 +2331,6 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 							case D3DTFP_POINT:
 							default:
 								GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST));
-								break;
-						}
-						break;
-				}
-				
-				switch(ts->dx_mag)
-				{
-					case D3DTFG_LINEAR:
-						switch(ts->dx_mip)
-						{
-							case D3DTFP_LINEAR:
-								GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR_MIPMAP_LINEAR));
-								break;
-							case D3DTFP_POINT:
-							default:
-								GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR_MIPMAP_NEAREST));
-								break;
-						}
-						
-						break;
-					case D3DTFG_POINT:
-					default:
-						switch(ts->dx_mip)
-						{
-							case D3DTFP_LINEAR:
-								GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST_MIPMAP_LINEAR));
-								break;
-							case D3DTFP_POINT:
-							default:
-								GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST_MIPMAP_NEAREST));
 								break;
 						}
 						break;
@@ -2608,27 +2678,31 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 		if(color_key)
 		{
 			if(ctx->state.depth.writable)
-				entry->proc.pglDepthMask(GL_FALSE);
+			{
+				GL_CHECK(entry->proc.pglDepthMask(GL_FALSE));
+			}
 			
-			entry->proc.pglEnable(GL_BLEND);
+			GL_CHECK(entry->proc.pglEnable(GL_BLEND));
 			TOPIC("CHROMA", "glBlendFunc(%d, %d) - CHROMA", ctx->state.blend_sfactor, ctx->state.blend_dfactor);
-			entry->proc.pglBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			GL_CHECK(entry->proc.pglBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
 
 			if(ctx->state.depth.writable)
-				entry->proc.pglDepthMask(GL_TRUE);
+			{
+				GL_CHECK(entry->proc.pglDepthMask(GL_TRUE));
+			}
 		}
 		else
 		{
 			if(ctx->state.blend)
 			{
-				ctx->entry->proc.pglEnable(GL_BLEND);
+				GL_CHECK(entry->proc.pglEnable(GL_BLEND));
 			}
 			else
 			{
-				ctx->entry->proc.pglDisable(GL_BLEND);
+				GL_CHECK(entry->proc.pglDisable(GL_BLEND));
 			}
 			TOPIC("CHROMA", "glBlendFunc(%d, %d)", ctx->state.blend_sfactor, ctx->state.blend_dfactor);
-			entry->proc.pglBlendFunc(ctx->state.blend_sfactor, ctx->state.blend_dfactor);
+			GL_CHECK(entry->proc.pglBlendFunc(ctx->state.blend_sfactor, ctx->state.blend_dfactor));
 		}
 	}
 	
@@ -2666,9 +2740,11 @@ void MesaDrawRefreshState(mesa3d_ctx_t *ctx)
 		
 		if(ctx->state.tmu[i].move)
 		{
-			ctx->entry->proc.pglActiveTexture(GL_TEXTURE0 + i);
-			ctx->entry->proc.pglMatrixMode(GL_TEXTURE);
-			ctx->entry->proc.pglLoadMatrixf(&ctx->state.tmu[i].matrix[0]);
+			mesa3d_entry_t *entry = ctx->entry;
+			
+			GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0 + i));
+			GL_CHECK(entry->proc.pglMatrixMode(GL_TEXTURE));
+			GL_CHECK(entry->proc.pglLoadMatrixf(&ctx->state.tmu[i].matrix[0]));
 			ctx->state.tmu[i].move = FALSE;
 		}
 		
@@ -2851,36 +2927,22 @@ void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, D
 		entry->proc.pglClearStencil(stencil);
 	}
 
-#if 0
-	//if(IsInFront(GetHAL(ctx->dd), (void*)ctx->front->lpGbl->fpVidMem)/* && (flags & D3DCLEAR_TARGET) != 0*/)
-	if(IsInFront(GetHAL(ctx->dd), (void*)ctx->front->lpGbl->fpVidMem) && (flags & D3DCLEAR_TARGET) != 0)
+	if(flags & D3DCLEAR_TARGET)
 	{
-		TOPIC("READBACK", "single buffering");
-		if(ctx->render.dirty)
+		void *ptr = MesaFindBackbuffer(ctx, NULL, FALSE);
+		if(ptr)
 		{
-			//MesaBufferDownloadColor(ctx, (void*)ctx->front->lpGbl->fpVidMem);
-			//ctx->render.dirty = FALSE;
+			MesaBufferUploadColor(ctx, ptr);
 		}
 	}
-	else
-#endif
+	
+	if(ctx->depth && (flags & (D3DCLEAR_ZBUFFER | D3DCLEAR_STENCIL)))
 	{
-		if(flags & D3DCLEAR_TARGET)
-		{
-			void *ptr = MesaFindBackbuffer(ctx, NULL);
-			if(ptr)
-			{
-				MesaBufferUploadColor(ctx, ptr);
-			}
-		}
-		
-		if(ctx->depth && (flags & (D3DCLEAR_ZBUFFER | D3DCLEAR_STENCIL)))
-			MesaBufferUploadDepth(ctx, (void*)ctx->depth->lpGbl->fpVidMem);
-		
-		// FIXME: ^when is done full clear, is not needed to readback the surface! 
+		MesaBufferUploadDepth(ctx, (void*)ctx->depth->lpGbl->fpVidMem);
 	}
 
-#if 1
+	// FIXME: ^when is done full clear, is not needed to readback the surface! 
+
 	TOPIC("READBACK", "Clear %X => %X, %f, %X", flags, color, depth, stencil);
 	for(i = 0; i < rects_cnt; i++)
 	{
@@ -2893,9 +2955,6 @@ void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, D
 		entry->proc.pglClear(mask);
 		entry->proc.pglDisable(GL_SCISSOR_TEST);
 	}
-#else
-	entry->proc.pglClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-#endif
 	
 	if(flags & D3DCLEAR_TARGET)
 	{
@@ -2945,13 +3004,20 @@ void MesaBlockUnlock(mesa3d_ctx_t *ctx)
 
 void MesaSceneBegin(mesa3d_ctx_t *ctx)
 {
-	// ...
+	if(!ctx->render.dirty)
+	{
+		void *ptr = MesaFindBackbuffer(ctx, NULL, FALSE);
+		if(ptr)
+		{
+			MesaBufferUploadColor(ctx, ptr);
+		}
+	}
 }
 
 void MesaSceneEnd(mesa3d_ctx_t *ctx)
 {
 	BOOL is_visible;
-	void *ptr = MesaFindBackbuffer(ctx, &is_visible);
+	void *ptr = MesaFindBackbuffer(ctx, &is_visible, FALSE);
 	if(ptr)
 	{
 		if(is_visible) /* fixme: check for DDSCAPS_PRIMARYSURFACE */
@@ -2962,6 +3028,16 @@ void MesaSceneEnd(mesa3d_ctx_t *ctx)
 		if(is_visible)
 			FBHDA_access_end(0);
 	}
+	
+	if(!is_visible && VMHALenv.broken_3buff)
+	{
+		void *ptr = MesaFindBackbuffer(ctx, NULL, TRUE);
+		if(ptr)
+		{
+			MesaBufferDownloadColor(ctx, ptr);
+		}
+	}
+	
 }
 
 #define COPY_MATRIX(_srcdx, _dst) do{ \
@@ -2973,6 +3049,8 @@ void MesaSceneEnd(mesa3d_ctx_t *ctx)
 
 void MesaSetTransform(mesa3d_ctx_t *ctx, D3DTRANSFORMSTATETYPE state, D3DMATRIX *matrix)
 {
+	TRACE("MesaSetTransform(ctx, %d, matrix)", state);
+	
 	switch(state)
 	{
 		case D3DTRANSFORMSTATE_WORLD:

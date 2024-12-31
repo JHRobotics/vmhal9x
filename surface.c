@@ -305,7 +305,7 @@ void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf)
 				{
 					GL_BLOCK_BEGIN(citem->ctx)
 						MesaBufferDownloadColor(ctx, (void*)vidmem);
-						ctx->render.dirty = TRUE;
+						ctx->render.dirty = FALSE;
 					GL_BLOCK_END
 				}
 			}

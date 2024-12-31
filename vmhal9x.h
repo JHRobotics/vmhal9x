@@ -169,11 +169,16 @@ inline static DWORD SurfacePitch(DWORD width, DWORD bpp)
 typedef struct _VMHAL_enviroment
 {
 	BOOL scanned;
+	BOOL dx6; // dx6 runtime latch
+	BOOL dx7; // dx7 runtime latch
 	DWORD ddi;
+	BOOL  hw_tl;
+	BOOL  broken_3buff;
 	DWORD texture_max_width;
 	DWORD texture_max_height;
 	DWORD texture_num_units;
 	DWORD num_light;
+	DWORD num_clips;
 } VMHAL_enviroment_t;
 
 #define DX7_SURFACE_NEST_TYPES (DDSCAPS_TEXTURE | DDSCAPS_3DDEVICE | DDSCAPS_ZBUFFER)

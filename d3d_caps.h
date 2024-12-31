@@ -245,19 +245,16 @@ static D3DDEVICEDESC_V1 myCaps7 = {
 	| D3DDEVCAPS_TLVERTEXSYSTEMMEMORY /* must be set */
 	| D3DDEVCAPS_DRAWPRIMTLVERTEX /* must be set */
 	| D3DDEVCAPS_EXECUTESYSTEMMEMORY /* must be set */
-	| D3DDEVCAPS_DRAWPRIMITIVES2EX /* must be set for DX7 */
-	| D3DDEVCAPS_HWTRANSFORMANDLIGHT
-	| D3DDEVCAPS_CANBLTSYSTONONLOCAL
-	| D3DDEVCAPS_HWRASTERIZATION,
+	| D3DDEVCAPS_DRAWPRIMITIVES2EX, /* must be set for DX7 */
 	{sizeof(D3DTRANSFORMCAPS), 0},		/* dtcTransformCaps */
 	FALSE,                      /* bClipping */
-	{sizeof(D3DLIGHTINGCAPS), 0},  /* dlcLightingCaps */
+	{sizeof(D3DLIGHTINGCAPS), 0, 0, 0},  /* dlcLightingCaps */
 	nullPrimCaps,               /* lineCaps */
 	triCaps6,                   /* triCaps */
 	DDBD_16 | DDBD_32,	/* dwDeviceRenderBitDepth */
 	DDBD_16 | DDBD_24, /* | DDBD_32* - dwDeviceZBufferBitDepth */
 	0,			        /* dwMaxBufferSize */
-	0      			/* dwMaxVertexCount */
+	0,      			/* dwMaxVertexCount */
 };
 
 /*
