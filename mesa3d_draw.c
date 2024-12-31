@@ -161,9 +161,19 @@ void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD type, DWORD size)
 	}
 	
 	ctx->state.fvf.type = type;
+	MesaFVFRecalc(ctx);
 	
+	TOPIC("MATRIX", "MesaFVFSet type=0x%X, size=%d, realsize=%d",
+		type, size, ctx->state.fvf.stride
+	);
+}
+	
+void MesaFVFRecalc(mesa3d_ctx_t *ctx)
+{	
 	int offset = 0; // in DW
 	int i;
+	
+	DWORD type = ctx->state.fvf.type;
 	
 	switch(type & D3DFVF_POSITION_MASK)
 	{
@@ -229,7 +239,7 @@ void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD type, DWORD size)
 		if(tc > i)
 		{
 			ctx->state.fvf.pos_tmu[i] = offset;
-			if(type & D3DFVF_XYZRHW)
+			if((type & D3DFVF_POSITION_MASK) == D3DFVF_XYZRHW)
 			{
 				offset += 2;
 			}
@@ -243,31 +253,8 @@ void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD type, DWORD size)
 			ctx->state.fvf.pos_tmu[i] = 0;
 		}
 	}
-/*
-	if(type & D3DFVF_S)
-	{
-		offset += 1;
 
-		if(type & D3DFVFP_EYENORMAL)
-			offset += 3;
-
-		if(type & D3DFVFP_EYEXYZ)
-			offset += 3;
-	}
-	*/
-	/*if(size != 0)
-	{
-		ctx->state.fvf.stride = size;
-	}
-	else
-	{
-		ctx->state.fvf.stride = offset * sizeof(D3DVALUE);
-	}*/
 	ctx->state.fvf.stride = offset * sizeof(D3DVALUE);
-	
-	TOPIC("MATRIX", "MesaFVFSet type=0x%X, size=%d, realsize=%d",
-		type, size, ctx->state.fvf.stride
-	);
 }
 
 inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, FVF_t *vertex)
@@ -333,7 +320,7 @@ inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx
 		);
 	}
 
-	if(ctx->state.fvf.type & D3DFVF_XYZRHW)
+	if((ctx->state.fvf.type & D3DFVF_POSITION_MASK) == D3DFVF_XYZRHW)
 	{
 		GLfloat v[4];
 		SV_UNPROJECT(v, vertex->fv[FVF_X], vertex->fv[FVF_Y], vertex->fv[FVF_Z], vertex->fv[FVF_RHW]);		
@@ -341,18 +328,11 @@ inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx
 	}
 	else
 	{
-		//GLfloat vp[3];
 		if(ctx->state.fvf.pos_normal)
 		{
-			//MesaProjectWorlds(ctx, &vertex->fv[ctx->state.fvf.pos_normal], vp);
-			//entry->proc.pglNormal3fv(&vp[0]);
-			
 			entry->proc.pglNormal3fv(&vertex->fv[ctx->state.fvf.pos_normal]);
 		}
-		
-		//MesaProjectWorlds(ctx, &vertex->fv[FVF_X], vp);
-		//entry->proc.pglVertex3fv(&vp[0]);
-		
+
 		entry->proc.pglVertex3fv(&vertex->fv[FVF_X]);
 	}
 }

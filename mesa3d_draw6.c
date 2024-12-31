@@ -574,9 +574,9 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 							GLfloat range2 = light_data->dvRange * light_data->dvRange;
 							
 							/* Light settings are affected by the model view in OpenGL, the View transform in direct3d*/
-							//GL_CHECK(entry->proc.pglMatrixMode(GL_MODELVIEW));
-							//GL_CHECK(entry->proc.pglPushMatrix());
-							//GL_CHECK(entry->proc.pglLoadIdentity());
+							GL_CHECK(entry->proc.pglMatrixMode(GL_MODELVIEW));
+							GL_CHECK(entry->proc.pglPushMatrix());
+							GL_CHECK(entry->proc.pglLoadMatrixf(&ctx->matrix.view[0]));
 
 							MESA_D3DCOLORVALUE_TO_FV(light_data->dcvDiffuse, diffuse);
 							MESA_D3DCOLORVALUE_TO_FV(light_data->dcvSpecular, specular);
@@ -681,7 +681,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 							} // switch(light_data->dltType)
 							
 							
-							//GL_CHECK(entry->proc.pglPopMatrix());
+							GL_CHECK(entry->proc.pglPopMatrix());
 							break;
 						}
 					} // switch(light->dwDataType)
@@ -824,7 +824,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 					
 					GL_CHECK(entry->proc.pglMatrixMode(GL_MODELVIEW));
 					GL_CHECK(entry->proc.pglPushMatrix());
-					GL_CHECK(entry->proc.pglLoadIdentity());
+					GL_CHECK(entry->proc.pglLoadMatrixf(&ctx->matrix.view[0]));
 					
 					GL_CHECK(entry->proc.pglClipPlane(GL_CLIP_PLANE0 + plane->dwIndex, &dv[0]));
 					

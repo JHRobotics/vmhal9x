@@ -1364,7 +1364,7 @@ static void MesaSetFog(mesa3d_ctx_t *ctx)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 	GLenum func;
-	
+
 	if(ctx->state.fog.enabled)
 	{
 		func = ctx->state.fog.vmode;
@@ -1611,7 +1611,7 @@ void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value)
 				ts->projected = FALSE;
 			}
 			
-			ctx->state.fvf.type |= D3DFVF_INVALID;
+			MesaFVFRecalc(ctx);
 			
 			break;
 		}

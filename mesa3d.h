@@ -400,6 +400,7 @@ void MesaDrawTLVertex(mesa3d_ctx_t *ctx, LPD3DTLVERTEX vertex);
 void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD type, DWORD size);
 void MesaDrawFVF(mesa3d_ctx_t *ctx, void *vertex);
 void MesaDrawFVFIndex(mesa3d_ctx_t *ctx, void *vertices, int index);
+void MesaFVFRecalc(mesa3d_ctx_t *ctx);
 
 /* drawing sequence (needs GL_BLOCK) */
 void MesaDrawFVFs(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vertices, DWORD start, DWORD cnt);
@@ -431,7 +432,5 @@ void MesaChromaFree(void *ptr);
 	(_v)[3] = (_dxcv).a
 
 #define MESA_TMU_CNT() ((VMHALenv.texture_num_units > MESA_TMU_MAX) ? MESA_TMU_MAX : VMHALenv.texture_num_units)
-
-#define D3DFVF_INVALID 0x80000000
 
 #endif /* __MESA3D_H__INCLUDED__ */

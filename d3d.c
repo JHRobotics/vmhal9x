@@ -81,22 +81,31 @@ static BOOL ValidateCtx(DWORD dwhContext)
 DWORD __stdcall SetRenderTarget32(LPD3DHAL_SETRENDERTARGETDATA lpSetRenderData)
 {
 	TRACE_ENTRY
-	
+
 	VALIDATE(lpSetRenderData)
-	
-	TOPIC("GL", "SetRenderTarget32(0x%X, 0x%X)",
-		lpSetRenderData->lpDDS,
-		lpSetRenderData->lpDDSZ
-	);
-	
-	GL_BLOCK_BEGIN(lpSetRenderData->dwhContext)
-		MesaSetTarget(ctx,
-			((LPDDRAWI_DDRAWSURFACE_INT)lpSetRenderData->lpDDS)->lpLcl,
-			((LPDDRAWI_DDRAWSURFACE_INT)lpSetRenderData->lpDDSZ)->lpLcl
+
+	if(lpSetRenderData->lpDDS != NULL)
+	{
+		TOPIC("GL", "SetRenderTarget32(0x%X, 0x%X)",
+			lpSetRenderData->lpDDS,
+			lpSetRenderData->lpDDSZ
 		);
-	GL_BLOCK_END
-	
-	lpSetRenderData->ddrval = DD_OK;
+
+		LPDDRAWI_DDRAWSURFACE_LCL dds = 
+			((LPDDRAWI_DDRAWSURFACE_INT)lpSetRenderData->lpDDS)->lpLcl;
+		LPDDRAWI_DDRAWSURFACE_LCL ddz = NULL;
+
+		if(lpSetRenderData->lpDDSZ)
+		{
+			ddz = ((LPDDRAWI_DDRAWSURFACE_INT)lpSetRenderData->lpDDSZ)->lpLcl;
+		}
+
+		GL_BLOCK_BEGIN(lpSetRenderData->dwhContext)
+			MesaSetTarget(ctx, dds, ddz);
+		GL_BLOCK_END
+
+		lpSetRenderData->ddrval = DD_OK;
+	}
 
 	return DDHAL_DRIVER_HANDLED;
 }
@@ -300,7 +309,7 @@ DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 
 	GL_BLOCK_BEGIN(pd->dwhContext)
 		MesaFVFSet(ctx, pd->dwVertexType, pd->dwVertexSize);
-		if(pd->dwVertexType & D3DFVF_XYZRHW)
+		if((pd->dwVertexType & D3DFVF_POSITION_MASK) == D3DFVF_XYZRHW)
 		{
 			MesaSpaceIdentitySet(ctx);
 		}
@@ -702,7 +711,7 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
   	{
     	dxcaps.dwMaxActiveLights = VMHALenv.num_light;
     	dxcaps.wMaxUserClipPlanes = VMHALenv.num_clips; // ref driver = 6
-    	dxcaps.wMaxVertexBlendMatrices = 4;
+    	dxcaps.wMaxVertexBlendMatrices = 0; // this need GL_ARB_vertex_blend;
 
     	dxcaps.dwVertexProcessingCaps = 
     		//D3DVTXPCAPS_TEXGEN |

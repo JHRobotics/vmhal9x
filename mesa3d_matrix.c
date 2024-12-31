@@ -247,13 +247,20 @@ void MesaApplyViewport(mesa3d_ctx_t *ctx, GLint x, GLint y, GLint w, GLint h)
  *
  * GL TF = projection * modelview
  *
- * DX TF = projection * view * world0 (* worldN)
+ * DX TF = projection * view * world0 (* worldN * betaN)
  *
  * Also require flip Y axis (!)
  *
- * For fast matrix switching I'm multiplying matices this way:
- *   GL_projection = flip_y * DX_projection * DX_view
- *   GL_modelview  = DX_world0 (* DX_worldN)
+ * I'm multiplying matices this way:
+ *   GL_projection = flip_y * DX_projection
+ *   GL_modelview  = DX_view * DX_world
+ *
+ * There was attempt to use GL_modelview for DX_word matrix only, but
+ * glFog using GL_modelview to compute distance.
+ *
+ * Vertex Blending is possible with ARB_VERTEX_BLEND_ARB:
+ *   https://registry.khronos.org/OpenGL/extensions/ARB/ARB_vertex_blend.txt
+ * but looks unsuported on Mesa VMware driver.
  *
  **/
 static const GLfloat initmatrix[16] = 
@@ -266,7 +273,6 @@ static const GLfloat initmatrix[16] =
 
 void MesaApplyTransform(mesa3d_ctx_t *ctx, DWORD changes)
 {
-	int i = 0;
 	mesa3d_entry_t *entry = ctx->entry;
 
 	if(changes & MESA_TF_PROJECTION)
@@ -280,22 +286,42 @@ void MesaApplyTransform(mesa3d_ctx_t *ctx, DWORD changes)
 		return;
 	}
 
-	if(changes & (MESA_TF_PROJECTION | MESA_TF_VIEW))
+	if(changes & (MESA_TF_PROJECTION))
 	{
 		entry->proc.pglMatrixMode(GL_PROJECTION);
 		entry->proc.pglLoadMatrixf(&ctx->matrix.projfix[0]);
-		entry->proc.pglMultMatrixf(&ctx->matrix.view[0]);
 	}
 
-	if(changes & MESA_TF_WORLD)
+	if(changes & (MESA_TF_WORLD | MESA_TF_VIEW))
 	{
 		entry->proc.pglMatrixMode(GL_MODELVIEW);
-		entry->proc.pglLoadMatrixf(&ctx->matrix.world[0][0]);
-
-		for(i = 1; i <= ctx->matrix.weight; i++)
+		entry->proc.pglLoadMatrixf(&ctx->matrix.view[0]);
+		entry->proc.pglMultMatrixf(&ctx->matrix.world[0][0]);
+		
+#if 0
+		if(ctx->matrix.weight > 0)
 		{
-			entry->proc.pglMultMatrixf(&ctx->matrix.world[i][0]);
+			int i = 0;
+			entry->proc.pglEnable(GL_VERTEX_BLEND_ARB);
+			entry->exts.pglVertexBlendARB(ctx->matrix.weight);
+			
+			for(i = 1; i <= ctx->matrix.weight; i++)
+			{
+				GLenum mtx_type;
+				switch(ctx->matrix.weight)
+				{
+					case 1: mtx_type = MODELVIEW1_ARB; break;
+					default: mtx_type = MODELVIEW2_ARB; break;
+				}
+				entry->proc.pglMatrixMode(mtx_type);
+				entry->proc.pgLoadMatrixf(&ctx->matrix.world[i][0]);
+			}
 		}
+		else
+		{
+			entry->proc.pglDisable(GL_VERTEX_BLEND_ARB);
+		}
+#endif
 	}
 }
 
@@ -326,7 +352,7 @@ void MesaSpaceIdentityReset(mesa3d_ctx_t *ctx)
 
 		if(ctx->matrix.outdated_stack)
 		{
-			MesaApplyTransform(ctx, MESA_TF_VIEW | MESA_TF_WORLD);
+			MesaApplyTransform(ctx, MESA_TF_PROJECTION | MESA_TF_VIEW | MESA_TF_WORLD);
 			ctx->matrix.outdated_stack = FALSE;
 		}
 	}
