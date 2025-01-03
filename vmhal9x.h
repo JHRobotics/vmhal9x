@@ -139,8 +139,8 @@ void Mesa3DCleanProc();
 void SurfaceCtxLock();
 void SurfaceCtxUnlock();
 
-DWORD SurfaceTableCreate(LPDDRAWI_DDRAWSURFACE_LCL surf);
-void SurfaceTableDestroy(LPDDRAWI_DDRAWSURFACE_LCL surf);
+DWORD SurfaceCreate(LPDDRAWI_DDRAWSURFACE_LCL surf);
+void SurfaceDelete(LPDDRAWI_DDRAWSURFACE_LCL surf);
 void SurfaceAttachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_tex, int level);
 void SurfaceAttachCtx(void *mesa_ctx);
 void SurfaceDeattachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_tex, int level);
@@ -148,6 +148,7 @@ void SurfaceDeattachCtx(void *mesa_ctx);
 void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf);
 void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf);
 
+/*
 DWORD SurfaceNestCreate(LPDDRAWI_DDRAWSURFACE_LCL surf, void *ddlcl);
 void SurfaceNestDestroy(DWORD nest, BOOL call_destructor);
 void SurfaceNestCleanupCtx(void *mesa_ctx);
@@ -155,6 +156,7 @@ void SurfaceNestCleanupAll(void *ddlcl);
 
 // need GL block
 void *SurfaceNestTexture(DWORD nest, void *mesa_ctx);
+*/
 
 inline static DWORD SurfacePitch(DWORD width, DWORD bpp)
 {

@@ -807,9 +807,9 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 					
 					TOPIC("TARGET", "hRenderTarget=%d, hZBuffer=%d", pSRTData->hRenderTarget, pSRTData->hZBuffer);
 					
-					DDSURF *front_dds = SurfaceNestSurface(pSRTData->hRenderTarget);
-					DDSURF *depth_dds = SurfaceNestSurface(pSRTData->hZBuffer);
-					
+					DDSURF *front_dds = ctx->surfaces->table[pSRTData->hRenderTarget];
+					DDSURF *depth_dds = ctx->surfaces->table[pSRTData->hZBuffer];
+
 					if(front_dds)
 					{
 						MesaSetTarget(ctx, front_dds, depth_dds);

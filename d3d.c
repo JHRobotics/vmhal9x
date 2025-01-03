@@ -436,11 +436,20 @@ DWORD __stdcall CreateSurfaceEx32(LPDDHAL_CREATESURFACEEXDATA lpcsxd)
 		return DDHAL_DRIVER_HANDLED;
 	}
 	
+	mesa3d_entry_t *entry = Mesa3DGet(GetCurrentProcessId(), TRUE);
+	
+	if(entry == NULL)
+	{
+		return DDHAL_DRIVER_HANDLED;
+	}
+	
+	TRACE("CreateSurfaceEx32 lpDDLcl=%X", lpcsxd->lpDDLcl);
+	
 	LPDDRAWI_DDRAWSURFACE_LCL surf = lpcsxd->lpDDSLcl;
 	
 	if(surf->ddsCaps.dwCaps & DX7_SURFACE_NEST_TYPES)
 	{
-		SurfaceNestCreate(surf, lpcsxd->lpDDLcl);
+		SurfaceExInsert(entry, lpcsxd->lpDDLcl, surf);
 	}
 	
 	if(!((surf->ddsCaps.dwCaps & DDSCAPS_MIPMAP) || (surf->lpSurfMore->ddsCapsEx.dwCaps2 & DDSCAPS2_CUBEMAP)))
@@ -465,7 +474,8 @@ DWORD __stdcall CreateSurfaceEx32(LPDDHAL_CREATESURFACEEXDATA lpcsxd)
 				TRACE("LOOP %d", curr->lpAttached->lpSurfMore->dwSurfaceHandle);
 				if(curr->lpAttached->ddsCaps.dwCaps & DX7_SURFACE_NEST_TYPES)
 				{
-					SurfaceNestCreate(curr->lpAttached, lpcsxd->lpDDLcl);
+					SurfaceExInsert(entry, lpcsxd->lpDDLcl, curr->lpAttached);
+					//SurfaceNestCreate(curr->lpAttached, lpcsxd->lpDDLcl);
 				}
 				
 				curr = curr->lpAttached->lpAttachList;
@@ -527,7 +537,11 @@ DWORD __stdcall DestroyDDLocal32(LPDDHAL_DESTROYDDLOCALDATA lpdddd)
 {
 	TRACE_ENTRY
 
-	SurfaceNestCleanupAll(lpdddd->pDDLcl);
+	mesa3d_entry_t *entry = Mesa3DGet(GetCurrentProcessId(), FALSE);
+	if(entry)
+	{
+		MesaSurfacesTableRemoveDDLcl(entry, lpdddd->pDDLcl);
+	}
 
 	lpdddd->ddRVal = DD_OK;
 	return DDHAL_DRIVER_HANDLED;
@@ -857,6 +871,10 @@ DWORD __stdcall ContextCreate32(LPD3DHAL_CONTEXTCREATEDATA pccd)
 			}
 			
 			ctx = MesaCreateCtx(entry, &dss, pccd->lpDDSZLcl ? &dsz : NULL);
+			
+			ctx->surfaces = MesaSurfacesTableGet(entry, pccd->lpDDLcl, SURFACES_TABLE_POOL-1);
+			
+			TRACE("ContextCreate32 lpDDLcl=%X", pccd->lpDDLcl);
 		}
 		else
 		{
@@ -908,7 +926,7 @@ DWORD __stdcall ContextDestroy32(LPD3DHAL_CONTEXTDESTROYDATA pcdd)
 	mesa3d_ctx_t *ctx = MESA_HANDLE_TO_CTX(pcdd->dwhContext);
 	SurfaceDeattachCtx(ctx);
 	MesaDestroyCtx(ctx);	
-	SurfaceNestCleanupCtx(ctx);
+//	SurfaceNestCleanupCtx(ctx);
 
 	pcdd->dwhContext = 0;
 

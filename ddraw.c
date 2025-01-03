@@ -93,7 +93,7 @@ DWORD __stdcall CreateSurface(LPDDHAL_CREATESURFACEDATA pcsd)
   if(!hal) return DDHAL_DRIVER_NOTHANDLED;
 
 #ifdef D3DHAL
-	if(pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps & (DDSCAPS_TEXTURE | DDSCAPS_ZBUFFER))
+	if(pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps & (DDSCAPS_TEXTURE | DDSCAPS_ZBUFFER | DDSCAPS_FLIP | DDSCAPS_FRONTBUFFER | DDSCAPS_BACKBUFFER))
 	{
 		LPDDRAWI_DDRAWSURFACE_LCL *lplpSList = pcsd->lplpSList;
 		int i;
@@ -170,7 +170,7 @@ DWORD __stdcall CreateSurface(LPDDHAL_CREATESURFACEDATA pcsd)
 					lpSurf->lpGbl->wHeight, s);
 			}
 			
-			SurfaceTableCreate(lpSurf);
+			SurfaceCreate(lpSurf);
 			
 			TOPIC("GL", "Mipmam %d/%d created", i+1, pcsd->dwSCnt);
 		}
@@ -181,7 +181,7 @@ DWORD __stdcall CreateSurface(LPDDHAL_CREATESURFACEDATA pcsd)
 #endif
 	if(pcsd->lplpSList)
 	{
-		SurfaceTableCreate(pcsd->lplpSList[0]);
+		SurfaceCreate(pcsd->lplpSList[0]);
 	}
 
 	TOPIC("ALLOC", "Alloc by HEL, type 0x%X", pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps);
@@ -206,6 +206,7 @@ DWORD __stdcall DestroySurface(LPDDHAL_DESTROYSURFACEDATA lpd)
 		lpd->lpDDSurface->lpGbl->ddpfSurface.dwFlags);
 	TOPIC("DESTROY", "VRAM ptr: 0x%X", lpd->lpDDSurface->lpGbl->fpVidMem);
 
+/*
 	if((lpd->lpDDSurface->ddsCaps.dwCaps & DX7_SURFACE_NEST_TYPES) != 0 && VMHALenv.ddi >= 7)
 	{
 		if(lpd->lpDDSurface->lpSurfMore->dwSize >= sizeof(DDRAWI_DDRAWSURFACE_MORE))
@@ -215,11 +216,11 @@ DWORD __stdcall DestroySurface(LPDDHAL_DESTROYSURFACEDATA lpd)
 			 	SurfaceNestDestroy(lpd->lpDDSurface->lpSurfMore->dwSurfaceHandle, TRUE);
 			}
 		}
-	}
+	}*/
 
 	TOPIC("GARBAGE", "destroy surface vram=%X", lpd->lpDDSurface->lpGbl->fpVidMem);
 
-	SurfaceTableDestroy(lpd->lpDDSurface);
+	SurfaceDelete(lpd->lpDDSurface);
 	
 	return DDHAL_DRIVER_NOTHANDLED;
 }

@@ -103,7 +103,15 @@ struct mesa3d_tmustate
 	BOOL move;   // reload texture matrix
 };
 
-#define MESA3D_MAX_FLIPS 8
+/* DX7 only: relation between surfaces and dwSurfaceHandle */
+typedef struct mesa_surfaces_table
+{
+	LPDDRAWI_DIRECTDRAW_LCL lpDDLcl;
+	DDSURF **table;
+	DWORD table_size;
+} mesa_surfaces_table_t;
+
+#define SURFACE_TABLES_PER_ENTRY 8 /* in theory there should by only 1 */
 
 typedef struct mesa3d_ctx
 {
@@ -239,6 +247,7 @@ typedef struct mesa3d_ctx
 		int weight;
 	} matrix;
 	
+	mesa_surfaces_table_t *surfaces;
 } mesa3d_ctx_t;
 
 /* maximum for 24bit signed zbuff = (1<<23) - 1 */
@@ -258,6 +267,7 @@ typedef struct mesa3d_entry
 	BOOL os; // offscreen rendering
 	BOOL runtime_ver; // 3, 5, 6, 7
 	mesa3d_ctx_t *ctx[MESA3D_MAX_CTXS];
+	mesa_surfaces_table_t surfaces_tables[SURFACE_TABLES_PER_ENTRY];
 	OSMesaGetProcAddress_h GetProcAddress;
 	struct {
 #include "mesa3d_api.h"
@@ -414,6 +424,19 @@ void MesaDrawFVFs(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vertices, DWORD star
 void MesaSceneBegin(mesa3d_ctx_t *ctx);
 void MesaSceneEnd(mesa3d_ctx_t *ctx);
 
+/* DX7 surface tables */
+mesa_surfaces_table_t *MesaSurfacesTableGet(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, DWORD max_id);
+void MesaSurfacesTableRemoveSurface(mesa3d_entry_t *entry, DDSURF *surf);
+void MesaSurfacesTableRemoveDDLcl(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl);
+void MesaSurfacesTableInsertSurface(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, DWORD id, DDSURF *surf);
+
+BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, LPDDRAWI_DDRAWSURFACE_LCL surface);
+mesa3d_texture_t *SurfaceGetTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *ctx, int level);
+
+/* need GL block */
+mesa3d_texture_t *MesaTextureFromSurfaceId(mesa3d_ctx_t *ctx, DWORD surfaceId);
+
+
 /* chroma to alpha conversion */
 void *MesaChroma32(const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
 void *MesaChroma24(const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
@@ -441,5 +464,7 @@ void MesaChromaFree(void *ptr);
 	(_v)[3] = (_dxcv).a
 
 #define MESA_TMU_CNT() ((VMHALenv.texture_num_units > MESA_TMU_MAX) ? MESA_TMU_MAX : VMHALenv.texture_num_units)
+
+#define SURFACES_TABLE_POOL 1024
 
 #endif /* __MESA3D_H__INCLUDED__ */

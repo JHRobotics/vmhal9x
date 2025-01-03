@@ -43,6 +43,5 @@ typedef struct _DDSURF
 } DDSURF;
 
 void SurfaceCopyLCL(LPDDRAWI_DDRAWSURFACE_LCL surf, DDSURF *dest);
-DDSURF *SurfaceNestSurface(DWORD nest);
 
 #endif /* __SURFACE_H__INCLUDED__ */

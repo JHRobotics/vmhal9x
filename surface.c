@@ -63,6 +63,7 @@ typedef struct surface_attachment
 {
 	struct surface_attachment *next;
 	DWORD type;
+	DWORD pid;
 	struct {
 		mesa3d_texture_t *tex;
 		int level;
@@ -93,9 +94,7 @@ static context_info_t contexts = {NULL};
 
 #define SURFACE_TABLE_MAGIC 0xD3D01234
 
-#define FLAG_PREFERED 1
-
-DWORD SurfaceTableCreate(LPDDRAWI_DDRAWSURFACE_LCL surf)
+DWORD SurfaceCreate(LPDDRAWI_DDRAWSURFACE_LCL surf)
 {
 	TRACE_ENTRY
 	
@@ -110,13 +109,15 @@ DWORD SurfaceTableCreate(LPDDRAWI_DDRAWSURFACE_LCL surf)
 	}
 	
 	surf->dwReserved1 = (DWORD)info;
+	TOPIC("TARGET", "surf->dwReserved1=%X", surf->dwReserved1);
 
 	return surf->dwReserved1;
 }
 
 static surface_info_t *SurfaceGetInfo(LPDDRAWI_DDRAWSURFACE_LCL surf)
 {
-	if(surf != NULL && surf->dwReserved1 >= 0x80000000) /* hack: allocation from shared heap resides in shared memory */
+	/* hack: allocation from shared heap resides in shared memory */
+	if(surf != NULL && surf->dwReserved1 >= 0x80000000)
 	{
 		surface_info_t *info = (surface_info_t*)surf->dwReserved1;
 		if(info)
@@ -159,6 +160,7 @@ static void SurfaceAttachTexture_int(surface_info_t *info, void *tex, int level)
 			item->type = SURF_TYPE_TEX;
 			item->texture.tex = tex;
 			item->texture.level = level;
+			item->pid = GetCurrentProcessId();
 			item->next = NULL;
 			if(last)
 			{
@@ -179,14 +181,6 @@ void SurfaceAttachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_tex, int le
 	surface_info_t *info = SurfaceGetInfo(surf);
 	SurfaceAttachTexture_int(info, mesa_tex, level);
 }
-
-/*
-void SurfaceAttachTexture2(DDSURF *surf, void *mesa_tex, int level)
-{
-	TRACE_ENTRY
-
-	SurfaceAttachTexture_int(surf->info, mesa_tex, level);
-}*/
 
 void SurfaceAttachCtx(void *mesa_ctx)
 {
@@ -307,8 +301,11 @@ void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf)
 
 	while(citem)
 	{
+		TRACE("SurfaceFromMesa - citem->pid = %X, pid = %X", citem->pid, pid);
 		if(citem->pid == pid)
 		{
+			TRACE("SurfaceFromMesa - citem->ctx->backbuffer.fpVidMem = %X, vidmem = %X",
+				citem->ctx->backbuffer.fpVidMem, vidmem);
 			if(citem->ctx->backbuffer.fpVidMem == vidmem)
 			{
 				GL_BLOCK_BEGIN(citem->ctx)
@@ -333,13 +330,39 @@ void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf)
 	}
 }
 
-void SurfaceTableDestroy(LPDDRAWI_DDRAWSURFACE_LCL surf)
+void SurfaceDelete(LPDDRAWI_DDRAWSURFACE_LCL surf)
 {
 	TRACE_ENTRY
 	
 	surface_info_t *info = SurfaceGetInfo(surf);
+	DWORD pid = GetCurrentProcessId();
+	
 	if(info)
 	{
+		surface_attachment_t *item = info->first;
+		while(item)
+		{
+			switch(item->type)
+			{
+				case SURF_TYPE_TEX:
+					if(item->pid == pid)
+					{
+						GL_BLOCK_BEGIN(item->texture.tex->ctx)
+							MesaDestroyTexture(item->texture.tex);
+						GL_BLOCK_END
+					}
+					break;
+			}
+			
+			item = item->next;
+		}
+		
+		mesa3d_entry_t *entry = Mesa3DGet(GetCurrentProcessId(), FALSE);
+		if(entry)
+		{
+			MesaSurfacesTableRemoveSurface(entry, &info->surf);
+		}
+
 		while(info->first)
 		{
 			surface_attachment_t *item = info->first;
@@ -347,7 +370,7 @@ void SurfaceTableDestroy(LPDDRAWI_DDRAWSURFACE_LCL surf)
 			HeapFree(hSharedHeap, 0, item);
 		}
 	}
-	
+
 	HeapFree(hSharedHeap, 0, info);
 	surf->dwReserved1 = 0;
 }
@@ -420,274 +443,31 @@ void SurfaceDeattachCtx(void *mesa_ctx)
 	}
 }
 
-typedef struct surface_nest_item
-{
-	struct surface_nest_item *next;
-	mesa3d_ctx_t *ctx;
-	mesa3d_texture_t *tex;
-} surface_nest_item_t;
-
-typedef struct surface_nest
-{
-	DDSURF surf;
-	void *ddlcl;
-	surface_nest_item_t *first;
-} surface_nest_t;
-
-#define NESTS_TABLE_POOL 1024
-
-typedef struct surface_nests_table
-{
-	DWORD size;
-	surface_nest_t **nests;
-} surface_nests_table_t;
-
-static surface_nests_table_t nests = {0};
-
-static BOOL SurfaceNestAlloc(surface_nest_t **info, DWORD id)
-{
-	DWORD index = id - 1;
-	
-	TOPIC("TARGET", "SurfaceNestAlloc(..., %d)", id);
-	
-	surface_nest_t **oldptr = nests.nests;
-	
-	if(index >= nests.size)
-	{
-		nests.size = ((index + NESTS_TABLE_POOL)/NESTS_TABLE_POOL) * NESTS_TABLE_POOL;
-		
-		if(nests.nests == NULL)
-		{
-			nests.nests = HeapAlloc(hSharedHeap, HEAP_ZERO_MEMORY, sizeof(surface_nest_t*)*nests.size);
-		}
-		else
-		{
-			nests.nests = HeapReAlloc(hSharedHeap, HEAP_ZERO_MEMORY, 
-				nests.nests, sizeof(surface_nest_t*)*nests.size);
-		}
-	}
-	
-	if(nests.nests == NULL)
-	{
-		nests.nests = oldptr;
-		return FALSE;
-	}
-	
-	if(nests.nests[index] != NULL)
-	{
-		/* someone is already here, clear this first */
-		SurfaceNestDestroy(id, FALSE);
-	}
-	
-	surface_nest_t *nest = HeapAlloc(hSharedHeap, HEAP_ZERO_MEMORY, sizeof(surface_nest_t));
-	if(nest)
-	{
-		nest->first = NULL;
-		nests.nests[index] = nest;
-		*info = nest;
-		
-		return TRUE;
-	}
-	
-	return FALSE;
-}
-
-static surface_nest_t *get_nest(DWORD id)
-{
-	if(id > 0)
-	{
-		return nests.nests[id-1];
-	}
-	
-	return NULL;
-}
-
-DWORD SurfaceNestCreate(LPDDRAWI_DDRAWSURFACE_LCL surf, void *ddlcl)
+mesa3d_texture_t *SurfaceGetTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *ctx, int level)
 {
 	TRACE_ENTRY
 
-	surface_nest_t *info;
-
-	if(surf->lpSurfMore->dwSurfaceHandle == 0)
-	{
-		return 0;
-	}
-	
-	if(SurfaceNestAlloc(&info, surf->lpSurfMore->dwSurfaceHandle))
-	{
-		info->first = NULL;
-		info->ddlcl = ddlcl;
-		TOPIC("TARGET", "SurfaceNestCreate: nest=%d, vidmem=0x%X", surf->lpSurfMore->dwSurfaceHandle,
-			surf->lpGbl->fpVidMem);
-
-		SurfaceCopyLCL(surf, &info->surf);
-		
-		return surf->lpSurfMore->dwSurfaceHandle;
-	}
-	
-	return 0;
-}
-
-void SurfaceNestDestroy(DWORD nest, BOOL call_destructor)
-{
-	TRACE_ENTRY
-	
-	TRACE("SurfaceNestDestroy: nest=%d", nest);
-
-	DWORD pid = GetCurrentProcessId();
-	
-	surface_nest_t *info = get_nest(nest);
+	surface_info_t *info = SurfaceGetInfo(surf);
 	if(info)
 	{
-		while(info->first)
-		{
-			surface_nest_item_t *item = info->first;
-			info->first = item->next;
-			
-			if(call_destructor &&
-				item->ctx->entry->pid == pid)
-			{
-				GL_BLOCK_BEGIN(item->ctx)
-					MesaDestroyTexture(item->tex);
-				GL_BLOCK_END
-			}
-
-			HeapFree(hSharedHeap, 0, item);
-		}
-		
-		nests.nests[nest-1] = NULL;
-		HeapFree(hSharedHeap, 0, info);
-	}
-}
-
-void *SurfaceNestTexture(DWORD nest, void *mesa_ctx)
-{
-	TRACE_ENTRY
-
-	surface_nest_t *info = get_nest(nest);
-	mesa3d_texture_t *tex = NULL;
-	
-	if(info)
-	{
-		surface_nest_item_t *item = info->first;
-		surface_nest_item_t *last = NULL;
+		surface_attachment_t *item = info->first;
 		while(item)
 		{
-			if(item->ctx == mesa_ctx)
+			switch(item->type)
 			{
-				return item->tex;
+				case SURF_TYPE_TEX:
+					if(item->texture.tex->ctx == ctx && item->texture.level == level)
+					{
+						return item->texture.tex;
+					}
+					break;
 			}
 			
-			last = item;
 			item = item->next;
 		}
-		
-		item = HeapAlloc(hSharedHeap, HEAP_ZERO_MEMORY, sizeof(surface_nest_item_t));
-		
-		if(item)
-		{
-			//GL_BLOCK_BEGIN(mesa_ctx)
-			 	tex = MesaCreateTexture(mesa_ctx, &info->surf);
-			//GL_BLOCK_END
-			
-			if(tex)
-			{
-				item->ctx = mesa_ctx;
-				item->tex = tex;
-				item->next = NULL;
-				
-				if(last)
-					last->next = item;
-				else
-					info->first = item;
-			}
-			else
-			{
-				HeapFree(hSharedHeap, 0, item);
-			}
-		}
-	}
-	
-#ifdef WARN_ON
-	if(tex == NULL && nest != 0)
-	{
-		WARN("Cannot load texture %d", nest);
-	}
-#endif
-	
-	return tex;
-}
-
-DDSURF *SurfaceNestSurface(DWORD nest)
-{
-	TRACE_ENTRY
-
-	surface_nest_t *info = get_nest(nest);
-	
-	if(info)
-	{
-		return &info->surf;
 	}
 	
 	return NULL;
-}
-
-void SurfaceNestCleanupCtx(void *mesa_ctx)
-{
-	TRACE_ENTRY
-
-	int i;
-	for(i = 0; i < nests.size; i++)
-	{
-		if(nests.nests[i] != NULL)
-		{
-			surface_nest_t *info = nests.nests[i];
-			surface_nest_item_t *item = info->first;
-			surface_nest_item_t *last = NULL;
-			
-			while(item)
-			{
-				if(item->ctx == mesa_ctx)
-				{
-					if(last)
-					{
-						last->next = item->next;
-					}
-					else
-					{
-						info->first = item->next;
-					}
-					
-					surface_nest_item_t *ptr = item;
-					item = item->next;
-					
-					HeapFree(hSharedHeap, 0, ptr);
-				}
-				else
-				{
-					last = item;
-					item = item->next;
-				}
-			}
-		}
-	}
-}
-
-void SurfaceNestCleanupAll(void *ddlcl)
-{
-	TRACE_ENTRY
-
-	int i;
-	for(i = 0; i < nests.size; i++)
-	{
-		if(nests.nests[i] != NULL)
-		{
-			if(nests.nests[i]->ddlcl == ddlcl)
-			{
-				SurfaceNestDestroy(i+1, FALSE);
-			}
-		}
-	}
 }
 
 void SurfaceCopyLCL(LPDDRAWI_DDRAWSURFACE_LCL surf, DDSURF *dest)
@@ -717,3 +497,24 @@ void SurfaceCopyLCL(LPDDRAWI_DDRAWSURFACE_LCL surf, DDSURF *dest)
 	}
 }
 
+BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, LPDDRAWI_DDRAWSURFACE_LCL surface)
+{
+	TOPIC("TARGET", "dwSurfaceHandle = %d", surface->lpSurfMore->dwSurfaceHandle);
+
+	if(surface->lpSurfMore->dwSurfaceHandle == 0)
+	{
+		return FALSE;
+	}
+
+	surface_info_t *info = SurfaceGetInfo(surface);
+	if(info)
+	{
+		/* update vram ptr */
+		info->surf.fpVidMem = info->surf.lpGbl->fpVidMem;
+
+		MesaSurfacesTableInsertSurface(entry, lpDDLcl, surface->lpSurfMore->dwSurfaceHandle, &info->surf);
+		return TRUE;
+	}
+	
+	return FALSE;
+}

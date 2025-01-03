@@ -584,6 +584,7 @@ static void *MesaFindBackbuffer(mesa3d_ctx_t *ctx, BOOL *is_visible, BOOL get_sp
 
 mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DDSURF *dds, DDSURF *ddz)
 {
+	TRACE_ENTRY
 	int i;
 	int bpp = DDSurf_GetBPP(dds);
 	int bpp_depth = DDSurf_GetBPP(ddz);
@@ -1376,7 +1377,7 @@ void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value)
 		RENDERSTATE(D3DTSS_TEXTUREMAP)
 			if(ctx->entry->runtime_ver >= 7)
 			{
-				ts->image = SurfaceNestTexture(TSS_DWORD, ctx);
+				ts->image = MesaTextureFromSurfaceId(ctx, TSS_DWORD);
 			}
 			else
 			{
@@ -1608,7 +1609,7 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 			{
 				if(ctx->entry->runtime_ver >= 7)
 				{
-					ctx->state.tmu[0].image = SurfaceNestTexture(state->dwArg[0], ctx);
+					ctx->state.tmu[0].image = MesaTextureFromSurfaceId(ctx, state->dwArg[0]);
 				}
 				else
 				{
@@ -3033,4 +3034,112 @@ void MesaSetTransform(mesa3d_ctx_t *ctx, D3DTRANSFORMSTATETYPE state, D3DMATRIX 
 		default:
 			break;
 	}
+}
+
+mesa_surfaces_table_t *MesaSurfacesTableGet(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, DWORD max_id)
+{
+	mesa_surfaces_table_t *table = NULL;
+	int i;
+	for(i = 0; i < SURFACE_TABLES_PER_ENTRY; i++)
+	{
+		if(table == NULL && entry->surfaces_tables[i].lpDDLcl == NULL)
+		{
+			table = &entry->surfaces_tables[i];
+		}
+		
+		if(entry->surfaces_tables[i].lpDDLcl == lpDDLcl)
+		{
+			table = &entry->surfaces_tables[i];
+			break;
+		}
+	}
+	
+	if(table)
+	{
+		table->lpDDLcl = lpDDLcl;
+		if(max_id >= table->table_size)
+		{
+			DWORD new_size = ((max_id + SURFACES_TABLE_POOL)/SURFACES_TABLE_POOL) * SURFACES_TABLE_POOL;
+			
+			if(table->table == NULL)
+			{
+				table->table = HeapAlloc(hSharedHeap, HEAP_ZERO_MEMORY, sizeof(DDSURF*)*new_size);
+			}
+			else
+			{
+				table->table = HeapReAlloc(hSharedHeap, HEAP_ZERO_MEMORY, table->table, sizeof(DDSURF*)*new_size);
+			}
+			
+			table->table_size = new_size;
+		}
+	}
+	
+	return table;
+}
+
+void MesaSurfacesTableRemoveSurface(mesa3d_entry_t *entry, DDSURF *surf)
+{
+	int t, i;
+	for(t = 0; t < SURFACE_TABLES_PER_ENTRY; t++)
+	{
+		for(i = 0; i < entry->surfaces_tables[t].table_size; i++)
+		{
+			if(entry->surfaces_tables[t].table[i] == surf)
+			{
+				entry->surfaces_tables[t].table[i] = NULL;
+			}
+		}
+	}
+}
+
+void MesaSurfacesTableRemoveDDLcl(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl)
+{
+	int t;
+	for(t = 0; t < SURFACE_TABLES_PER_ENTRY; t++)
+	{
+		if(entry->surfaces_tables[t].lpDDLcl == lpDDLcl)
+		{
+			HeapFree(hSharedHeap, 0, entry->surfaces_tables[t].table);
+			entry->surfaces_tables[t].table = NULL;
+			entry->surfaces_tables[t].table_size = 0;
+			
+			entry->surfaces_tables[t].lpDDLcl = NULL;
+		}
+	}
+}
+
+void MesaSurfacesTableInsertSurface(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, DWORD id, DDSURF *surf)
+{
+	TOPIC("TARGET", "inserting id=%d, table=%X", id, lpDDLcl);
+	
+	mesa_surfaces_table_t *table = MesaSurfacesTableGet(entry, lpDDLcl, id);
+	if(table)
+	{
+		table->table[id] = surf;
+		TOPIC("TARGET", "insert succ");
+	}
+}
+
+mesa3d_texture_t *MesaTextureFromSurfaceId(mesa3d_ctx_t *ctx, DWORD surfaceId)
+{
+	if(ctx->surfaces)
+	{
+		DDSURF *surf = ctx->surfaces->table[surfaceId];
+		
+		if(surf)
+		{
+			mesa3d_texture_t *tex;
+			
+			tex = SurfaceGetTexture(surf->lpLcl, ctx, 0);
+			if(tex == NULL)
+			{
+				tex = MesaCreateTexture(ctx, surf);
+			}
+			
+			return tex;
+		}
+		
+	}
+	
+	return NULL;
 }
