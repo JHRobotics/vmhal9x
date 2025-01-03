@@ -124,17 +124,21 @@ inline static BOOL matinvf(const GLfloat m[16], GLfloat invOut[16])
 inline static void matmultf(const GLfloat a[16], const GLfloat b[16], GLfloat r[16])
 {
 	int i, j;
+	GLfloat tmp[16];
 	for(i = 0; i < 4; i++)
 	{
 		for (j = 0; j < 4; j++)
 		{
-			r[i*4+j] = 
+			tmp[i*4+j] = 
 				a[i*4+0]*b[0*4+j] +
 				a[i*4+1]*b[1*4+j] +
 				a[i*4+2]*b[2*4+j] +
 				a[i*4+3]*b[3*4+j];
 		}
 	}
+
+	for(i = 0; i < 16; i++)
+		r[i] = tmp[i];
 }
 
 BOOL MesaUnprojectf(GLfloat winx, GLfloat winy, GLfloat winz, GLfloat clipw,
@@ -228,6 +232,8 @@ void printmtx(const char *name, GLfloat m[16])
 
 void MesaApplyViewport(mesa3d_ctx_t *ctx, GLint x, GLint y, GLint w, GLint h)
 {
+	TRACE_ENTRY
+	
 	mesa3d_entry_t *entry = ctx->entry;
 	GL_CHECK(entry->proc.pglViewport(x, y, w, h));
 
@@ -277,9 +283,11 @@ void MesaApplyTransform(mesa3d_ctx_t *ctx, DWORD changes)
 
 	if(changes & MESA_TF_PROJECTION)
 	{
-		matmultf(ctx->matrix.proj, initmatrix, ctx->matrix.projfix);
+		//matmultf(ctx->matrix.proj, initmatrix, ctx->matrix.projfix);
+		matmultf(ctx->matrix.zscale, initmatrix, ctx->matrix.projfix);
+		matmultf(ctx->matrix.proj, ctx->matrix.projfix, ctx->matrix.projfix);
 	}
-	
+
 	if(ctx->matrix.identity_mode)
 	{
 		ctx->matrix.outdated_stack = TRUE;

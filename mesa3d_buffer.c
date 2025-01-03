@@ -37,6 +37,8 @@
 
 #include "nocrt.h"
 
+extern HANDLE hSharedHeap;
+
 #define RESET_COLOR 1
 #define RESET_DEPTH 2
 
@@ -207,6 +209,12 @@ void MesaBufferDownloadColor(mesa3d_ctx_t *ctx, void *dst)
 	TOPIC("READBACK", "%X <- download color!", dst);
 }
 
+#include "mesa3d_zconv.h"
+
+#define DS_NATIVE 0
+#define DS_CONVERT_GPU 1
+#define DS_CONVERT_CPU 2
+
 void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 {
 	TRACE_ENTRY
@@ -214,43 +222,72 @@ void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 	mesa3d_entry_t *entry = ctx->entry;
 	GLenum type;
 	GLenum format;
+	int convert_type = DS_CONVERT_CPU;
 
 	switch(ctx->depth_bpp)
 	{
+		case 15:
+			type   = GL_UNSIGNED_SHORT;
+			format = GL_DEPTH_COMPONENT;
+			break;
 		case 16:
 			type   = GL_UNSIGNED_SHORT;
 			format = GL_DEPTH_COMPONENT;
+			if(!ctx->state.depth.wbuffer)
+			{
+				convert_type = DS_CONVERT_GPU;
+			}
 			break;
 		case 24:
 			type = GL_UNSIGNED_INT_24_8;
 			format = GL_DEPTH_STENCIL;
 			break;
 		case 32:
-		default:
-			if(ctx->depth_stencil)
+			type = GL_UNSIGNED_INT_24_8;
+			format = GL_DEPTH_STENCIL;
+			if(!ctx->state.depth.wbuffer)
 			{
-				type = GL_UNSIGNED_INT_24_8;
-				format = GL_DEPTH_STENCIL;
-			}
-			else
-			{
-				type = GL_FLOAT;
-				format = GL_DEPTH_COMPONENT;
+				if(VMHALenv.zfloat)
+					convert_type = DS_CONVERT_GPU;
+				else
+					convert_type = DS_NATIVE;
 			}
 			break;
+		default:
+			ERR("Unknown depth buffer depth: %d", ctx->depth_bpp);
+			return;
+			break;
+			
 	}
 	
 	TRACE("depth_bpp=%d, type=0x%X, format=0x%X, ?stencil = %d", ctx->depth_bpp, type, format, ctx->depth_stencil);
 	GL_CHECK(entry->proc.pglFinish());
 	
-	if(type == GL_UNSIGNED_INT_24_8)
+	if(convert_type == DS_NATIVE) /* DX depth buffer is in GL native format */
 	{
 		GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0+ctx->fbo.tmu));
 		GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
 		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.plane_depth_tex));
 		GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, ctx->state.sw, ctx->state.sh, 0, format, type, src));
 	}
-	else
+	else if(convert_type == DS_CONVERT_CPU) /* DX depth buffer can not be load to GL directly */
+	{
+		void *native_src = convert_depth2GL(ctx, src, ctx->depth_bpp);
+		if(native_src)
+		{
+			GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0+ctx->fbo.tmu));
+			GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
+			GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.plane_depth_tex));
+			GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0,
+				VMHALenv.zfloat ? GL_DEPTH32F_STENCIL8 : GL_DEPTH24_STENCIL8,
+				ctx->state.sw, ctx->state.sh, 0, GL_DEPTH_STENCIL,
+				VMHALenv.zfloat ? GL_FLOAT_32_UNSIGNED_INT_24_8_REV : GL_UNSIGNED_INT_24_8,
+				native_src));
+			
+			HeapFree(hSharedHeap, 0, native_src);
+		}
+	}
+	else /* = DS_CONVERT_GPU, DX depth buffer is in GL compatible format */
 	{
 		if(ctx->fbo.depth_type != type)
 		{
@@ -275,10 +312,22 @@ void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 		GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0+ctx->fbo.tmu));
 		GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
 	
+		// GL_FLOAT_32_UNSIGNED_INT_24_8_REV
+		// GL_DEPTH32F_STENCIL8
+	
 		GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.depth_fb));
 		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.depth_tex));
-		GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, ctx->state.sw, ctx->state.sh, 0, format, type, src));
-		GL_CHECK(entry->proc.pglFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, ctx->fbo.depth_tex, 0));
+		
+		if(ctx->depth_bpp != 32)
+		{
+			GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, VMHALenv.zfloat ? GL_DEPTH_COMPONENT32F : GL_DEPTH_COMPONENT24, ctx->state.sw, ctx->state.sh, 0, format, type, src));
+			GL_CHECK(entry->proc.pglFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, ctx->fbo.depth_tex, 0));
+		}
+		else
+		{
+			GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, VMHALenv.zfloat ? GL_DEPTH32F_STENCIL8 : GL_DEPTH24_STENCIL8, ctx->state.sw, ctx->state.sh, 0, format, type, src));
+			GL_CHECK(entry->proc.pglFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, ctx->fbo.depth_tex, 0));
+		}
 	
 		GL_CHECK(entry->proc.pglBindFramebuffer(GL_READ_FRAMEBUFFER, ctx->fbo.depth_fb));
 		GL_CHECK(entry->proc.pglBindFramebuffer(GL_DRAW_FRAMEBUFFER, ctx->fbo.plane_fb));
@@ -292,27 +341,7 @@ void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 			0, 0, ctx->state.sw, ctx->state.sh,
 			0, 0, ctx->state.sw, ctx->state.sh,
 	  	GL_DEPTH_BUFFER_BIT, GL_NEAREST));
-		
-		if(ctx->depth_stencil)
-		{
-			GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.stencil_fb));
-			GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.stencil_tex));
-			GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_STENCIL_INDEX, ctx->state.sw, ctx->state.sh, 0, format, type, src));
-			GL_CHECK(entry->proc.pglFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, ctx->fbo.stencil_tex, 0));
-		
-			GL_CHECK(entry->proc.pglBindFramebuffer(GL_READ_FRAMEBUFFER, ctx->fbo.stencil_fb));
-			GL_CHECK(entry->proc.pglBindFramebuffer(GL_DRAW_FRAMEBUFFER, ctx->fbo.plane_fb));
-			
-	#ifdef TRACE_ON
-			GLenum test = entry->proc.pglCheckFramebufferStatus(GL_READ_FRAMEBUFFER);
-			TOPIC("GL", "(stencil) glCheckFramebufferStatus = 0x%X", test);
-	#endif
-			
-			GL_CHECK(entry->proc.pglBlitFramebuffer(
-				0, 0, ctx->state.sw, ctx->state.sh,
-				0, 0, ctx->state.sw, ctx->state.sh, GL_STENCIL_BUFFER_BIT, GL_NEAREST));
-		}
-		
+
 		// default buffer binding
 		GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.plane_fb));
 	}
@@ -335,28 +364,43 @@ void MesaBufferDownloadDepth(mesa3d_ctx_t *ctx, void *dst)
 	
 	switch(ctx->depth_bpp)
 	{
+		case 15:
 		case 16:
 			type = GL_UNSIGNED_SHORT;
 			break;
 		case 24:
 			 /* we silently increase ZBUFF 24 -> 32 bpp */
 			type = GL_UNSIGNED_INT_24_8;
+			format = GL_DEPTH_STENCIL;
 			break;
 		case 32:
-		default:
-			if(ctx->depth_stencil)
-			{
-				type = GL_UNSIGNED_INT_24_8;
-				format = GL_DEPTH_STENCIL;
-			}
-			else
-			{
-				type = GL_FLOAT; // sure?
-			}
+			type = GL_UNSIGNED_INT_24_8;
+			format = GL_DEPTH_STENCIL;
 			break;
+		default:
+			ERR("Unknown depth depth %d", ctx->depth_bpp);
+			return;
 	}
 
-	GL_CHECK(entry->proc.pglReadPixels(0, 0, ctx->state.sw, ctx->state.sh, format, type, dst));
+	if(ctx->depth_bpp != 24)
+	{
+		GL_CHECK(entry->proc.pglReadPixels(0, 0, ctx->state.sw, ctx->state.sh, format, type, dst));
+		if(ctx->state.depth.wbuffer)
+		{
+			transform_int_to_float(ctx, dst, ctx->depth_bpp);
+		}
+	}
+	else
+	{
+		size_t s = SurfacePitch(ctx->state.sw, 32) * ctx->state.sh;
+		void *buf = HeapAlloc(hSharedHeap, 0, s);
+		if(buf)
+		{
+			GL_CHECK(entry->proc.pglReadPixels(0, 0, ctx->state.sw, ctx->state.sh, format, type, buf));
+			copy_int_to(ctx, buf, dst, ctx->depth_bpp, ctx->state.depth.wbuffer);
+			HeapFree(hSharedHeap, 0, buf);
+		}
+	}
 	
 	TOPIC("READBACK", "%X -> download depth!", dst);
 }
@@ -540,12 +584,10 @@ BOOL MesaBufferFBOSetup(mesa3d_ctx_t *ctx, int width, int height)
 		GL_CHECK(entry->proc.pglFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->fbo.plane_color_tex, 0));
 		
 		GLenum depth_format = GL_DEPTH24_STENCIL8;
-#if 0
-		if(entry->dx6)
+		if(VMHALenv.zfloat)
 		{
 			depth_format = GL_DEPTH32F_STENCIL8;
 		}
-#endif
 
 		GL_CHECK(entry->proc.pglBindRenderbuffer(GL_RENDERBUFFER, ctx->fbo.plane_depth_tex));
 		GL_CHECK(entry->proc.pglRenderbufferStorage(GL_RENDERBUFFER, depth_format, width, height));

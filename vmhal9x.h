@@ -150,7 +150,6 @@ void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf);
 
 DWORD SurfaceNestCreate(LPDDRAWI_DDRAWSURFACE_LCL surf, void *ddlcl);
 void SurfaceNestDestroy(DWORD nest, BOOL call_destructor);
-LPDDRAWI_DDRAWSURFACE_LCL SurfaceNestSurface(DWORD nest);
 void SurfaceNestCleanupCtx(void *mesa_ctx);
 void SurfaceNestCleanupAll(void *ddlcl);
 
@@ -179,6 +178,7 @@ typedef struct _VMHAL_enviroment
 	DWORD texture_num_units;
 	DWORD num_light;
 	DWORD num_clips;
+	BOOL zfloat;
 } VMHAL_enviroment_t;
 
 #define DX7_SURFACE_NEST_TYPES (DDSCAPS_TEXTURE | DDSCAPS_3DDEVICE | DDSCAPS_ZBUFFER)

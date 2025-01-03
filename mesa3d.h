@@ -4,7 +4,7 @@
 #include <GL/gl.h>
 #include <GL/glext.h>
 #include <d3dtypes.h>
-
+#include "surface.h"
 
 typedef void (*OSMESAproc)();
 typedef void *OSMesaContext;
@@ -125,9 +125,10 @@ typedef struct mesa3d_ctx
 	DWORD thread_id;
 	GLint front_bpp;
 	GLint depth_bpp;
-	LPDDRAWI_DDRAWSURFACE_LCL flips[MESA3D_MAX_FLIPS];
-	int flips_cnt;
-	LPDDRAWI_DDRAWSURFACE_LCL depth;
+	//DDRAWI_DDRAWSURFACE_LCL flips[MESA3D_MAX_FLIPS];
+	//int flips_cnt;
+	DDSURF backbuffer;
+	DDSURF depth;
 	LPDDRAWI_DIRECTDRAW_GBL dd;
 	BOOL depth_stencil;	
 	int tmu_count;
@@ -222,13 +223,16 @@ typedef struct mesa3d_ctx
 
 	/* dimensions */
 	struct {
+		/* space transform */
+		GLfloat wmax;
+		GLfloat zscale[16];
+		/* DX matices */
 		GLfloat proj[16];
 		GLfloat view[16];
 		GLfloat world[4][16];
 		GLint viewport[4];
 		/* precalculated values */
 		GLfloat projfix[16];
-		//GLfloat modelview[16]; /* flip_y * proj * view */
 		GLfloat vpnorm[4]; /* viewport for faster unproject */
 		BOOL identity_mode;
 		BOOL outdated_stack;
@@ -236,6 +240,9 @@ typedef struct mesa3d_ctx
 	} matrix;
 	
 } mesa3d_ctx_t;
+
+/* maximum for 24bit signed zbuff = (1<<23) - 1 */
+#define GL_WRANGE_MAX 8388607
 
 #define CONV_U_TO_S(_u) (_u)
 #define CONV_V_TO_T(_v) (_v)
@@ -325,9 +332,7 @@ void Mesa3DFree(DWORD pid);
 #define GL_CHECK(_code) _code
 #endif
 
-mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry,
-	LPDDRAWI_DDRAWSURFACE_LCL dds,
-	LPDDRAWI_DDRAWSURFACE_LCL ddz);
+mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DDSURF *dds, DDSURF *ddz);
 void MesaDestroyCtx(mesa3d_ctx_t *ctx);
 void MesaDestroyAllCtx(mesa3d_entry_t *entry);
 void MesaInitCtx(mesa3d_ctx_t *ctx);
@@ -338,7 +343,7 @@ BOOL MesaSetCtx(mesa3d_ctx_t *ctx);
 void MesaSetTransform(mesa3d_ctx_t *ctx, D3DTRANSFORMSTATETYPE state, D3DMATRIX *matrix);
 
 /* needs GL_BLOCK */
-mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_LCL surf);
+mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, DDSURF *surf);
 void MesaReloadTexture(mesa3d_texture_t *tex, int tmu);
 void MesaDestroyTexture(mesa3d_texture_t *tex);
 void MesaApplyTransform(mesa3d_ctx_t *ctx, DWORD changes);
@@ -356,7 +361,7 @@ void MesaDrawIndex(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE v
 
 void MesaRender(mesa3d_ctx_t *ctx);
 void MesaReadback(mesa3d_ctx_t *ctx, GLbitfield mask);
-BOOL MesaSetTarget(mesa3d_ctx_t *ctx, LPDDRAWI_DDRAWSURFACE_LCL dss, LPDDRAWI_DDRAWSURFACE_LCL dsz);
+BOOL MesaSetTarget(mesa3d_ctx_t *ctx, DDSURF *dss, DDSURF *dsz);
 void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value);
 
 void MesaDrawRefreshState(mesa3d_ctx_t *ctx);
@@ -365,7 +370,7 @@ void MesaDraw3(mesa3d_ctx_t *ctx, DWORD op, void *prim, LPBYTE vertices);
 BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LPBYTE vertices, DWORD *error_offset, LPDWORD RStates);
 
 void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, DWORD stencil, int rects_cnt, RECT *rects);
-DWORD DDSurf_GetBPP(LPDDRAWI_DDRAWSURFACE_LCL surf);
+DWORD DDSurf_GetBPP(DDSURF *surf);
 
 void MesaStencilApply(mesa3d_ctx_t *ctx);
 
@@ -417,7 +422,11 @@ void *MesaChroma15(const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
 void *MesaChroma12(const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
 void MesaChromaFree(void *ptr);
 
-#define MESA_1OVER255	0.003921568627451f
+#define MESA_1OVER16       0.0625f
+#define MESA_1OVER255	     0.003921568627451f
+#define MESA_1OVER32767    0.000030518509475f
+#define MESA_1OVER65535    0.000015259021896f
+#define MESA_1OVER16777215 0.000000059604648f
 
 #define MESA_D3DCOLOR_TO_FV(_c, _v) \
 	(_v)[0] = RGBA_GETRED(_c)*MESA_1OVER255; \

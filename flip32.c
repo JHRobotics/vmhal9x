@@ -199,7 +199,7 @@ DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
 		DoFlipping(ddhal, (void*)pfd->lpSurfCurr->lpGbl->fpVidMem, (void*)pfd->lpSurfTarg->lpGbl->fpVidMem,
 			pfd->lpSurfCurr->lpGbl->lPitch, pfd->lpSurfTarg->lpGbl->lPitch);
 		
-		TOPIC("READBACK", "Fliped (on screen: %X)", pfd->lpSurfTarg->lpGbl->fpVidMem);
+		TOPIC("TARGET", "Fliped (on screen: %X)", pfd->lpSurfTarg->lpGbl->fpVidMem);
 		
 		is_flipping = FALSE;
 		SurfaceCtxUnlock();

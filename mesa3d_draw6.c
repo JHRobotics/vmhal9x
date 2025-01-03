@@ -474,13 +474,29 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				// Specifies the w-range for W buffering. It is specified
 				// by one or more D3DHAL_DP2WINFO structures following
 				// D3DHAL_DP2COMMAND.
-				if(ctx->state.depth.wbuffer)
+				for(i = 0; i < inst->wStateCount; i++)
 				{
 					D3DHAL_DP2WINFO *winfo = (D3DHAL_DP2WINFO*)prim;
-					GL_CHECK(entry->proc.pglDepthRange(winfo->dvWNear, winfo->dvWFar));
-					TOPIC("GL", "glDepthRange(%d, %d)", winfo->dvWNear, winfo->dvWFar);
+					prim += sizeof(D3DHAL_DP2WINFO);
+					
+					TOPIC("DEPTH", "w-buffer range %f - %f", winfo->dvWNear, winfo->dvWFar);
+					//GL_CHECK(entry->proc.pglDepthRange(winfo->dvWNear, winfo->dvWFar));
+					GLfloat wmax = NOCRT_MAX(winfo->dvWNear, winfo->dvWFar);
+					
+					/* scale projection if Wmax is too large */
+					if(wmax > ctx->matrix.wmax)
+					{
+						GLfloat sz = GL_WRANGE_MAX/wmax;
+						if(sz > 1.0)
+							sz = 1.0f;
+
+						ctx->matrix.zscale[10] = sz;
+						MesaApplyTransform(ctx, MESA_TF_PROJECTION);
+
+						ctx->matrix.wmax = wmax;
+					}
 				}
-				NEXT_INST(sizeof(D3DHAL_DP2WINFO));
+				NEXT_INST(0);
 				break;
 			}
 			// two below are for pre-DX7 interface apps running DX7 driver
@@ -529,17 +545,37 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 					GLfloat ambient[4];
 					GLfloat specular[4];
 					GLfloat emissive[4];
+					GLfloat shininess;
 					
 					MESA_D3DCOLORVALUE_TO_FV(material->dcvDiffuse,  diffuse);
 					MESA_D3DCOLORVALUE_TO_FV(material->dcvAmbient,  ambient);
-					MESA_D3DCOLORVALUE_TO_FV(material->dcvSpecular, specular);
 					MESA_D3DCOLORVALUE_TO_FV(material->dcvEmissive, emissive);
+					
+					if(ctx->state.specular)
+					{
+						MESA_D3DCOLORVALUE_TO_FV(material->dcvSpecular, specular);
+					}
+					else
+					{
+						specular[0] = 0.0f;
+						specular[1] = 0.0f;
+						specular[2] = 0.0f;
+						specular[3] = 0.0f;
+					}
+
 					GL_CHECK(entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, &diffuse[0]));
 					GL_CHECK(entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, &ambient[0]));
 					GL_CHECK(entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, &specular[0]));
 					GL_CHECK(entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, &emissive[0]));
 					
-					GL_CHECK(entry->proc.pglMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, material->dvPower));
+					if(material->dvPower < 0)
+						shininess = 0;
+					else if(material->dvPower > 128)
+						shininess = 128;
+					else
+						shininess = material->dvPower;
+					
+					GL_CHECK(entry->proc.pglMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, shininess));
 				}
 				NEXT_INST(0);
 				break;
@@ -769,10 +805,10 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				{
 					D3DHAL_DP2SETRENDERTARGET *pSRTData = (D3DHAL_DP2SETRENDERTARGET*)prim;
 					
-					TRACE("hRenderTarget=%d, hZBuffer=%d", pSRTData->hRenderTarget, pSRTData->hZBuffer);
+					TOPIC("TARGET", "hRenderTarget=%d, hZBuffer=%d", pSRTData->hRenderTarget, pSRTData->hZBuffer);
 					
-					LPDDRAWI_DDRAWSURFACE_LCL front_dds = SurfaceNestSurface(pSRTData->hRenderTarget);
-					LPDDRAWI_DDRAWSURFACE_LCL depth_dds = SurfaceNestSurface(pSRTData->hZBuffer);
+					DDSURF *front_dds = SurfaceNestSurface(pSRTData->hRenderTarget);
+					DDSURF *depth_dds = SurfaceNestSurface(pSRTData->hZBuffer);
 					
 					if(front_dds)
 					{

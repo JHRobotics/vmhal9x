@@ -34,7 +34,7 @@ OBJ := .o
 LIBSUFFIX := .a
 LIBPREFIX := lib
 
-DEPS=libddraw.a Makefile config.mk vmhal9x.h mesa3d.h mesa3d_api.h d3d_caps.h
+DEPS=libddraw.a Makefile config.mk vmhal9x.h mesa3d.h mesa3d_api.h d3d_caps.h surface.h
 RUNPATH=$(if $(filter $(OS),Windows_NT),.\,./)
 
 HOST_SUFFIX=

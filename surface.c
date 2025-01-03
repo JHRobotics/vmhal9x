@@ -33,6 +33,7 @@
 #include "vmdahal32.h"
 #include "vmhal9x.h"
 #include "mesa3d.h"
+#include "surface.h"
 
 #include "nocrt.h"
 
@@ -62,21 +63,18 @@ typedef struct surface_attachment
 {
 	struct surface_attachment *next;
 	DWORD type;
-	union
-	{
-		struct {
-			mesa3d_texture_t *tex;
-			int level;
-		} texture;
-		//mesa3d_ctx_t *ctx;
-	};
+	struct {
+		mesa3d_texture_t *tex;
+		int level;
+	} texture;
 } surface_attachment_t;
 
 typedef struct surface_info
 {
 	DWORD magic;
 	surface_attachment_t *first;
-	LPDDRAWI_DDRAWSURFACE_LCL surf;
+	DDSURF surf;
+	DWORD flags;
 } surface_info_t;
 
 typedef struct context_attachment
@@ -95,6 +93,8 @@ static context_info_t contexts = {NULL};
 
 #define SURFACE_TABLE_MAGIC 0xD3D01234
 
+#define FLAG_PREFERED 1
+
 DWORD SurfaceTableCreate(LPDDRAWI_DDRAWSURFACE_LCL surf)
 {
 	TRACE_ENTRY
@@ -103,10 +103,12 @@ DWORD SurfaceTableCreate(LPDDRAWI_DDRAWSURFACE_LCL surf)
 	if(info)
 	{
 		info->magic = SURFACE_TABLE_MAGIC;
-		info->surf  = surf;
 		info->first = NULL;
+		info->flags = 0;
+		
+		SurfaceCopyLCL(surf, &info->surf);
 	}
-
+	
 	surf->dwReserved1 = (DWORD)info;
 
 	return surf->dwReserved1;
@@ -129,11 +131,8 @@ static surface_info_t *SurfaceGetInfo(LPDDRAWI_DDRAWSURFACE_LCL surf)
 	return NULL;
 }
 
-void SurfaceAttachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *tex, int level)
+static void SurfaceAttachTexture_int(surface_info_t *info, void *tex, int level)
 {
-	TRACE_ENTRY
-	
-	surface_info_t *info = SurfaceGetInfo(surf);
 	if(info)
 	{
 		surface_attachment_t *item = info->first;
@@ -172,6 +171,22 @@ void SurfaceAttachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *tex, int level)
 		}
 	} // info
 }
+
+void SurfaceAttachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_tex, int level)
+{
+	TRACE_ENTRY
+
+	surface_info_t *info = SurfaceGetInfo(surf);
+	SurfaceAttachTexture_int(info, mesa_tex, level);
+}
+
+/*
+void SurfaceAttachTexture2(DDSURF *surf, void *mesa_tex, int level)
+{
+	TRACE_ENTRY
+
+	SurfaceAttachTexture_int(surf->info, mesa_tex, level);
+}*/
 
 void SurfaceAttachCtx(void *mesa_ctx)
 {
@@ -241,21 +256,17 @@ void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf)
 	{
 		if(citem->pid == pid)
 		{
-			int i;
-			for(i = 0; i < citem->ctx->flips_cnt; i++)
+			if(citem->ctx->backbuffer.fpVidMem == vidmem)
 			{
-				if(citem->ctx->flips[i]->lpGbl->fpVidMem == vidmem)
-				{
-					GL_BLOCK_BEGIN(citem->ctx)
-						MesaBufferUploadColor(ctx, (void*)vidmem);
-						ctx->render.dirty = TRUE;
-					GL_BLOCK_END
-				}
+				GL_BLOCK_BEGIN(citem->ctx)
+					MesaBufferUploadColor(ctx, (void*)vidmem);
+					ctx->render.dirty = TRUE;
+				GL_BLOCK_END
 			}
 			
-			if(citem->ctx->depth)
+			if(citem->ctx->depth_bpp)
 			{
-				if(citem->ctx->depth->lpGbl->fpVidMem == vidmem)
+				if(citem->ctx->depth.fpVidMem == vidmem)
 				{
 					GL_BLOCK_BEGIN(citem->ctx)
 						MesaBufferUploadDepth(ctx, (void*)vidmem);
@@ -298,21 +309,17 @@ void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf)
 	{
 		if(citem->pid == pid)
 		{
-			int i;
-			for(i = 0; i < citem->ctx->flips_cnt; i++)
+			if(citem->ctx->backbuffer.fpVidMem == vidmem)
 			{
-				if(citem->ctx->flips[i]->lpGbl->fpVidMem == vidmem)
-				{
-					GL_BLOCK_BEGIN(citem->ctx)
-						MesaBufferDownloadColor(ctx, (void*)vidmem);
-						ctx->render.dirty = FALSE;
-					GL_BLOCK_END
-				}
+				GL_BLOCK_BEGIN(citem->ctx)
+					MesaBufferDownloadColor(ctx, (void*)vidmem);
+					ctx->render.dirty = FALSE;
+				GL_BLOCK_END
 			}
 			
-			if(citem->ctx->render.zdirty && citem->ctx->depth)
+			if(citem->ctx->render.zdirty && citem->ctx->depth_bpp)
 			{
-				if(citem->ctx->depth->lpGbl->fpVidMem == vidmem)
+				if(citem->ctx->depth.fpVidMem == vidmem)
 				{
 					GL_BLOCK_BEGIN(citem->ctx)
 						MesaBufferDownloadDepth(ctx, (void*)vidmem);
@@ -422,7 +429,7 @@ typedef struct surface_nest_item
 
 typedef struct surface_nest
 {
-	LPDDRAWI_DDRAWSURFACE_LCL surf;
+	DDSURF surf;
 	void *ddlcl;
 	surface_nest_item_t *first;
 } surface_nest_t;
@@ -440,6 +447,8 @@ static surface_nests_table_t nests = {0};
 static BOOL SurfaceNestAlloc(surface_nest_t **info, DWORD id)
 {
 	DWORD index = id - 1;
+	
+	TOPIC("TARGET", "SurfaceNestAlloc(..., %d)", id);
 	
 	surface_nest_t **oldptr = nests.nests;
 	
@@ -507,9 +516,11 @@ DWORD SurfaceNestCreate(LPDDRAWI_DDRAWSURFACE_LCL surf, void *ddlcl)
 	if(SurfaceNestAlloc(&info, surf->lpSurfMore->dwSurfaceHandle))
 	{
 		info->first = NULL;
-		info->surf  = surf;
 		info->ddlcl = ddlcl;
-		TRACE("SurfaceNestCreate: nest=%d", surf->lpSurfMore->dwSurfaceHandle);
+		TOPIC("TARGET", "SurfaceNestCreate: nest=%d, vidmem=0x%X", surf->lpSurfMore->dwSurfaceHandle,
+			surf->lpGbl->fpVidMem);
+
+		SurfaceCopyLCL(surf, &info->surf);
 		
 		return surf->lpSurfMore->dwSurfaceHandle;
 	}
@@ -576,7 +587,7 @@ void *SurfaceNestTexture(DWORD nest, void *mesa_ctx)
 		if(item)
 		{
 			//GL_BLOCK_BEGIN(mesa_ctx)
-			 	tex = MesaCreateTexture(mesa_ctx, info->surf);
+			 	tex = MesaCreateTexture(mesa_ctx, &info->surf);
 			//GL_BLOCK_END
 			
 			if(tex)
@@ -607,7 +618,7 @@ void *SurfaceNestTexture(DWORD nest, void *mesa_ctx)
 	return tex;
 }
 
-LPDDRAWI_DDRAWSURFACE_LCL SurfaceNestSurface(DWORD nest)
+DDSURF *SurfaceNestSurface(DWORD nest)
 {
 	TRACE_ENTRY
 
@@ -615,7 +626,7 @@ LPDDRAWI_DDRAWSURFACE_LCL SurfaceNestSurface(DWORD nest)
 	
 	if(info)
 	{
-		return info->surf;
+		return &info->surf;
 	}
 	
 	return NULL;
@@ -678,3 +689,31 @@ void SurfaceNestCleanupAll(void *ddlcl)
 		}
 	}
 }
+
+void SurfaceCopyLCL(LPDDRAWI_DDRAWSURFACE_LCL surf, DDSURF *dest)
+{
+	dest->lpLcl    = surf;
+	dest->lpGbl    = surf->lpGbl;
+	dest->fpVidMem = surf->lpGbl->fpVidMem;
+	dest->dwFlags  = surf->dwFlags;
+	dest->dwAttachments = 0;
+	dest->dwCaps   = surf->ddsCaps.dwCaps;
+
+	LPATTACHLIST item = surf->lpAttachList;
+	for(;;)
+	{
+		if(!item) break;
+		if(!item->lpAttached) break;
+		if(item->lpAttached == surf) break;
+
+		if(dest->dwAttachments < DDSURF_ATTACH_MAX)
+		{
+			dest->lpAttachmentsLcl[dest->dwAttachments] = item->lpAttached;
+			dest->lpAttachmentsGbl[dest->dwAttachments] = item->lpAttached->lpGbl;
+			dest->dwAttachments++;
+		}
+			
+		item = item->lpAttached->lpAttachList;
+	}
+}
+

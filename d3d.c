@@ -90,18 +90,18 @@ DWORD __stdcall SetRenderTarget32(LPD3DHAL_SETRENDERTARGETDATA lpSetRenderData)
 			lpSetRenderData->lpDDS,
 			lpSetRenderData->lpDDSZ
 		);
+		
+		DDSURF dds;
+		DDSURF ddz;
 
-		LPDDRAWI_DDRAWSURFACE_LCL dds = 
-			((LPDDRAWI_DDRAWSURFACE_INT)lpSetRenderData->lpDDS)->lpLcl;
-		LPDDRAWI_DDRAWSURFACE_LCL ddz = NULL;
-
+		SurfaceCopyLCL(((LPDDRAWI_DDRAWSURFACE_INT)lpSetRenderData->lpDDS)->lpLcl, &dds);
 		if(lpSetRenderData->lpDDSZ)
 		{
-			ddz = ((LPDDRAWI_DDRAWSURFACE_INT)lpSetRenderData->lpDDSZ)->lpLcl;
+			SurfaceCopyLCL(((LPDDRAWI_DDRAWSURFACE_INT)lpSetRenderData->lpDDSZ)->lpLcl, &ddz);
 		}
-
+		
 		GL_BLOCK_BEGIN(lpSetRenderData->dwhContext)
-			MesaSetTarget(ctx, dds, ddz);
+			MesaSetTarget(ctx, &dds, lpSetRenderData->lpDDSZ ? &ddz : NULL);
 		GL_BLOCK_END
 
 		lpSetRenderData->ddrval = DD_OK;
@@ -846,7 +846,17 @@ DWORD __stdcall ContextCreate32(LPD3DHAL_CONTEXTCREATEDATA pccd)
 		if(entry->runtime_ver >= 7)
 		{
 			TRACE("ContextCreate32 DX7+");
-			ctx = MesaCreateCtx(entry, pccd->lpDDSLcl, pccd->lpDDSZLcl);
+			DDSURF dss;
+			DDSURF dsz;
+			
+			SurfaceCopyLCL(pccd->lpDDSLcl, &dss);
+			
+			if(pccd->lpDDSZLcl)
+			{
+				SurfaceCopyLCL(pccd->lpDDSZLcl, &dsz);
+			}
+			
+			ctx = MesaCreateCtx(entry, &dss, pccd->lpDDSZLcl ? &dsz : NULL);
 		}
 		else
 		{
@@ -854,13 +864,17 @@ DWORD __stdcall ContextCreate32(LPD3DHAL_CONTEXTCREATEDATA pccd)
 			
 			LPDDRAWI_DDRAWSURFACE_INT dss_int = (LPDDRAWI_DDRAWSURFACE_INT)pccd->lpDDS;
 			LPDDRAWI_DDRAWSURFACE_INT dsz_int = (LPDDRAWI_DDRAWSURFACE_INT)pccd->lpDDSZ;
-			LPDDRAWI_DDRAWSURFACE_LCL dss = dss_int->lpLcl;
-			LPDDRAWI_DDRAWSURFACE_LCL dsz = NULL;
+			DDSURF dss;
+			DDSURF dsz;
+
+			SurfaceCopyLCL(dss_int->lpLcl, &dss);
 
 			if(dsz_int)
-				dsz = dsz_int->lpLcl;
-						
-			ctx = MesaCreateCtx(entry, dss, dsz);
+			{
+				SurfaceCopyLCL(dss_int->lpLcl, &dsz);
+			}
+
+			ctx = MesaCreateCtx(entry, &dss, dsz_int ? &dsz : NULL);
 		}
 		
 		if(ctx)
@@ -985,7 +999,10 @@ DWORD __stdcall TextureCreate32(LPD3DHAL_TEXTURECREATEDATA ptcd)
 	if(dss)
 	{
 		GL_BLOCK_BEGIN(ptcd->dwhContext)
-			mesa3d_texture_t *tex = MesaCreateTexture(ctx, dss->lpLcl);
+			DDSURF dds;
+			SurfaceCopyLCL(dss->lpLcl, &dds);
+		
+			mesa3d_texture_t *tex = MesaCreateTexture(ctx, &dds);
 			if(tex)
 			{
 				ptcd->dwHandle = MESA_TEX_TO_HANDLE(tex);
