@@ -41,9 +41,15 @@
 
 #define SV_UNPROJECT(_v, _x, _y, _z, _w) \
 	_v[3] = 2.0f/(_w); \
-	_v[0] = ((((_x) - ctx->matrix.vpnorm[0]) * ctx->matrix.vpnorm[2]) - 1.0f)*_v[3]; \
-	_v[1] = ((((_y) - ctx->matrix.vpnorm[1]) * ctx->matrix.vpnorm[3]) - 1.0f)*_v[3]; \
+	_v[0] = ((((_x + 0.5) - ctx->matrix.vpnorm[0]) * ctx->matrix.vpnorm[2]) - 1.0f)*_v[3]; \
+	_v[1] = ((((_y - 0.5) - ctx->matrix.vpnorm[1]) * ctx->matrix.vpnorm[3]) - 1.0f)*_v[3]; \
 	_v[2] = (_z)*_v[3]
+
+#define SV_UNPROJECT_NTP(_v, _x, _y, _z) \
+	_v[3] = 1.0f; \
+	_v[0] = ((((_x + 0.5) - ctx->matrix.vpnorm[0]) * ctx->matrix.vpnorm[2]) - 1.0f); \
+	_v[1] = ((((_y - 0.5) - ctx->matrix.vpnorm[1]) * ctx->matrix.vpnorm[3]) - 1.0f); \
+	_v[2] = (_z)
 
 #define SV_UNPROJECTD(_v, _x, _y, _z, _w) \
 	_v[3] = 2.0/((double)_w); \
@@ -54,6 +60,7 @@
 #define FVF_X 0
 #define FVF_Y 1
 #define FVF_Z 2
+#define FVF_BETA1 3
 #define FVF_RHW 3
 
 #define FVF_MAX 32
@@ -66,6 +73,72 @@ typedef struct _FVF
 		DWORD    dw[32];
 	};
 } FVF_t;
+
+static void LoadColor1(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, DWORD color)
+{
+	GLfloat cv[4];
+	MESA_D3DCOLOR_TO_FV(color, cv);
+	entry->proc.pglColor4fv(&cv[0]);
+	
+	if(ctx->state.material.lighting)
+	{
+		if(ctx->state.material.untracked & (MESA_MAT_DIFFUSE_C1 | MESA_MAT_AMBIENT_C1))
+		{
+			entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, &cv[0]);
+		}
+		else if(ctx->state.material.untracked & MESA_MAT_DIFFUSE_C1)
+		{
+			entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, &cv[0]);
+		}
+		else if(ctx->state.material.untracked & MESA_MAT_AMBIENT_C1)
+		{
+			entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, &cv[0]);
+		}
+		
+		if(ctx->state.material.untracked & MESA_MAT_EMISSIVE_C1)
+		{
+			entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, &cv[0]);
+		}
+
+		if(ctx->state.material.untracked & MESA_MAT_SPECULAR_C1)
+		{
+			entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, &cv[0]);
+		}
+	}
+}
+
+static void LoadColor2(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, DWORD color)
+{
+	GLfloat cv[4];
+	MESA_D3DCOLOR_TO_FV(color, cv);
+
+	if(ctx->state.material.lighting)
+	{
+		if(ctx->state.material.untracked & (MESA_MAT_DIFFUSE_C2 | MESA_MAT_AMBIENT_C2))
+		{
+			entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, &cv[0]);
+		}
+		else if(ctx->state.material.untracked & MESA_MAT_DIFFUSE_C2)
+		{
+			entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, &cv[0]);
+		}
+		else if(ctx->state.material.untracked & MESA_MAT_AMBIENT_C2)
+		{
+			entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, &cv[0]);
+		}
+		
+		if(ctx->state.material.untracked & MESA_MAT_EMISSIVE_C2)
+		{
+			entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, &cv[0]);
+		}
+
+		if(ctx->state.specular_vertex)
+		{
+			entry->proc.pglSecondaryColor3fv(&cv[0]);
+		}
+	}
+}
+
 
 void MesaDrawTLVertex(mesa3d_ctx_t *ctx, LPD3DTLVERTEX vertex)
 {
@@ -84,7 +157,7 @@ void MesaDrawTLVertex(mesa3d_ctx_t *ctx, LPD3DTLVERTEX vertex)
 		RGBA_GETALPHA(vertex->color)
 	);
 
-	if(ctx->state.specular)
+	if(ctx->state.specular_vertex)
 	{
 		entry->proc.pglSecondaryColor3ub(
 			RGBA_GETRED(vertex->specular),
@@ -128,7 +201,7 @@ void MesaDrawLVertex(mesa3d_ctx_t *ctx, LPD3DLVERTEX vertex)
 		RGBA_GETALPHA(vertex->color)
 	);
 	
-	if(ctx->state.specular)
+	if(ctx->state.specular_vertex)
 	{
 		entry->proc.pglSecondaryColor3ub(
 			RGBA_GETRED(vertex->specular),
@@ -169,7 +242,7 @@ void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD type, DWORD size)
 }
 	
 void MesaFVFRecalc(mesa3d_ctx_t *ctx)
-{	
+{
 	int offset = 0; // in DW
 	int i;
 	
@@ -179,24 +252,31 @@ void MesaFVFRecalc(mesa3d_ctx_t *ctx)
 	{
 		case D3DFVF_XYZ:
 			offset = 3; // sizeof(D3DVECTOR) == 12
+			ctx->state.fvf.betas = 0;
 			break;
 		case D3DFVF_XYZRHW:
 			offset = 4;
+			ctx->state.fvf.betas = 0;
 			break;
 		case D3DFVF_XYZB1:
 			offset = 3 + 1;
+			ctx->state.fvf.betas = 1;
 			break;
 		case D3DFVF_XYZB2:
 			offset = 3 + 2;
+			ctx->state.fvf.betas = 2;
 			break;
 		case D3DFVF_XYZB3:
 			offset = 3 + 3;
+			ctx->state.fvf.betas = 3;
 			break;
 		case D3DFVF_XYZB4:
 			offset = 3 + 4;
+			ctx->state.fvf.betas = 4;
 			break;
 		case D3DFVF_XYZB5:
 			offset = 3 + 5;
+			ctx->state.fvf.betas = 5;
 			break;
 	}
 	
@@ -257,6 +337,8 @@ void MesaFVFRecalc(mesa3d_ctx_t *ctx)
 	ctx->state.fvf.stride = offset * sizeof(D3DVALUE);
 }
 
+static const GLfloat normal_one[3] = {1.0, 1.0, 1.0};
+
 inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, FVF_t *vertex)
 {
 	int i;
@@ -301,39 +383,54 @@ inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx
 
 	if(ctx->state.fvf.pos_diffuse)
 	{
-		DWORD color = vertex->dw[ctx->state.fvf.pos_diffuse];
-		entry->proc.pglColor4ub(
-			RGBA_GETRED(color),
-			RGBA_GETGREEN(color),
-			RGBA_GETBLUE(color),
-			RGBA_GETALPHA(color)
-		);
+		LoadColor1(entry, ctx, vertex->dw[ctx->state.fvf.pos_diffuse]);
 	}
 
-	if(ctx->state.specular && ctx->state.fvf.pos_specular)
+	if(ctx->state.fvf.pos_specular)
 	{
-		DWORD color = vertex->dw[ctx->state.fvf.pos_specular];
-		entry->proc.pglSecondaryColor3ub(
-			RGBA_GETRED(color),
-			RGBA_GETGREEN(color),
-			RGBA_GETBLUE(color)
-		);
+		LoadColor2(entry, ctx, vertex->dw[ctx->state.fvf.pos_specular]);
+	}
+	else
+	{
+		// FIXME: optimize for load black
+		LoadColor2(entry, ctx, 0x00000000);
 	}
 
 	if((ctx->state.fvf.type & D3DFVF_POSITION_MASK) == D3DFVF_XYZRHW)
 	{
 		GLfloat v[4];
-		SV_UNPROJECT(v, vertex->fv[FVF_X], vertex->fv[FVF_Y], vertex->fv[FVF_Z], vertex->fv[FVF_RHW]);		
+		if(ctx->state.texperspective)
+		{
+			SV_UNPROJECT(v, vertex->fv[FVF_X], vertex->fv[FVF_Y], vertex->fv[FVF_Z], vertex->fv[FVF_RHW]);
+		}
+		else
+		{
+			SV_UNPROJECT_NTP(v, vertex->fv[FVF_X], vertex->fv[FVF_Y], vertex->fv[FVF_Z]);
+		}
 		entry->proc.pglVertex4fv(&v[0]);
 	}
 	else
 	{
-		if(ctx->state.fvf.pos_normal)
+		if(ctx->state.fvf.pos_normal && ctx->state.texperspective)
 		{
 			entry->proc.pglNormal3fv(&vertex->fv[ctx->state.fvf.pos_normal]);
 		}
+		else
+		{
+			entry->proc.pglNormal3fv(&normal_one[0]);
+		}
 
-		entry->proc.pglVertex3fv(&vertex->fv[FVF_X]);
+		if(ctx->matrix.weight == 0)
+		{
+			entry->proc.pglVertex3fv(&vertex->fv[FVF_X]);
+		}
+		else
+		{
+			GLfloat coords[4];
+			MesaVetexBlend(ctx, &vertex->fv[FVF_X], &vertex->fv[FVF_BETA1], 
+				ctx->state.fvf.betas, coords);
+			entry->proc.pglVertex3fv(&coords[0]);
+		}
 	}
 }
 

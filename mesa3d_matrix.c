@@ -37,8 +37,10 @@
 
 #include "nocrt.h"
 
-/* mostly borrowed from libglu/src/libutilproject.c */
+/* when 1 invert projection matrix, 0 invert viewmodel matrix */
+#define DX_INVERT_PROJECTION 1
 
+/* mostly borrowed from libglu/src/libutilproject.c */
 inline static void matmultvecf(const GLfloat matrix[16], const GLfloat in[4], GLfloat out[4])
 {
 	int i;
@@ -68,6 +70,15 @@ inline static void matadddotf(const GLfloat matrix[16], GLfloat n, GLfloat out[1
 	for(i = 0; i < 16; i++)
 	{
 		out[i] = matrix[i] + n;
+	}
+}
+
+inline static void mataddf(const GLfloat a[16], const GLfloat b[16], GLfloat out[16])
+{
+	int i;
+	for(i = 0; i < 16; i++)
+	{
+		out[i] = a[i] + b[i];
 	}
 }
 
@@ -280,17 +291,22 @@ static const GLfloat initmatrix[16] =
 void MesaApplyTransform(mesa3d_ctx_t *ctx, DWORD changes)
 {
 	mesa3d_entry_t *entry = ctx->entry;
+	
+	TOPIC("MATRIX", "new matrix, changes=0x%X", changes);
 
 	if(changes & MESA_TF_PROJECTION)
 	{
-		//matmultf(ctx->matrix.proj, initmatrix, ctx->matrix.projfix);
+#if DX_INVERT_PROJECTION
 		matmultf(ctx->matrix.zscale, initmatrix, ctx->matrix.projfix);
 		matmultf(ctx->matrix.proj, ctx->matrix.projfix, ctx->matrix.projfix);
+#else
+		matmultf(ctx->matrix.proj, ctx->matrix.zscale, ctx->matrix.projfix);
+#endif
 	}
 
 	if(ctx->matrix.identity_mode)
 	{
-		ctx->matrix.outdated_stack = TRUE;
+		ctx->matrix.outdated_stack |= changes;
 		return;
 	}
 
@@ -303,11 +319,24 @@ void MesaApplyTransform(mesa3d_ctx_t *ctx, DWORD changes)
 	if(changes & (MESA_TF_WORLD | MESA_TF_VIEW))
 	{
 		entry->proc.pglMatrixMode(GL_MODELVIEW);
+#if DX_INVERT_PROJECTION
 		entry->proc.pglLoadMatrixf(&ctx->matrix.view[0]);
-		entry->proc.pglMultMatrixf(&ctx->matrix.world[0][0]);
-		
+#else
+		entry->proc.pglLoadMatrixf(&initmatrix[0]);
+		entry->proc.pglMultMatrixf(&ctx->matrix.view[0]);
+#endif
+		if(changes & MESA_TF_VIEW)
+		{
+			/* when view matrix is changed, we need recalculate lights and clip planes */
+			MesaTLRecalcModelview(ctx);
+		}
+
+		if(ctx->matrix.weight == 0)
+		{
+			entry->proc.pglMultMatrixf(&ctx->matrix.world[0][0]);
+		}		
 #if 0
-		if(ctx->matrix.weight > 0)
+		else
 		{
 			int i = 0;
 			entry->proc.pglEnable(GL_VERTEX_BLEND_ARB);
@@ -360,8 +389,57 @@ void MesaSpaceIdentityReset(mesa3d_ctx_t *ctx)
 
 		if(ctx->matrix.outdated_stack)
 		{
-			MesaApplyTransform(ctx, MESA_TF_PROJECTION | MESA_TF_VIEW | MESA_TF_WORLD);
-			ctx->matrix.outdated_stack = FALSE;
+			MesaApplyTransform(ctx, ctx->matrix.outdated_stack);
+			ctx->matrix.outdated_stack = 0;
 		}
 	}
+}
+
+void MesaSpaceModelviewSet(mesa3d_ctx_t *ctx)
+{
+	mesa3d_entry_t *entry = ctx->entry;
+	GL_CHECK(entry->proc.pglMatrixMode(GL_MODELVIEW));
+	GL_CHECK(entry->proc.pglPushMatrix());
+	GL_CHECK(entry->proc.pglLoadMatrixf(&ctx->matrix.view[0]));
+}
+
+void MesaSpaceModelviewReset(mesa3d_ctx_t *ctx)
+{
+	mesa3d_entry_t *entry = ctx->entry;
+	GL_CHECK(entry->proc.pglMatrixMode(GL_MODELVIEW));
+	GL_CHECK(entry->proc.pglPopMatrix());
+}
+
+void MesaVetexBlend(mesa3d_ctx_t *ctx, GLfloat coords[3], GLfloat *betas, int betas_cnt, GLfloat out[4])
+{
+	int i;
+	GLfloat in4[4] = {coords[0], coords[1], coords[2], 1.0f};
+	GLfloat a_betas[MESA_WORLDS_MAX] = {1.0f};
+	GLfloat w[16];
+	GLfloat m[16] = {
+		0, 0, 0, 0,
+		0, 0, 0, 0,
+		0, 0, 0, 0,
+		0, 0, 0, 0
+	};
+
+	for(i = 0; i < ctx->matrix.weight; i++)
+	{
+		GLfloat b1 = 0.0;
+		if(i < betas_cnt)
+		{
+			b1 = 1.0 - betas[i];
+		}
+		
+		a_betas[0] -= b1;
+		a_betas[1+i] = b1;
+	}
+	
+	for(i = 0; i <= ctx->matrix.weight; i++)
+	{
+		matmultdotf(ctx->matrix.world[i], a_betas[i], w);
+		mataddf(m, w, m);
+	}
+	
+	matmultvecf(m, in4, out);
 }

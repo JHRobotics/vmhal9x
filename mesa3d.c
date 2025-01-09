@@ -38,6 +38,8 @@
 
 #include "nocrt.h"
 
+static const GLfloat black[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+
 extern HANDLE hSharedHeap;
 
 #define MESA_HT_MOD 113
@@ -824,7 +826,8 @@ void MesaDestroyCtx(mesa3d_ctx_t *ctx)
 	{
 		HeapFree(hSharedHeap, 0, ctx->osbuf);
 	}
-
+	
+	MesaLightDestroyAll(ctx);
 	HeapFree(hSharedHeap, 0, ctx);
 }
 
@@ -884,7 +887,12 @@ void MesaInitCtx(mesa3d_ctx_t *ctx)
 	//MesaIdentity(ctx->matrix.modelview);
 	//ctx->matrix.is_identity = TRUE;
 
-	entry->proc.pglDisable(GL_LIGHTING);
+	//GL_CHECK(entry->proc.pglDisable(GL_MULTISAMPLE));
+	GL_CHECK(entry->proc.pglDisable(GL_LIGHTING));
+	GL_CHECK(entry->proc.pglLightModeli(GL_LIGHT_MODEL_COLOR_CONTROL, GL_SEPARATE_SPECULAR_COLOR));
+
+	// needs ARB_vertex_blend
+	//GL_CHECK(entry->proc.pglEnable(GL_WEIGHT_SUM_UNITY_ARB));
 
 	for(i = 0; i < ctx->tmu_count; i++)
 	{
@@ -919,6 +927,9 @@ void MesaInitCtx(mesa3d_ctx_t *ctx)
 	ctx->state.blend = TRUE;
 	ctx->state.blend_sfactor = GL_SRC_ALPHA;
 	ctx->state.blend_dfactor = GL_ONE_MINUS_SRC_ALPHA;
+	ctx->state.texperspective = TRUE;
+	ctx->state.alpha.func = GL_NOTEQUAL;
+	ctx->state.alpha.ref = 0.0f;
 
 //	entry->proc.pglEnable(GL_CULL_FACE);
 //	entry->proc.pglCullFace(GL_FRONT_AND_BACK);
@@ -1357,6 +1368,89 @@ static void MesaSetClipping(mesa3d_ctx_t *ctx)
 	}
 }
 
+static void ApplyBlend(mesa3d_ctx_t *ctx)
+{
+	mesa3d_entry_t *entry = ctx->entry;
+	if(ctx->state.blend)
+	{
+		GL_CHECK(entry->proc.pglEnable(GL_BLEND));
+		GL_CHECK(entry->proc.pglBlendFunc(ctx->state.blend_sfactor, ctx->state.blend_dfactor));
+	}
+	else
+	{
+		GL_CHECK(entry->proc.pglDisable(GL_BLEND));
+	}
+}
+
+void MesaApplyMaterial(mesa3d_ctx_t *ctx)
+{
+	mesa3d_entry_t *entry = ctx->entry;
+
+	GL_CHECK(entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, &ctx->state.material.ambient[0]));
+	GL_CHECK(entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, &ctx->state.material.diffuse[0]));
+	GL_CHECK(entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, &ctx->state.material.emissive[0]));
+
+	if(ctx->state.specular)
+	{
+		GL_CHECK(entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, &ctx->state.material.specular[0]));
+	}
+	else
+	{
+		GL_CHECK(entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, &black[0]));
+	}
+
+	GL_CHECK(entry->proc.pglMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, ctx->state.material.shininess));
+	
+	TOPIC("LIGHT", "Material ambient=(%f %f %f %f), diffuse=(%f %f %f %f)",
+		ctx->state.material.ambient[0], ctx->state.material.ambient[1],
+		ctx->state.material.ambient[2], ctx->state.material.ambient[3],
+		ctx->state.material.diffuse[0], ctx->state.material.diffuse[1],
+		ctx->state.material.diffuse[2], ctx->state.material.diffuse[3]
+	);
+	
+	TOPIC("LIGHT", "Material emissive=(%f %f %f %f), specular=(%f %f %f %f)",
+		ctx->state.material.emissive[0], ctx->state.material.emissive[1],
+		ctx->state.material.emissive[2], ctx->state.material.emissive[3],
+		ctx->state.material.specular[0], ctx->state.material.specular[1],
+		ctx->state.material.specular[2], ctx->state.material.specular[3]
+	);
+	
+	TOPIC("LIGHT", "Material shininess=%f", ctx->state.material.shininess);
+}
+
+static void MesaApplyColorMaterial(mesa3d_ctx_t *ctx)
+{
+	ctx->state.material.untracked = 0;
+	
+	if(ctx->state.material.diffuse_source == D3DMCS_COLOR1)
+		ctx->state.material.untracked |= MESA_MAT_DIFFUSE_C1;
+
+	if(ctx->state.material.ambient_source == D3DMCS_COLOR1)
+		ctx->state.material.untracked |= MESA_MAT_AMBIENT_C1;
+	
+	if(ctx->state.material.emissive_source == D3DMCS_COLOR1)
+		ctx->state.material.untracked |= MESA_MAT_EMISSIVE_C1;
+	
+	if(ctx->state.material.specular_source == D3DMCS_COLOR1)
+		ctx->state.material.untracked |= MESA_MAT_SPECULAR_C1;
+	
+	if(ctx->state.specular && ctx->state.material.specular_source == D3DMCS_COLOR2)
+		ctx->state.specular_vertex = TRUE;
+	else
+		ctx->state.specular_vertex = FALSE;
+	
+	if(ctx->state.material.diffuse_source == D3DMCS_COLOR2)
+		ctx->state.material.untracked |= MESA_MAT_DIFFUSE_C2;
+
+	if(ctx->state.material.ambient_source == D3DMCS_COLOR2)
+		ctx->state.material.untracked |= MESA_MAT_AMBIENT_C2;
+	
+	if(ctx->state.material.emissive_source == D3DMCS_COLOR2)
+		ctx->state.material.untracked |= MESA_MAT_EMISSIVE_C2;
+
+	MesaApplyMaterial(ctx);
+}
+
 #define TSS_DWORD (*((DWORD*)value))
 #define TSS_FLOAT (*((D3DVALUE*)value))
 
@@ -1494,6 +1588,9 @@ void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value)
 			break;
 		/* DWORD maximum anisotropy */
 		RENDERSTATE(D3DTSS_MAXANISOTROPY)
+			ts->anisotropy = TSS_DWORD;
+			ts->dx6_filter = TRUE;
+			ts->update = TRUE;
 			break;
 		/* D3DVALUE scale for bump map luminance */
 		RENDERSTATE(D3DTSS_BUMPENVLSCALE)
@@ -1624,15 +1721,28 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 			ctx->state.tmu[0].reload = TRUE;
 			break;
 		RENDERSTATE(D3DRENDERSTATE_ANTIALIAS) /* D3DANTIALIASMODE */
-			// !
+		{
+			D3DANTIALIASMODE mode = (D3DANTIALIASMODE)state->dwArg[0];
+			switch(mode)
+			{
+				case D3DANTIALIAS_NONE:
+					ctx->entry->proc.pglDisable(GL_MULTISAMPLE);
+					break;
+				case D3DANTIALIAS_SORTDEPENDENT:
+				case D3DANTIALIAS_SORTINDEPENDENT:
+				default:
+					ctx->entry->proc.pglEnable(GL_MULTISAMPLE);
+					break;
+			}
 			break;
+		}
 		RENDERSTATE(D3DRENDERSTATE_TEXTUREADDRESS) /* D3DTEXTUREADDRESS	*/
 			ctx->state.tmu[0].texaddr_u = state->dwArg[0];
 			ctx->state.tmu[0].texaddr_v = state->dwArg[0];
 			ctx->state.tmu[0].update = TRUE;
 			break;
 		RENDERSTATE(D3DRENDERSTATE_TEXTUREPERSPECTIVE) /* TRUE for perspective correction */
-			/* nop */
+			ctx->state.texperspective = state->dwArg[0] == 0 ? FALSE : TRUE;
 			break;
 		RENDERSTATE(D3DRENDERSTATE_WRAPU) /* TRUE for wrapping in u */
 			/* nop */
@@ -1686,23 +1796,42 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 					ctx->entry->proc.pglShadeModel(GL_FLAT);
 					break;
 				case D3DSHADE_GOURAUD:
+					//ctx->entry->proc.pglShadeModel(GL_FLAT);
+					//break;
 				/* Note from WINE: D3DSHADE_PHONG in practice is the same as D3DSHADE_GOURAUD in D3D */
 				case D3DSHADE_PHONG:
 				default:
 					ctx->entry->proc.pglShadeModel(GL_SMOOTH);
 					break;
 			}
+			TOPIC("LIGHT", "SHADEMODE=%d", state->dwArg[0]);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_LINEPATTERN) /* D3DLINEPATTERN */
-			// !
+		{
+			WORD *pattern = (WORD*)state->dwArg;
+			// 0 - wRepeatFactor;
+			// 1 - wLinePattern;
+			if(pattern[0])
+			{
+				ctx->entry->proc.pglEnable(GL_LINE_STIPPLE);
+				ctx->entry->proc.pglLineStipple(pattern[0], pattern[1]);
+			}
+			else
+			{
+				ctx->entry->proc.pglDisable(GL_LINE_STIPPLE);
+			}
 			break;
+		}
 		RENDERSTATE(D3DRENDERSTATE_MONOENABLE) /* TRUE to enable mono rasterization */
+			WARN("D3DRENDERSTATE_MONOENABLE=0x%X", state->dwArg[0]);
 			/* nop */
 			break;
 		RENDERSTATE(D3DRENDERSTATE_ROP2) /* ROP2 */
+			WARN("D3DRENDERSTATE_ROP2=0x%X", state->dwArg[0]);
 			/* nop */
 			break;
 		RENDERSTATE(D3DRENDERSTATE_PLANEMASK) /* DWORD physical plane mask */
+			WARN("D3DRENDERSTATE_PLANEMASK=0x%X", state->dwArg[0]);
 			/* nop */
 			break;
 		RENDERSTATE(D3DRENDERSTATE_ZWRITEENABLE) /* TRUE to enable z writes */
@@ -1722,14 +1851,8 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 			break;
 		RENDERSTATE(D3DRENDERSTATE_ALPHATESTENABLE) /* TRUE to enable alpha tests */
 			TOPIC("BLEND", "D3DRENDERSTATE_ALPHATESTENABLE = 0x%X", state->dwArg[0]);
-			if(state->dwArg[0] != 0)
-			{
-				ctx->entry->proc.pglEnable(GL_ALPHA_TEST);
-			}
-			else
-			{
-				ctx->entry->proc.pglDisable(GL_ALPHA_TEST);
-			}
+			ctx->state.alpha.enabled = state->dwArg[0] != 0 ? TRUE : FALSE;
+			ctx->state.tmu[0].update = TRUE;
 			break;
 		RENDERSTATE(D3DRENDERSTATE_LASTPIXEL) /* TRUE for last-pixel on lines */
 			/* nop */
@@ -1765,15 +1888,13 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 			{
 				ctx->state.blend_sfactor = GetBlendFactor(dxblend);
 			}
-			ctx->state.tmu[0].update = TRUE;
-			//ctx->entry->proc.pglBlendFunc(ctx->state.blend_sfactor, ctx->state.blend_dfactor);
+			ApplyBlend(ctx);
 			break;
 		}
 		RENDERSTATE(D3DRENDERSTATE_DESTBLEND) /* D3DBLEND */
 			TOPIC("BLEND", "D3DRENDERSTATE_DESTBLEND = 0x%X", state->dwArg[0]);
 			ctx->state.blend_dfactor = GetBlendFactor((D3DBLEND)state->dwArg[0]);
-			ctx->state.tmu[0].update = TRUE;
-			//ctx->entry->proc.pglBlendFunc(ctx->state.blend_sfactor, ctx->state.blend_dfactor);
+			ApplyBlend(ctx);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_TEXTUREMAPBLEND) /* D3DTEXTUREBLEND */
 			ctx->state.tmu[0].texblend = (D3DTEXTUREBLEND)state->dwArg[0];
@@ -1801,16 +1922,13 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 			break;
 		RENDERSTATE(D3DRENDERSTATE_ALPHAREF) /* D3DFIXED */
 			TOPIC("BLEND", "D3DRENDERSTATE_ALPHAREF = 0x%X", state->dwArg[0]);
-			ctx->state.alpharef = (GLclampf)(state->dwArg[0]/255.0f);
-			if(ctx->state.alphafunc != 0)
-			{
-				ctx->entry->proc.pglAlphaFunc(ctx->state.alphafunc, ctx->state.alpharef);
-			}
+			ctx->state.alpha.ref = (GLclampf)(state->dwArg[0]/255.0f); 
+			ctx->state.tmu[0].update = TRUE;
 			break;
 		RENDERSTATE(D3DRENDERSTATE_ALPHAFUNC) /* D3DCMPFUNC */
 			TOPIC("BLEND", "D3DRENDERSTATE_ALPHAFUNC = 0x%X", state->dwArg[0]);
-			ctx->state.alphafunc = GetGLCmpFunc(state->dwArg[0]);
-			ctx->entry->proc.pglAlphaFunc(ctx->state.alphafunc, ctx->state.alpharef);
+			ctx->state.alpha.func = GetGLCmpFunc(state->dwArg[0]);
+			ctx->state.tmu[0].update = TRUE;
 			break;
 		RENDERSTATE(D3DRENDERSTATE_DITHERENABLE) /* TRUE to enable dithering */
 			if(state->dwArg[0])
@@ -1825,7 +1943,7 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 		RENDERSTATE(D3DRENDERSTATE_ALPHABLENDENABLE) /* TRUE to enable alpha blending */
 			TOPIC("BLEND", "D3DRENDERSTATE_ALPHABLENDENABLE = 0x%X", state->dwArg[0]);
 			ctx->state.blend = (state->dwArg[0] != 0) ? TRUE : FALSE;
-			ctx->state.tmu[0].update = TRUE;
+			ApplyBlend(ctx);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_FOGENABLE) /* TRUE to enable fog */
 			ctx->state.fog.enabled = state->dwArg[0] == 0 ? FALSE : TRUE;
@@ -1837,13 +1955,16 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 			if(state->dwArg[0])
 			{
 				ctx->entry->proc.pglEnable(GL_COLOR_SUM);
+				ctx->entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, &ctx->state.material.specular[0]);
 				ctx->state.specular = TRUE;
 			}
 			else
 			{
 				ctx->entry->proc.pglDisable(GL_COLOR_SUM);
+				ctx->entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, &black[0]);
 				ctx->state.specular = FALSE;
 			}
+			TOPIC("LIGHT", "SPECULARENABLE=%d", state->dwArg[0]);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_ZVISIBLE) /* TRUE to enable z checking */
 			ctx->state.zvisible = state->dwArg[0];
@@ -1907,6 +2028,7 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 			}
 			break;
 		RENDERSTATE(D3DRENDERSTATE_EDGEANTIALIAS) /* TRUE to enable edge antialiasing */
+			// !
 			break;
 		RENDERSTATE(D3DRENDERSTATE_COLORKEYENABLE) /* TRUE to enable source colorkeyed textures */
 			ctx->state.tmu[0].colorkey = (state->dwArg[0] == 0) ? FALSE : TRUE;
@@ -1931,15 +2053,30 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 			ctx->state.tmu[0].update = TRUE;
 			break;
 		RENDERSTATE(D3DRENDERSTATE_ZBIAS) /* LONG Z bias */
+		{
+			LONG bias = (LONG)state->dwArg[0];
+			if(bias)
+			{
+				GLfloat fbias = bias;
+				ctx->entry->proc.pglEnable(GL_POLYGON_OFFSET_FILL);
+				ctx->entry->proc.pglPolygonOffset(fbias, fbias);
+			}
+			else
+			{
+				ctx->entry->proc.pglDisable(GL_POLYGON_OFFSET_FILL);
+			}
 			break;
+		}
 		RENDERSTATE(D3DRENDERSTATE_RANGEFOGENABLE) /* Enables range-based fog */
 			TOPIC("FOG", "D3DRENDERSTATE_RANGEFOGENABLE=%X", state->dwArg[0]);
 			ctx->state.fog.range = state->dwArg[0] == 0 ? FALSE : TRUE;
 			MesaSetFog(ctx);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_ANISOTROPY) /* Max. anisotropy. 1 = no anisotropy */
+			ctx->state.tmu[0].anisotropy = state->dwArg[0];
 			break;
 		RENDERSTATE(D3DRENDERSTATE_FLUSHBATCH) /* Explicit flush for DP batching (DX5 Only) */
+			/* nop */
 			break;
 		/* d3d6 */
 		RENDERSTATE(D3DRENDERSTATE_STENCILENABLE) /* BOOL enable/disable stenciling */
@@ -2007,13 +2144,16 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 			if(state->dwArg[0])
 			{
 				ctx->entry->proc.pglEnable(GL_LIGHTING);
+				ctx->state.material.lighting = TRUE;
 			}
 			else
 			{
 				ctx->entry->proc.pglDisable(GL_LIGHTING);
+				ctx->state.material.lighting = FALSE;
 			}
 			break;
 		RENDERSTATE(D3DRENDERSTATE_EXTENTS)
+			WARN("D3DRENDERSTATE_EXTENTS=0x%X", state->dwArg[0]);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_AMBIENT)
 		{
@@ -2028,25 +2168,41 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 			MesaSetFog(ctx);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_COLORVERTEX)
+			ctx->state.material.color_vertex = state->dwArg[0] != 0 ? TRUE : FALSE;
+			MesaApplyColorMaterial(ctx);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_LOCALVIEWER)
+			ctx->entry->proc.pglLightModeli(GL_LIGHT_MODEL_LOCAL_VIEWER, state->dwArg[0] == 0 ? 0 : 1);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_NORMALIZENORMALS)
+			if(state->dwArg[0] != 0)
+			{
+				ctx->entry->proc.pglEnable(GL_NORMALIZE);
+			}
+			else
+			{
+				ctx->entry->proc.pglDisable(GL_NORMALIZE);
+			}
 			break;
 		RENDERSTATE(D3DRENDERSTATE_COLORKEYBLENDENABLE)
+			WARN("D3DRENDERSTATE_COLORKEYBLENDENABLE=0x%X", state->dwArg[0]);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_DIFFUSEMATERIALSOURCE)
-			ctx->state.light.diffuse_source = state->dwArg[0];
+			ctx->state.material.diffuse_source = state->dwArg[0];
+			MesaApplyColorMaterial(ctx);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_SPECULARMATERIALSOURCE)
-			ctx->state.light.specular_source = state->dwArg[0];
+			ctx->state.material.specular_source = state->dwArg[0];
+			MesaApplyColorMaterial(ctx);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_AMBIENTMATERIALSOURCE)
-			ctx->state.light.ambient_source = state->dwArg[0];
+			ctx->state.material.ambient_source = state->dwArg[0];
+			MesaApplyColorMaterial(ctx);
 			// D3DMATERIALCOLORSOURCE
 			break;
 		RENDERSTATE(D3DRENDERSTATE_EMISSIVEMATERIALSOURCE)
-			ctx->state.light.emissive_source = state->dwArg[0];
+			ctx->state.material.emissive_source = state->dwArg[0];
+			MesaApplyColorMaterial(ctx);
 			// D3DMATERIALCOLORSOURCE
 			break;
 		RENDERSTATE(D3DRENDERSTATE_VERTEXBLEND)
@@ -2080,6 +2236,9 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 			MesaSetClipping(ctx);
 			break;
 		}
+		RENDERSTATE(D3DRENDERSTATE_TRANSLUCENTSORTINDEPENDENT)
+			WARN("D3DRENDERSTATE_TRANSLUCENTSORTINDEPENDENT=0x%X", state->dwArg[0]);
+			break;
 		default:
 			switch((DWORD)type)
 			{
@@ -2215,6 +2374,7 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 		 */
 		if(ts->dx6_filter)
 		{
+			BOOL use_anisotropic = FALSE;
 			if(ts->image->mipmap && ts->dx_mip != D3DTFP_NONE)
 			{
 				GLint maxlevel = ts->image->mipmap_level;
@@ -2230,6 +2390,10 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 
 				switch(ts->dx_min)
 				{
+					case D3DTFN_ANISOTROPIC:
+						GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR));
+						use_anisotropic = TRUE;
+						break;
 					case D3DTFN_LINEAR:
 						switch(ts->dx_mip)
 						{
@@ -2260,9 +2424,13 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 			}
 			else /* non mipmap */
 			{
+				GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0));
 				switch(ts->dx_min)
 				{
 					case D3DTFN_LINEAR:
+						use_anisotropic = TRUE;
+						/* thru */
+					case D3DTFN_ANISOTROPIC:
 						GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
 						break;
 					case D3DTFN_POINT:
@@ -2274,6 +2442,9 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 
 			switch(ts->dx_mag)
 			{
+				case D3DTFG_ANISOTROPIC:
+					use_anisotropic = TRUE;
+					/* thru */
 				case D3DTFG_LINEAR:
 					GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
 					break;
@@ -2282,8 +2453,23 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 					GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
 					break;
 			}
+			
+			
+			/* needs EXT_texture_filter_anisotropic */
+			if(VMHALenv.max_anisotropy > 1)
+			{
+				GLfloat fanisotropy = 1.0;
+
+				if(use_anisotropic)
+					fanisotropy = ts->anisotropy;
+
+				if(fanisotropy < 1.0)
+					fanisotropy = 1.0;
+		
+				GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, fanisotropy));
+			}
 		}
-		else
+		else /* !dx6_filter */
 		{
 			if(ts->image->mipmap)
 			{
@@ -2293,6 +2479,7 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 			}
 			else
 			{
+				GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0));
 				GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, nonMipFilter(ts->texmag)));
 				GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, nonMipFilter(ts->texmin)));
 			}
@@ -2597,37 +2784,24 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 	
 	if(tmu == 0)
 	{
-		if(color_key)
+		if(ctx->state.alpha.enabled || color_key)
 		{
-			if(ctx->state.depth.writable)
-			{
-				GL_CHECK(entry->proc.pglDepthMask(GL_FALSE));
-			}
+			ctx->entry->proc.pglEnable(GL_ALPHA_TEST);
 			
-			GL_CHECK(entry->proc.pglEnable(GL_BLEND));
-			TOPIC("CHROMA", "glBlendFunc(%d, %d) - CHROMA", ctx->state.blend_sfactor, ctx->state.blend_dfactor);
-			GL_CHECK(entry->proc.pglBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
-
-			if(ctx->state.depth.writable)
+			if(color_key)
 			{
-				GL_CHECK(entry->proc.pglDepthMask(GL_TRUE));
+				ctx->entry->proc.pglAlphaFunc(GL_NOTEQUAL, 0.0f);
+			}
+			else
+			{
+				ctx->entry->proc.pglAlphaFunc(ctx->state.alpha.func, ctx->state.alpha.ref);
 			}
 		}
 		else
 		{
-			if(ctx->state.blend)
-			{
-				GL_CHECK(entry->proc.pglEnable(GL_BLEND));
-			}
-			else
-			{
-				GL_CHECK(entry->proc.pglDisable(GL_BLEND));
-			}
-			TOPIC("CHROMA", "glBlendFunc(%d, %d)", ctx->state.blend_sfactor, ctx->state.blend_dfactor);
-			GL_CHECK(entry->proc.pglBlendFunc(ctx->state.blend_sfactor, ctx->state.blend_dfactor));
+			ctx->entry->proc.pglDisable(GL_ALPHA_TEST);
 		}
 	}
-	
 }
 
 void MesaDrawRefreshState(mesa3d_ctx_t *ctx)
@@ -2950,23 +3124,13 @@ void MesaSceneEnd(mesa3d_ctx_t *ctx)
 		if(is_visible)
 			FBHDA_access_end(0);
 	}
-	
-	if(!is_visible && VMHALenv.broken_3buff)
-	{
-		void *ptr = MesaFindBackbuffer(ctx, NULL, TRUE);
-		if(ptr)
-		{
-			MesaBufferDownloadColor(ctx, ptr);
-		}
-	}
-	
 }
 
 #define COPY_MATRIX(_srcdx, _dst) do{ \
-	(_dst)[ 0]=(_srcdx)->_11; (_dst[ 1])=(_srcdx)->_12; (_dst[ 2])=(_srcdx)->_13; (_dst[ 3])=(_srcdx)->_14; \
-	(_dst)[ 4]=(_srcdx)->_21; (_dst[ 5])=(_srcdx)->_22; (_dst[ 6])=(_srcdx)->_23; (_dst[ 7])=(_srcdx)->_24; \
-	(_dst)[ 8]=(_srcdx)->_31; (_dst[ 9])=(_srcdx)->_32; (_dst[10])=(_srcdx)->_33; (_dst[11])=(_srcdx)->_34; \
-	(_dst)[12]=(_srcdx)->_41; (_dst[13])=(_srcdx)->_42; (_dst[14])=(_srcdx)->_43; (_dst[15])=(_srcdx)->_44; \
+	(_dst)[ 0]=(_srcdx)->_11; (_dst)[ 1]=(_srcdx)->_12; (_dst)[ 2]=(_srcdx)->_13; (_dst)[ 3]=(_srcdx)->_14; \
+	(_dst)[ 4]=(_srcdx)->_21; (_dst)[ 5]=(_srcdx)->_22; (_dst)[ 6]=(_srcdx)->_23; (_dst)[ 7]=(_srcdx)->_24; \
+	(_dst)[ 8]=(_srcdx)->_31; (_dst)[ 9]=(_srcdx)->_32; (_dst)[10]=(_srcdx)->_33; (_dst)[11]=(_srcdx)->_34; \
+	(_dst)[12]=(_srcdx)->_41; (_dst)[13]=(_srcdx)->_42; (_dst)[14]=(_srcdx)->_43; (_dst)[15]=(_srcdx)->_44; \
 	}while(0)
 
 void MesaSetTransform(mesa3d_ctx_t *ctx, D3DTRANSFORMSTATETYPE state, D3DMATRIX *matrix)
@@ -3110,13 +3274,12 @@ void MesaSurfacesTableRemoveDDLcl(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL
 
 void MesaSurfacesTableInsertSurface(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, DWORD id, DDSURF *surf)
 {
-	TOPIC("TARGET", "inserting id=%d, table=%X", id, lpDDLcl);
+//	TOPIC("TARGET", "inserting id=%d, table=%X", id, lpDDLcl);
 	
 	mesa_surfaces_table_t *table = MesaSurfacesTableGet(entry, lpDDLcl, id);
 	if(table)
 	{
 		table->table[id] = surf;
-		TOPIC("TARGET", "insert succ");
 	}
 }
 

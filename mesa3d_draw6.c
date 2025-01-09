@@ -41,39 +41,279 @@
 
 extern HANDLE hSharedHeap;
 
-
-/*
-static D3DPRIMITIVETYPE DP2OP_to_PT(D3DHAL_DP2OPERATION Dp2Op)
+static void LightApply(mesa3d_ctx_t *ctx, DWORD id)
 {
-	switch (Dp2Op)
+	if(id >= ctx->light.lights_size)
+		return;
+
+	mesa3d_light_t *light = ctx->light.lights[id];
+	if(light == NULL)
+		return;
+
+	if(!light->active)
+		return;
+
+	mesa3d_entry_t *entry = ctx->entry;
+	GLenum lindex = GL_LIGHT0 + light->active_index;
+
+	GL_CHECK(entry->proc.pglLightfv(lindex, GL_DIFFUSE,  &light->diffuse[0]));
+	GL_CHECK(entry->proc.pglLightfv(lindex, GL_SPECULAR, &light->specular[0]));
+	GL_CHECK(entry->proc.pglLightfv(lindex, GL_AMBIENT,  &light->ambient[0]));
+
+	switch(light->type)
 	{
-		case D3DDP2OP_POINTS:
-			return D3DPT_POINTLIST;
-		case D3DDP2OP_INDEXEDLINELIST:
-		case D3DDP2OP_INDEXEDLINELIST2:
-		case D3DDP2OP_LINELIST_IMM:
-		case D3DDP2OP_LINELIST:
-			return D3DPT_LINELIST;
-		case D3DDP2OP_TRIANGLELIST:
-		case D3DDP2OP_INDEXEDTRIANGLELIST:
-		case D3DDP2OP_INDEXEDTRIANGLELIST2:
-			return D3DPT_TRIANGLELIST;
-		case D3DDP2OP_LINESTRIP:
-		case D3DDP2OP_INDEXEDLINESTRIP:
-			return D3DPT_LINESTRIP;
-		case D3DDP2OP_TRIANGLESTRIP:
-		case D3DDP2OP_INDEXEDTRIANGLESTRIP:
-			return D3DPT_TRIANGLESTRIP;
-		case D3DDP2OP_TRIANGLEFAN:
-		case D3DDP2OP_INDEXEDTRIANGLEFAN:
-		case D3DDP2OP_TRIANGLEFAN_IMM:
-			return D3DPT_TRIANGLEFAN;
+		case D3DLIGHT_POINT:
+			TOPIC("LIGHT", "D3DLIGHT_POINT");
+			GL_CHECK(entry->proc.pglLightfv(lindex, GL_POSITION,              &light->pos[0]));
+			GL_CHECK(entry->proc.pglLightf(lindex,  GL_SPOT_CUTOFF,           180.0f));
+			GL_CHECK(entry->proc.pglLightf(lindex,  GL_CONSTANT_ATTENUATION,  light->attenuation[0]));
+			GL_CHECK(entry->proc.pglLightf(lindex,  GL_LINEAR_ATTENUATION,    light->attenuation[1]));
+			GL_CHECK(entry->proc.pglLightf(lindex,  GL_QUADRATIC_ATTENUATION, light->attenuation[3]));
+			break;
+		case D3DLIGHT_SPOT:
+			TOPIC("LIGHT", "D3DLIGHT_SPOT");
+			GL_CHECK(entry->proc.pglLightfv(lindex, GL_POSITION,              &light->pos[0]));
+			GL_CHECK(entry->proc.pglLightfv(lindex, GL_SPOT_DIRECTION,        &light->dir[0]));
+			GL_CHECK(entry->proc.pglLightf(lindex,  GL_SPOT_EXPONENT,         light->exponent));
+			GL_CHECK(entry->proc.pglLightf(lindex,  GL_SPOT_CUTOFF,           (light->phi * 90) / M_PI));
+			GL_CHECK(entry->proc.pglLightf(lindex,  GL_CONSTANT_ATTENUATION,  light->attenuation[0]));
+			GL_CHECK(entry->proc.pglLightf(lindex,  GL_LINEAR_ATTENUATION,    light->attenuation[1]));
+			GL_CHECK(entry->proc.pglLightf(lindex,  GL_QUADRATIC_ATTENUATION, light->attenuation[3]));
+			break;
+		case D3DLIGHT_DIRECTIONAL:
+		{
+			TOPIC("LIGHT", "D3DLIGHT_DIRECTIONAL");
+			GLfloat vd[4];
+			vd[0] = -light->dir[0];
+			vd[1] = -light->dir[1];
+			vd[2] = -light->dir[2];
+			vd[3] = 0.0f;
+
+			/* Note GL uses w position of 0 for direction! */
+			GL_CHECK(entry->proc.pglLightfv(lindex, GL_POSITION,      &vd[0]));
+			GL_CHECK(entry->proc.pglLightf(lindex,  GL_SPOT_CUTOFF,   180.0f));
+			GL_CHECK(entry->proc.pglLightf(lindex,  GL_SPOT_EXPONENT,   0.0f));
+			break;
+		}
+		case D3DLIGHT_PARALLELPOINT:
+		case D3DLIGHT_GLSPOT:
 		default:
-			return 0;
+			break;
+	} // switch(light->type)
+}
+
+static void LightData(mesa3d_ctx_t *ctx, DWORD id, D3DLIGHT7 *dxlight)
+{
+	if(id >= ctx->light.lights_size)
+		return;
+
+	mesa3d_light_t *light = ctx->light.lights[id];
+	if(light == NULL)
+		return;
+
+	TOPIC("LIGHT", "LightData light=%X, dxlight=%X", light, dxlight);
+
+	light->type = dxlight->dltType;
+
+	MESA_D3DCOLORVALUE_TO_FV(dxlight->dcvDiffuse,  light->diffuse);
+	MESA_D3DCOLORVALUE_TO_FV(dxlight->dcvSpecular, light->specular);
+	MESA_D3DCOLORVALUE_TO_FV(dxlight->dcvAmbient,  light->ambient);
+
+	light->pos[0] = dxlight->dvPosition.x;
+	light->pos[1] = dxlight->dvPosition.y;
+	light->pos[2] = dxlight->dvPosition.z;	
+	light->pos[3] = 1.0;
+
+	light->dir[0] = dxlight->dvDirection.x;
+	light->dir[1] = dxlight->dvDirection.y;
+	light->dir[2] = dxlight->dvDirection.z;	
+	light->dir[3] = 0.0;
+
+	light->attenuation[0] = dxlight->dvAttenuation0;
+	light->attenuation[1] = dxlight->dvAttenuation1;
+	light->attenuation[2] = dxlight->dvAttenuation2;
+
+	GLfloat range2 = dxlight->dvRange * dxlight->dvRange;
+	if(range2 >= FLT_MIN)
+		light->attenuation[3] = 1.4f/range2;
+	else
+		light->attenuation[3] = 0.0f; /*  0 or  MAX?  (0 seems to be ok) */
+
+	if(light->attenuation[3] < light->attenuation[2])
+		light->attenuation[3] = light->attenuation[2];
+
+	light->range   = dxlight->dvRange;
+	light->falloff = dxlight->dvFalloff;
+	light->theta   = dxlight->dvTheta;
+	light->phi     = dxlight->dvPhi;
+
+	light->exponent = 0.0f;
+
+	if(dxlight->dltType == D3DLIGHT_SPOT)
+	{
+		/*
+		 *	Pre-calculate exponent for spot light,
+		 *	comment and algoritm from WINE:
+		 *		opengl-ish and d3d-ish spot lights use too different models
+		 *		for the light "intensity" as a function of the angle towards
+		 *		the main light direction, so we only can approximate very
+		 *		roughly. However, spot lights are rather rarely used in games
+		 *		(if ever used at all). Furthermore if still used, probably
+		 *		nobody pays attention to such details.
+		 *
+		 *		Falloff = 0 is easy, because d3d's and opengl's spot light
+		 *		equations have the falloff resp. exponent parameter as an
+		 *		exponent, so the spot light lighting will always be 1.0 for
+		 *		both of them, and we don't have to care for the rest of the
+		 *		rather complex calculation.
+		 */
+		if(dxlight->dvFalloff)
+		{
+			GLfloat rho = dxlight->dvTheta + (dxlight->dvPhi - dxlight->dvTheta) / (2 * dxlight->dvFalloff);
+			if (rho < 0.0001f)
+			{
+				rho = 0.0001f;
+			}
+			light->exponent = -0.3f / logf(cosf(rho / 2));
+
+			if(light->exponent > 128.0f)
+			{
+				light->exponent = 128.0f;
+			}
+		}
 	}
 	
-	return 0;
-}*/
+	LightApply(ctx, id);
+}
+
+static void LightCreate(mesa3d_ctx_t *ctx, DWORD id)
+{
+	if(id >= ctx->light.lights_size)
+	{
+		DWORD new_size = (id + 8);
+		if(ctx->light.lights == NULL)
+		{
+			ctx->light.lights = HeapAlloc(hSharedHeap, HEAP_ZERO_MEMORY,
+				new_size*sizeof(mesa3d_light_t*));
+		}
+		else
+		{
+			ctx->light.lights = HeapReAlloc(hSharedHeap, HEAP_ZERO_MEMORY, ctx->light.lights,
+				new_size*sizeof(mesa3d_light_t*));
+		}
+		ctx->light.lights_size = new_size;
+	}
+
+	if(ctx->light.lights[id] == NULL)
+	{
+		ctx->light.lights[id] = HeapAlloc(hSharedHeap, HEAP_ZERO_MEMORY, sizeof(mesa3d_light_t));
+		
+		TOPIC("LIGHT", "Light %d created!", id);
+	}
+}
+
+void MesaLightDestroyAll(mesa3d_ctx_t *ctx)
+{
+	DWORD i;
+	if(ctx->light.lights)
+	{
+		for(i = 0; i < ctx->light.lights_size; i++)
+		{
+			if(ctx->light.lights[i] != NULL)
+			{
+				HeapFree(hSharedHeap, 0, ctx->light.lights[i]);
+			}
+		}
+
+		HeapFree(hSharedHeap, 0, ctx->light.lights);
+		ctx->light.lights_size = 0;
+		ctx->light.lights = NULL;
+	}
+}
+
+static void LightActive(mesa3d_ctx_t *ctx, DWORD id, BOOL activate)
+{
+	int gl_id = -1;
+	int i = 0;
+
+	if(id >= ctx->light.lights_size)
+		return;
+
+	mesa3d_light_t *light = ctx->light.lights[id];
+	if(light == NULL)
+		return;
+
+	if(light->active)
+	{
+		if(!activate)
+		{
+			ctx->entry->proc.pglDisable(GL_LIGHT0 + light->active_index);
+			light->active = FALSE;
+			ctx->light.active_bitfield &= ~(1 << light->active_index);
+		}
+	}
+	else
+	{
+		if(activate)
+		{
+			DWORD t = 1;
+			for(i = 0; i < VMHALenv.num_light; i++, t <<= 1)
+			{
+				if((ctx->light.active_bitfield & t) == 0)
+				{
+					gl_id = i;
+					break;
+				}
+			}
+
+			if(gl_id >= 0)
+			{
+				TOPIC("LIGHT", "light %d actived at position %d", id, gl_id);
+
+				light->active = TRUE;
+				light->active_index = gl_id;
+				ctx->light.active_bitfield |= 1 << gl_id;
+				ctx->entry->proc.pglEnable(GL_LIGHT0 + gl_id);
+				
+				MesaSpaceModelviewSet(ctx);
+				LightApply(ctx, id);
+				MesaSpaceModelviewReset(ctx);
+				
+			}
+		}
+	}
+}
+
+static void PlaneApply(mesa3d_ctx_t *ctx, DWORD id)
+{
+	mesa3d_entry_t *entry = ctx->entry;
+
+	GL_CHECK(entry->proc.pglClipPlane(GL_CLIP_PLANE0 + id,
+		&ctx->state.clipping.plane[id][0]));
+}
+
+void MesaTLRecalcModelview(mesa3d_ctx_t *ctx)
+{
+	int i;
+
+	/* recal clips */
+	for(i = 0; i < MESA_CLIPS_MAX; i++)
+	{
+		PlaneApply(ctx, i);
+	}
+
+	/* recal lights */
+	for(i = 0; i < ctx->light.lights_size; i++)
+	{
+		if(ctx->light.lights[i] != NULL)
+		{
+			if(ctx->light.lights[i]->active)
+			{
+				LightApply(ctx, i);
+			}
+		}
+	}
+}
 
 #define NEXT_INST(_s) inst = (LPD3DHAL_DP2COMMAND)(prim + (_s))
 
@@ -97,7 +337,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 	while((LPBYTE)inst < cmdBufferEnd)
 	{
 		LPBYTE prim = (LPBYTE)(inst + 1);
-		switch(inst->bCommand)
+		switch((D3DHAL_DP2OPERATION)inst->bCommand)
 		{
 			COMMAND(D3DDP2OP_POINTS)
 				// Point primitives in vertex buffers are defined by the 
@@ -317,7 +557,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				{
 					start = ((D3DHAL_DP2INDEXEDTRIANGLEFAN*)prim)->wV[0];
 					MesaDrawFVFIndex(ctx, vertices, base+start);
-					
+
 					prim += sizeof(WORD);
 				}
 				entry->proc.pglEnd();
@@ -376,7 +616,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 
 					start = base + ((D3DHAL_DP2INDEXEDLINELIST*)prim)->wV2;
 					MesaDrawFVFIndex(ctx, vertices, start);
-					
+
 					prim += sizeof(D3DHAL_DP2INDEXEDLINELIST);
 				}
 				entry->proc.pglEnd();
@@ -413,7 +653,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				// vertices are determined by the dwVertexType member
 				// of the D3DHAL_DRAWPRIMITIVES2DATA structure.
 				count = (DWORD)inst->wPrimitiveCount * 2;
-				
+
 				// Primitives in an IMM instruction are stored in the
 				// command buffer and are DWORD aligned
 				PRIM_ALIGN;
@@ -532,7 +772,12 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 			COMMAND(D3DDP2OP_ZRANGE)
 				for(i = 0; i < inst->wStateCount; i++)
 				{
+					D3DHAL_DP2ZRANGE *zrange = (D3DHAL_DP2ZRANGE*)prim;
 					prim += sizeof(D3DHAL_DP2ZRANGE);
+					TOPIC("ZRANGE", "D3DDP2OP_ZRANGE = %f %f", zrange->dvMinZ, zrange->dvMaxZ);
+					// entry->glDepthRange(zrange->dvMinZ, zrange->dvMaxZ);
+					// ^JH: I only sees values 0.0 and 1.0, so nothing set when
+					// something sets here some junk
 				}
 				NEXT_INST(0);
 				break;
@@ -541,184 +786,49 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				{
 					LPD3DHAL_DP2SETMATERIAL material = (LPD3DHAL_DP2SETMATERIAL)prim;
 					prim += sizeof(D3DHAL_DP2SETMATERIAL);
-					GLfloat diffuse[4];
-					GLfloat ambient[4];
-					GLfloat specular[4];
-					GLfloat emissive[4];
-					GLfloat shininess;
-					
-					MESA_D3DCOLORVALUE_TO_FV(material->dcvDiffuse,  diffuse);
-					MESA_D3DCOLORVALUE_TO_FV(material->dcvAmbient,  ambient);
-					MESA_D3DCOLORVALUE_TO_FV(material->dcvEmissive, emissive);
-					
-					if(ctx->state.specular)
-					{
-						MESA_D3DCOLORVALUE_TO_FV(material->dcvSpecular, specular);
-					}
-					else
-					{
-						specular[0] = 0.0f;
-						specular[1] = 0.0f;
-						specular[2] = 0.0f;
-						specular[3] = 0.0f;
-					}
 
-					GL_CHECK(entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, &diffuse[0]));
-					GL_CHECK(entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, &ambient[0]));
-					GL_CHECK(entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, &specular[0]));
-					GL_CHECK(entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, &emissive[0]));
-					
+					MESA_D3DCOLORVALUE_TO_FV(material->dcvDiffuse,  ctx->state.material.diffuse);
+					MESA_D3DCOLORVALUE_TO_FV(material->dcvAmbient,  ctx->state.material.ambient);
+					MESA_D3DCOLORVALUE_TO_FV(material->dcvEmissive, ctx->state.material.emissive);
+					MESA_D3DCOLORVALUE_TO_FV(material->dcvSpecular, ctx->state.material.specular);
+
 					if(material->dvPower < 0)
-						shininess = 0;
+						ctx->state.material.shininess = 0;
 					else if(material->dvPower > 128)
-						shininess = 128;
+						ctx->state.material.shininess = 128;
 					else
-						shininess = material->dvPower;
+						ctx->state.material.shininess = material->dvPower;
 					
-					GL_CHECK(entry->proc.pglMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, shininess));
+					MesaApplyMaterial(ctx);
 				}
 				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_SETLIGHT)
 				for(i = 0; i < inst->wStateCount; i++)
 				{
-					LPD3DHAL_DP2SETLIGHT light = (LPD3DHAL_DP2SETLIGHT)prim;
+					LPD3DHAL_DP2SETLIGHT lightset = (LPD3DHAL_DP2SETLIGHT)prim;
 					prim += sizeof(D3DHAL_DP2SETLIGHT);
 
-					TOPIC("LIGHT", "light->dwDataType=%d, light->dwIndex=%d", light->dwDataType, light->dwIndex);
+					TOPIC("LIGHT", "light->dwDataType=%d, light->dwIndex=%d", lightset->dwDataType, lightset->dwIndex);
 
-					switch (light->dwDataType)
+					switch(lightset->dwDataType)
 					{
 						case D3DHAL_SETLIGHT_ENABLE:
-							GL_CHECK(entry->proc.pglEnable(GL_LIGHT0 + light->dwIndex));
+							LightActive(ctx, lightset->dwIndex, TRUE);
 							break;
 						case D3DHAL_SETLIGHT_DISABLE:
-							GL_CHECK(entry->proc.pglDisable(GL_LIGHT0 + light->dwIndex));
+							LightActive(ctx, lightset->dwIndex, FALSE);
 							break;
 						case D3DHAL_SETLIGHT_DATA:
 						{
-							GLenum lindex = GL_LIGHT0 + light->dwIndex;
 							D3DLIGHT7 *light_data = (D3DLIGHT7*)prim;
 							prim += sizeof(D3DLIGHT7);
+							TOPIC("LIGHT", "LIGHT DATA %d, index=%d, ptr=%X",
+								light_data->dltType, lightset->dwIndex, light_data);
 
-							GLfloat diffuse[4];
-							GLfloat specular[4];
-							GLfloat ambient[4];
-							GLfloat quad_att;
-							GLfloat pos[4];
-							GLfloat dir[4];
-							GLfloat range2 = light_data->dvRange * light_data->dvRange;
-							
-							/* Light settings are affected by the model view in OpenGL, the View transform in direct3d*/
-							GL_CHECK(entry->proc.pglMatrixMode(GL_MODELVIEW));
-							GL_CHECK(entry->proc.pglPushMatrix());
-							GL_CHECK(entry->proc.pglLoadMatrixf(&ctx->matrix.view[0]));
-
-							MESA_D3DCOLORVALUE_TO_FV(light_data->dcvDiffuse, diffuse);
-							MESA_D3DCOLORVALUE_TO_FV(light_data->dcvSpecular, specular);
-							MESA_D3DCOLORVALUE_TO_FV(light_data->dcvAmbient, ambient);
-
-							GL_CHECK(entry->proc.pglLightfv(lindex, GL_DIFFUSE, &diffuse[0]));
-							GL_CHECK(entry->proc.pglLightfv(lindex, GL_SPECULAR, &specular[0]));
-							GL_CHECK(entry->proc.pglLightfv(lindex, GL_AMBIENT, &ambient[0]));
-
-							/* taken from wine */
-							if(range2 >= FLT_MIN)
-								quad_att = 1.4f/range2;
-        			else
-								quad_att = 0.0f; /*  0 or  MAX?  (0 seems to be ok) */
-
-							switch(light_data->dltType)
-							{
-								case D3DLIGHT_POINT:
-									pos[0] = light_data->dvPosition.x;
-									pos[1] = light_data->dvPosition.y;
-									pos[2] = light_data->dvPosition.z;
-									pos[3] = 1.0f;
-
-									GL_CHECK(entry->proc.pglLightfv(lindex, GL_POSITION, &pos[0]));
-									GL_CHECK(entry->proc.pglLightf(lindex, GL_SPOT_CUTOFF, 180.0f));
-									GL_CHECK(entry->proc.pglLightf(lindex, GL_CONSTANT_ATTENUATION, light_data->dvAttenuation0));
-									GL_CHECK(entry->proc.pglLightf(lindex, GL_LINEAR_ATTENUATION, light_data->dvAttenuation1));
-
-									if(quad_att < light_data->dvAttenuation2)
-                    quad_att = light_data->dvAttenuation2;
-
-                	GL_CHECK(entry->proc.pglLightf(lindex, GL_QUADRATIC_ATTENUATION, quad_att));
-									break;
-								case D3DLIGHT_SPOT:
-									pos[0] = light_data->dvPosition.x;
-									pos[1] = light_data->dvPosition.y;
-									pos[2] = light_data->dvPosition.z;
-									pos[3] = 1.0f;
-
-									dir[0] = light_data->dvDirection.x;
-									dir[1] = light_data->dvDirection.y;
-									dir[2] = light_data->dvDirection.z;
-									dir[3] = 0.0f;
-									/*
-										WINE: 
-										opengl-ish and d3d-ish spot lights use too different models
-										for the light "intensity" as a function of the angle towards
-										the main light direction, so we only can approximate very
-										roughly. However, spot lights are rather rarely used in games
-										(if ever used at all). Furthermore if still used, probably
-										nobody pays attention to such details.
-
-										Falloff = 0 is easy, because d3d's and opengl's spot light
-										equations have the falloff resp. exponent parameter as an
-										exponent, so the spot light lighting will always be 1.0 for
-										both of them, and we don't have to care for the rest of the
-										rather complex calculation.
-									*/
-									GLfloat exponent = 0.0f;
-									if(light_data->dvFalloff)
-									{
-										GLfloat rho = light_data->dvTheta + (light_data->dvPhi - light_data->dvTheta) / (2 * light_data->dvFalloff);
-										if (rho < 0.0001f)
-										{
-											rho = 0.0001f;
-										}
-                		exponent = -0.3f / logf(cosf(rho / 2));
-
-                		if(exponent > 128.0f)
-                		{
-                			exponent = 128.0f;
-                		}
-									}
-									
-									GL_CHECK(entry->proc.pglLightfv(lindex, GL_POSITION, &pos[0]));
-									GL_CHECK(entry->proc.pglLightfv(lindex, GL_SPOT_DIRECTION, &dir[0]));
-									GL_CHECK(entry->proc.pglLightf(lindex, GL_SPOT_EXPONENT, exponent));
-									GL_CHECK(entry->proc.pglLightf(lindex, GL_SPOT_CUTOFF, (light_data->dvPhi * 90) / M_PI));
-									GL_CHECK(entry->proc.pglLightf(lindex, GL_CONSTANT_ATTENUATION, light_data->dvAttenuation0));
-									GL_CHECK(entry->proc.pglLightf(lindex, GL_LINEAR_ATTENUATION, light_data->dvAttenuation1));
-
-									if (quad_att < light_data->dvAttenuation2)
-										quad_att = light_data->dvAttenuation2;
-
-									GL_CHECK(entry->proc.pglLightf(lindex, GL_QUADRATIC_ATTENUATION, quad_att));
-									break;
-								case D3DLIGHT_DIRECTIONAL:
-									dir[0] = -light_data->dvDirection.x;
-									dir[1] = -light_data->dvDirection.y;
-									dir[2] = -light_data->dvDirection.z;
-									dir[3] = 0.0f;
-
-									/* Note GL uses w position of 0 for direction! */
-									GL_CHECK(entry->proc.pglLightfv(lindex, GL_POSITION, &dir[0]));
-									GL_CHECK(entry->proc.pglLightf(lindex, GL_SPOT_CUTOFF, 180.0f));
-									GL_CHECK(entry->proc.pglLightf(lindex, GL_SPOT_EXPONENT, 0.0f));
-									break;
-								case D3DLIGHT_PARALLELPOINT:
-								case D3DLIGHT_GLSPOT:
-								default:
-									break;
-							} // switch(light_data->dltType)
-							
-							
-							GL_CHECK(entry->proc.pglPopMatrix());
-							break;
+							MesaSpaceModelviewSet(ctx);
+							LightData(ctx, lightset->dwIndex, light_data);
+							MesaSpaceModelviewReset(ctx);
 						}
 					} // switch(light->dwDataType)
 				} // for
@@ -727,7 +837,10 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 			COMMAND(D3DDP2OP_CREATELIGHT)
 				for(i = 0; i < inst->wStateCount; i++)
 				{
+					D3DHAL_DP2CREATELIGHT *lightcreate = (D3DHAL_DP2CREATELIGHT*)prim;
 					prim += sizeof(D3DHAL_DP2CREATELIGHT);
+					
+					LightCreate(ctx, lightcreate->dwIndex);
 				}
 				NEXT_INST(0);
 				break;
@@ -849,25 +962,25 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 			COMMAND(D3DDP2OP_SETCLIPPLANE)
 				for(i = 0; i < inst->wStateCount; i++)
 				{
-					GLdouble dv[4];
 					D3DHAL_DP2SETCLIPPLANE *plane = (D3DHAL_DP2SETCLIPPLANE*)prim;
 					prim += sizeof(D3DHAL_DP2SETCLIPPLANE);
 
-					dv[0] = plane->plane[0];
-					dv[1] = plane->plane[1];
-					dv[2] = plane->plane[2];
-					dv[3] = plane->plane[3];
-					
-					GL_CHECK(entry->proc.pglMatrixMode(GL_MODELVIEW));
-					GL_CHECK(entry->proc.pglPushMatrix());
-					GL_CHECK(entry->proc.pglLoadMatrixf(&ctx->matrix.view[0]));
-					
-					GL_CHECK(entry->proc.pglClipPlane(GL_CLIP_PLANE0 + plane->dwIndex, &dv[0]));
-					
-					GL_CHECK(entry->proc.pglPopMatrix());
+					if(plane->dwIndex < MESA_CLIPS_MAX)
+					{
+						ctx->state.clipping.plane[plane->dwIndex][0] = plane->plane[0];
+						ctx->state.clipping.plane[plane->dwIndex][1] = plane->plane[1];
+						ctx->state.clipping.plane[plane->dwIndex][2] = plane->plane[2];
+						ctx->state.clipping.plane[plane->dwIndex][3] = plane->plane[3];
+					}
+
+					MesaSpaceModelviewSet(ctx);
+					PlaneApply(ctx, plane->dwIndex);
+					MesaSpaceModelviewReset(ctx);
 				}
 				NEXT_INST(0);
 				break;
+			// COMMAND(D3DDP2OP_RESERVED0)
+			// Used by the front-end only
 			default:
 				TRACE("Unknown command: 0x%X", inst->bCommand);
 				

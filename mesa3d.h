@@ -31,6 +31,17 @@ typedef OSMESAproc (APIENTRYP OSMesaGetProcAddress_h)(const char *funcName);
 
 #define MESA_TMU_MAX 8
 #define MESA_CLIPS_MAX 8
+#define MESA_WORLDS_MAX 4
+
+#define MESA_MAT_DIFFUSE_C1  0x01
+#define MESA_MAT_AMBIENT_C1  0x02
+#define MESA_MAT_EMISSIVE_C1 0x04
+#define MESA_MAT_SPECULAR_C1 0x08
+
+#define MESA_MAT_DIFFUSE_C2  0x10
+#define MESA_MAT_AMBIENT_C2  0x20
+#define MESA_MAT_EMISSIVE_C2 0x40
+#define MESA_MAT_SPECULAR_C2 0x80
 
 typedef struct mesa3d_texture
 {
@@ -53,6 +64,25 @@ typedef struct mesa3d_texture
 	BOOL compressed;
 	BOOL tmu[MESA_TMU_MAX];
 } mesa3d_texture_t;
+
+typedef struct mesa3d_light
+{
+	BOOL active;
+	DWORD active_index;
+	D3DLIGHTTYPE type;
+	GLfloat diffuse[4];
+	GLfloat specular[4];
+	GLfloat ambient[4];
+	GLfloat quad_att;
+	GLfloat pos[4];
+	GLfloat dir[4];
+	GLfloat attenuation[4]; // attenuation[3]: GL_QUADRATIC_ATTENUATION
+	GLfloat range;
+	GLfloat falloff;
+	GLfloat theta;
+	GLfloat phi;
+	GLfloat exponent;
+} mesa3d_light_t;
 
 struct mesa3d_tmustate
 {
@@ -84,7 +114,8 @@ struct mesa3d_tmustate
 	D3DTEXTUREMAGFILTER dx_mag;
 	D3DTEXTUREMINFILTER dx_min;
 	D3DTEXTUREMIPFILTER dx_mip;
-	
+	DWORD anisotropy;
+
 	// mipmap
 	GLfloat miplodbias;
 	GLint mipmaxlevel;
@@ -147,15 +178,20 @@ typedef struct mesa3d_ctx
 		GLint sw;
 		GLint sh;
 		BOOL zvisible; // Z-visibility testing
-		BOOL specular;
+		BOOL specular; // specular enable (DX state)
+		BOOL specular_vertex; // use glSecondaryColor
 		BOOL blend;
 		GLenum blend_sfactor;
 		GLenum blend_dfactor;
-		GLenum alphafunc;
-		GLclampf alpharef;
 		DWORD overrides[4]; // 128 bit set
 		DWORD stipple[32];
 		GLfloat tfactor[4]; // TEXTUREFACTOR eq. GL_CONSTANT
+		BOOL texperspective;
+		struct {
+			BOOL     enabled;
+			GLenum   func;
+			GLclampf ref;
+		} alpha;
 		struct {
 			BOOL enabled;
 			GLenum  tmode;
@@ -173,6 +209,7 @@ typedef struct mesa3d_ctx
 			int pos_diffuse;
 			int pos_specular;
 			int pos_tmu[MESA_TMU_MAX];
+			int betas;
 		} fvf;
 		struct {
 			BOOL enabled;
@@ -194,10 +231,19 @@ typedef struct mesa3d_ctx
 			D3DMATERIALCOLORSOURCE specular_source;
 			D3DMATERIALCOLORSOURCE ambient_source;
 			D3DMATERIALCOLORSOURCE emissive_source;
-		} light;
+			BOOL color_vertex;
+			GLfloat diffuse[4];
+			GLfloat ambient[4];
+			GLfloat specular[4];
+			GLfloat emissive[4];
+			GLfloat shininess;
+			DWORD untracked;
+			BOOL lighting;
+		} material;
 		struct {
 			BOOL enabled;
 			BOOL activeplane[MESA_CLIPS_MAX];
+			GLdouble plane[MESA_CLIPS_MAX][4];
 		} clipping;
 		struct mesa3d_tmustate tmu[MESA_TMU_MAX];
 	} state;
@@ -237,16 +283,22 @@ typedef struct mesa3d_ctx
 		/* DX matices */
 		GLfloat proj[16];
 		GLfloat view[16];
-		GLfloat world[4][16];
+		GLfloat world[MESA_WORLDS_MAX][16];
 		GLint viewport[4];
 		/* precalculated values */
 		GLfloat projfix[16];
 		GLfloat vpnorm[4]; /* viewport for faster unproject */
 		BOOL identity_mode;
-		BOOL outdated_stack;
+		DWORD outdated_stack; // MesaApplyTransform -> changes
 		int weight;
 	} matrix;
 	
+	struct {
+		DWORD lights_size;
+		DWORD active_bitfield;
+		mesa3d_light_t **lights;
+	} light;
+
 	mesa_surfaces_table_t *surfaces;
 } mesa3d_ctx_t;
 
@@ -346,6 +398,7 @@ mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DDSURF *dds, DDSURF *ddz);
 void MesaDestroyCtx(mesa3d_ctx_t *ctx);
 void MesaDestroyAllCtx(mesa3d_entry_t *entry);
 void MesaInitCtx(mesa3d_ctx_t *ctx);
+void MesaLightDestroyAll(mesa3d_ctx_t *ctx);
 
 void MesaBlockLock(mesa3d_ctx_t *ctx);
 void MesaBlockUnlock(mesa3d_ctx_t *ctx);
@@ -403,9 +456,11 @@ void MesaIdentity(GLfloat matrix[16]);
 BOOL MesaIsIdentity(GLfloat matrix[16]);
 void MesaSpaceIdentitySet(mesa3d_ctx_t *ctx);
 void MesaSpaceIdentityReset(mesa3d_ctx_t *ctx);
+void MesaSpaceModelviewSet(mesa3d_ctx_t *ctx);
+void MesaSpaceModelviewReset(mesa3d_ctx_t *ctx);
 //void MesaConvProjection(GLfloat m[16]);
 //void MesaConvView(GLfloat m[16]);
-void MesaProjectWorlds(mesa3d_ctx_t *ctx, GLfloat *in3, GLfloat *out3);
+void MesaVetexBlend(mesa3d_ctx_t *ctx, GLfloat coords[3], GLfloat *betas, int betas_cnt, GLfloat out[4]);
 
 /* vertex (needs GL_BLOCK + glBegin) */
 void MesaDrawVertex(mesa3d_ctx_t *ctx, LPD3DVERTEX vertex);
@@ -435,7 +490,10 @@ mesa3d_texture_t *SurfaceGetTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *ctx, i
 
 /* need GL block */
 mesa3d_texture_t *MesaTextureFromSurfaceId(mesa3d_ctx_t *ctx, DWORD surfaceId);
+void MesaApplyMaterial(mesa3d_ctx_t *ctx);
 
+/* need GL block + viewmodel matrix to matrix.view */
+void MesaTLRecalcModelview(mesa3d_ctx_t *ctx);
 
 /* chroma to alpha conversion */
 void *MesaChroma32(const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);

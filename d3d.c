@@ -725,15 +725,20 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
   	{
     	dxcaps.dwMaxActiveLights = VMHALenv.num_light;
     	dxcaps.wMaxUserClipPlanes = VMHALenv.num_clips; // ref driver = 6
-    	dxcaps.wMaxVertexBlendMatrices = 0; // this need GL_ARB_vertex_blend;
+    	dxcaps.wMaxVertexBlendMatrices = MESA_WORLDS_MAX; // this need GL_ARB_vertex_blend;
 
     	dxcaps.dwVertexProcessingCaps = 
     		//D3DVTXPCAPS_TEXGEN |
-    		//D3DVTXPCAPS_LOCALVIEWER |
+    		D3DVTXPCAPS_LOCALVIEWER |
 				D3DVTXPCAPS_MATERIALSOURCE7   |
 				D3DVTXPCAPS_VERTEXFOG         |
 				D3DVTXPCAPS_DIRECTIONALLIGHTS |
 				D3DVTXPCAPS_POSITIONALLIGHTS;
+    }
+    
+    if(VMHALenv.max_anisotropy > 1)
+    {
+    	dxcaps.dwMaxAnisotropy = VMHALenv.max_anisotropy;
     }
     
     if(VMHALenv.ddi <= 5)

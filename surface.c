@@ -109,7 +109,6 @@ DWORD SurfaceCreate(LPDDRAWI_DDRAWSURFACE_LCL surf)
 	}
 	
 	surf->dwReserved1 = (DWORD)info;
-	TOPIC("TARGET", "surf->dwReserved1=%X", surf->dwReserved1);
 
 	return surf->dwReserved1;
 }
@@ -499,7 +498,8 @@ void SurfaceCopyLCL(LPDDRAWI_DDRAWSURFACE_LCL surf, DDSURF *dest)
 
 BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, LPDDRAWI_DDRAWSURFACE_LCL surface)
 {
-	TOPIC("TARGET", "dwSurfaceHandle = %d", surface->lpSurfMore->dwSurfaceHandle);
+	TOPIC("TARGET", "dwSurfaceHandle=%d, vram=0x%X", surface->lpSurfMore->dwSurfaceHandle,
+		surface->lpGbl->fpVidMem);
 
 	if(surface->lpSurfMore->dwSurfaceHandle == 0)
 	{

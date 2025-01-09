@@ -148,16 +148,6 @@ void SurfaceDeattachCtx(void *mesa_ctx);
 void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf);
 void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf);
 
-/*
-DWORD SurfaceNestCreate(LPDDRAWI_DDRAWSURFACE_LCL surf, void *ddlcl);
-void SurfaceNestDestroy(DWORD nest, BOOL call_destructor);
-void SurfaceNestCleanupCtx(void *mesa_ctx);
-void SurfaceNestCleanupAll(void *ddlcl);
-
-// need GL block
-void *SurfaceNestTexture(DWORD nest, void *mesa_ctx);
-*/
-
 inline static DWORD SurfacePitch(DWORD width, DWORD bpp)
 {
 	DWORD bp = (bpp + 7) / 8;
@@ -174,13 +164,13 @@ typedef struct _VMHAL_enviroment
 	BOOL dx7; // dx7 runtime latch
 	DWORD ddi;
 	BOOL  hw_tl;
-	BOOL  broken_3buff;
 	DWORD texture_max_width;
 	DWORD texture_max_height;
 	DWORD texture_num_units;
 	DWORD num_light;
 	DWORD num_clips;
 	BOOL zfloat;
+	DWORD max_anisotropy;
 } VMHAL_enviroment_t;
 
 #define DX7_SURFACE_NEST_TYPES (DDSCAPS_TEXTURE | DDSCAPS_3DDEVICE | DDSCAPS_ZBUFFER)

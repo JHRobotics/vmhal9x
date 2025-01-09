@@ -104,6 +104,12 @@
 	| D3DPRASTERCAPS_STIPPLE      \
 	| D3DPRASTERCAPS_WFOG         \
 	| D3DPRASTERCAPS_WBUFFER      \
+	| D3DPRASTERCAPS_ANTIALIASSORTINDEPENDENT \
+	| D3DPRASTERCAPS_MIPMAPLODBIAS \
+	| D3DPRASTERCAPS_ZBIAS         \
+	| D3DPRASTERCAPS_ANISOTROPY    \
+	/* | D3DPRASTERCAPS_ZFOG */    \
+	/* | D3DPRASTERCAPS_TRANSLUCENTSORTINDEPENDENT */ \
 	/* | D3DPRASTERCAPS_ZTEST*/,  \
 	/* zCmpCaps */                \
 	D3DPCMPCAPS_NEVER             \
@@ -197,7 +203,7 @@ static D3DDEVICEDESC_V1 myCaps = {
 	nullPrimCaps,               /* lineCaps */
 	triCaps,                    /* triCaps */
 	DDBD_16 | DDBD_32,	/* dwDeviceRenderBitDepth */
-	DDBD_16 | DDBD_24, /* | DDBD_32 - dwDeviceZBufferBitDepth */
+	DDBD_16 | DDBD_24 | DDBD_32, /* dwDeviceZBufferBitDepth */
 	0,			        /* dwMaxBufferSize */
 	0      			/* dwMaxVertexCount */
 };
@@ -224,7 +230,7 @@ static D3DDEVICEDESC_V1 myCaps6 = {
 	nullPrimCaps,               /* lineCaps */
 	triCaps6,                   /* triCaps */
 	DDBD_16 | DDBD_32,	/* dwDeviceRenderBitDepth */
-	DDBD_16 | DDBD_24, /* | DDBD_32* - dwDeviceZBufferBitDepth */
+	DDBD_16 | DDBD_24 | DDBD_32, /* dwDeviceZBufferBitDepth */
 	0,			        /* dwMaxBufferSize */
 	0      			/* dwMaxVertexCount */
 };
@@ -252,7 +258,7 @@ static D3DDEVICEDESC_V1 myCaps7 = {
 	nullPrimCaps,               /* lineCaps */
 	triCaps6,                   /* triCaps */
 	DDBD_16 | DDBD_32,	/* dwDeviceRenderBitDepth */
-	DDBD_16 | DDBD_24, /* | DDBD_32* - dwDeviceZBufferBitDepth */
+	DDBD_16 | DDBD_24 | DDBD_32, /* dwDeviceZBufferBitDepth */
 	0,			        /* dwMaxBufferSize */
 	0,      			/* dwMaxVertexCount */
 };
