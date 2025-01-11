@@ -59,6 +59,8 @@ extern HANDLE hSharedHeap;
 #define SURF_TYPE_TEX  2
 //#define SURF_TYPE_CTX  3
 
+#define SURF_FLAG_EMPTY 1
+
 typedef struct surface_attachment
 {
 	struct surface_attachment *next;
@@ -103,7 +105,7 @@ DWORD SurfaceCreate(LPDDRAWI_DDRAWSURFACE_LCL surf)
 	{
 		info->magic = SURFACE_TABLE_MAGIC;
 		info->first = NULL;
-		info->flags = 0;
+		info->flags = SURF_FLAG_EMPTY;
 		
 		SurfaceCopyLCL(surf, &info->surf);
 	}
@@ -223,6 +225,9 @@ void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf)
 	surface_info_t *info = SurfaceGetInfo(surf);
 	if(info)
 	{
+		// something was write to surface, remove empty flag
+		info->flags &= ~SURF_FLAG_EMPTY;
+
 		surface_attachment_t *item = info->first;
 		while(item)
 		{
@@ -253,7 +258,7 @@ void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf)
 			{
 				GL_BLOCK_BEGIN(citem->ctx)
 					MesaBufferUploadColor(ctx, (void*)vidmem);
-					ctx->render.dirty = TRUE;
+					ctx->render.dirty = FALSE;
 				GL_BLOCK_END
 			}
 			
@@ -263,7 +268,7 @@ void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf)
 				{
 					GL_BLOCK_BEGIN(citem->ctx)
 						MesaBufferUploadDepth(ctx, (void*)vidmem);
-						ctx->render.zdirty = TRUE;
+						ctx->render.zdirty = FALSE;
 					GL_BLOCK_END
 				}
 			}
@@ -305,7 +310,7 @@ void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf)
 		{
 			TRACE("SurfaceFromMesa - citem->ctx->backbuffer.fpVidMem = %X, vidmem = %X",
 				citem->ctx->backbuffer.fpVidMem, vidmem);
-			if(citem->ctx->backbuffer.fpVidMem == vidmem)
+			if(citem->ctx->backbuffer.fpVidMem == vidmem && citem->ctx->render.dirty)
 			{
 				GL_BLOCK_BEGIN(citem->ctx)
 					MesaBufferDownloadColor(ctx, (void*)vidmem);
@@ -315,7 +320,7 @@ void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf)
 			
 			if(citem->ctx->render.zdirty && citem->ctx->depth_bpp)
 			{
-				if(citem->ctx->depth.fpVidMem == vidmem)
+				if(citem->ctx->depth.fpVidMem == vidmem && citem->ctx->render.zdirty)
 				{
 					GL_BLOCK_BEGIN(citem->ctx)
 						MesaBufferDownloadDepth(ctx, (void*)vidmem);
@@ -518,3 +523,27 @@ BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, LPD
 	
 	return FALSE;
 }
+
+BOOL SurfaceIsEmpty(LPDDRAWI_DDRAWSURFACE_LCL surf)
+{
+	surface_info_t *info = SurfaceGetInfo(surf);
+	if(info)
+	{
+		if(info->flags & SURF_FLAG_EMPTY)
+		{
+			return TRUE;
+		}
+	}
+	
+	return FALSE;
+}
+
+void SurfaceClearEmpty(LPDDRAWI_DDRAWSURFACE_LCL surf)
+{
+	surface_info_t *info = SurfaceGetInfo(surf);
+	if(info)
+	{
+		info->flags &= ~SURF_FLAG_EMPTY;
+	}
+}
+

@@ -584,6 +584,18 @@ static void *MesaFindBackbuffer(mesa3d_ctx_t *ctx, BOOL *is_visible, BOOL get_sp
 	return (void*)addr;
 }
 
+static void ClearSurfaceData(LPDDRAWI_DDRAWSURFACE_LCL surf)
+{
+	if(surf->lpGbl->fpVidMem != 0)
+	{
+		size_t s = surf->lpGbl->dwBlockSizeX * surf->lpGbl->dwBlockSizeY;
+		memset((void*)surf->lpGbl->fpVidMem, 0, s);
+		TOPIC("CLEAR", "clear surface 0x%X", surf->lpGbl->fpVidMem);
+		
+		SurfaceClearEmpty(surf);
+	}
+}
+
 mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DDSURF *dds, DDSURF *ddz)
 {
 	TRACE_ENTRY
@@ -627,6 +639,11 @@ mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DDSURF *dds, DDSURF *ddz)
 				if(ctx == NULL)
 					break;
 
+				if(SurfaceIsEmpty(dds->lpLcl))
+				{
+					SurfaceClearEmpty(dds->lpLcl);
+				}
+
 				ctx->thread_lock = 0;
 				ctx->entry = entry;
 				ctx->id = i;
@@ -634,6 +651,10 @@ mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DDSURF *dds, DDSURF *ddz)
 				ctx->depth_bpp = bpp_depth;
 				if(ddz)
 				{
+					if(SurfaceIsEmpty(ddz->lpLcl))
+					{
+						SurfaceClearEmpty(ddz->lpLcl);
+					}
 					memcpy(&ctx->depth, ddz, sizeof(DDSURF));
 				}
 				ctx->state.sw = width;
@@ -766,12 +787,22 @@ BOOL MesaSetTarget(mesa3d_ctx_t *ctx, DDSURF *dds, DDSURF *ddz)
 		MesaBufferFBOSetup(ctx, width, height);
 	}
 	
+	if(SurfaceIsEmpty(dds->lpLcl))
+	{
+		ClearSurfaceData(dds->lpLcl);
+	}
+	
 	TOPIC("TARGET", "New target bpp %d, bpz %d - FP 0x%X", bpp, bpp_depth, dds->lpGbl->fpVidMem);
 		
 	ctx->front_bpp = bpp;
 	ctx->depth_bpp = bpp_depth;
 	if(ddz)
 	{
+		if(SurfaceIsEmpty(ddz->lpLcl))
+		{
+			ClearSurfaceData(ddz->lpLcl);
+		}
+		
 		memcpy(&ctx->depth, ddz, sizeof(DDSURF));
 //		MesaBufferDownloadDepth(ctx, (void*)ddz->lpGbl->fpVidMem);
 //		ctx->render.zdirty = FALSE;
@@ -872,6 +903,8 @@ void MesaInitCtx(mesa3d_ctx_t *ctx)
 	entry->proc.pglLoadIdentity();
 	entry->proc.pglMatrixMode(GL_PROJECTION);
 	entry->proc.pglLoadIdentity();
+	
+	entry->proc.pglDepthRange(-1.0f, 1.0f);
 
 	ctx->matrix.wmax = GL_WRANGE_MAX;
 	MesaIdentity(ctx->matrix.zscale);
@@ -919,6 +952,24 @@ void MesaInitCtx(mesa3d_ctx_t *ctx)
 		ctx->state.tmu[i].dx_mag = D3DTFG_POINT;
 		ctx->state.tmu[i].dx_min = D3DTFN_POINT;
 		
+		/*
+			defaults:
+			https://learn.microsoft.com/en-us/windows/win32/direct3d9/d3dtexturestagestatetype
+		*/
+		ctx->state.tmu[i].dx6_blend  = TRUE;
+		ctx->state.tmu[i].color_op   = D3DTOP_MODULATE;
+		ctx->state.tmu[i].color_arg1 = D3DTA_TEXTURE;
+		ctx->state.tmu[i].color_arg2 = D3DTA_CURRENT;
+		ctx->state.tmu[i].alpha_op   = D3DTOP_SELECTARG1;
+		ctx->state.tmu[i].alpha_arg1 = D3DTA_TEXTURE;
+		ctx->state.tmu[i].alpha_arg2 = D3DTA_CURRENT;
+
+		if(i > 0)
+		{
+			ctx->state.tmu[i].color_op = D3DTOP_DISABLE;
+			ctx->state.tmu[i].alpha_op = D3DTOP_DISABLE;
+		}
+		
 		MesaIdentity(ctx->state.tmu[i].matrix);
 	}
 
@@ -941,6 +992,9 @@ void MesaInitCtx(mesa3d_ctx_t *ctx)
 	ctx->state.stencil.ref       = 0;
 	ctx->state.stencil.mask      = 0xFF;
 	ctx->state.stencil.writemask = 0xFF;
+
+	ctx->render.rop2 = R2_COPYPEN;
+	ctx->render.planemask = 0xFFFFFFFF;
 
 	MesaDepthReeval(ctx);
 	entry->proc.pglDepthFunc(GL_LESS);
@@ -1079,6 +1133,9 @@ mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, DDSURF *surf)
 					}
 				}
 
+				if(SurfaceIsEmpty(surf->lpLcl))
+					ClearSurfaceData(surf->lpLcl);
+
 				SurfaceAttachTexture(surf->lpLcl, tex, 0);
 				
 				/* mipmaps */	
@@ -1090,7 +1147,10 @@ mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, DDSURF *surf)
 						tex->data_ptr[level+1] = surf->lpAttachmentsGbl[level]->fpVidMem;
 						tex->data_dirty[level+1] = TRUE;
 						tex->data_surf[level+1] = surf->lpAttachmentsLcl[level];
-						
+
+						if(SurfaceIsEmpty(tex->data_surf[level+1]))
+							ClearSurfaceData(tex->data_surf[level+1]);
+
 						SurfaceAttachTexture(tex->data_surf[level+1], tex, level+1);
 					}
 					tex->mipmap_level = surf->dwAttachments;
@@ -1421,30 +1481,30 @@ void MesaApplyMaterial(mesa3d_ctx_t *ctx)
 static void MesaApplyColorMaterial(mesa3d_ctx_t *ctx)
 {
 	ctx->state.material.untracked = 0;
-	
+
 	if(ctx->state.material.diffuse_source == D3DMCS_COLOR1)
 		ctx->state.material.untracked |= MESA_MAT_DIFFUSE_C1;
 
 	if(ctx->state.material.ambient_source == D3DMCS_COLOR1)
 		ctx->state.material.untracked |= MESA_MAT_AMBIENT_C1;
-	
+
 	if(ctx->state.material.emissive_source == D3DMCS_COLOR1)
 		ctx->state.material.untracked |= MESA_MAT_EMISSIVE_C1;
-	
+
 	if(ctx->state.material.specular_source == D3DMCS_COLOR1)
 		ctx->state.material.untracked |= MESA_MAT_SPECULAR_C1;
-	
+
 	if(ctx->state.specular && ctx->state.material.specular_source == D3DMCS_COLOR2)
 		ctx->state.specular_vertex = TRUE;
 	else
 		ctx->state.specular_vertex = FALSE;
-	
+
 	if(ctx->state.material.diffuse_source == D3DMCS_COLOR2)
 		ctx->state.material.untracked |= MESA_MAT_DIFFUSE_C2;
 
 	if(ctx->state.material.ambient_source == D3DMCS_COLOR2)
 		ctx->state.material.untracked |= MESA_MAT_AMBIENT_C2;
-	
+
 	if(ctx->state.material.emissive_source == D3DMCS_COLOR2)
 		ctx->state.material.untracked |= MESA_MAT_EMISSIVE_C2;
 
@@ -1454,7 +1514,7 @@ static void MesaApplyColorMaterial(mesa3d_ctx_t *ctx)
 #define TSS_DWORD (*((DWORD*)value))
 #define TSS_FLOAT (*((D3DVALUE*)value))
 
-#define RENDERSTATE(_c) case _c: TOPIC("RS", "%s=0x%X", #_c, TSS_DWORD);
+#define RENDERSTATE(_c) case _c: TOPIC("RS", "%s:%02d=0x%X", #_c, tmu, TSS_DWORD);
 
 void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value)
 {
@@ -1529,9 +1589,15 @@ void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value)
 			break;
 		/* identifies which set of texture coordinates index this texture */
 		RENDERSTATE(D3DTSS_TEXCOORDINDEX)
-			ts->coordindex = TSS_DWORD;
+		{
+			// Values, used with D3DTSS_TEXCOORDINDEX, to specify that the vertex data(position
+			// and normal in the camera space) should be taken as texture coordinates
+			// Low 16 bits are used to specify texture coordinate index, to take the WRAP mode from
+			// D3DTSS_TCI_*
+			ts->coordindex = (TSS_DWORD) & 0xFFFF;
 			TOPIC("TEXCOORDINDEX", "TEXCOORDINDEX %d for unit %d", TSS_DWORD, tmu);
 			break;
+		}
 		/* D3DTEXTUREADDRESS for both coordinates */
 		RENDERSTATE(D3DTSS_ADDRESS)
 			ts->texaddr_u = (D3DTEXTUREADDRESS)TSS_DWORD;
@@ -1828,11 +1894,11 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 			break;
 		RENDERSTATE(D3DRENDERSTATE_ROP2) /* ROP2 */
 			WARN("D3DRENDERSTATE_ROP2=0x%X", state->dwArg[0]);
-			/* nop */
+			ctx->render.rop2 = state->dwArg[0] & 0xF;
 			break;
 		RENDERSTATE(D3DRENDERSTATE_PLANEMASK) /* DWORD physical plane mask */
 			WARN("D3DRENDERSTATE_PLANEMASK=0x%X", state->dwArg[0]);
-			/* nop */
+			ctx->render.planemask = state->dwArg[0];
 			break;
 		RENDERSTATE(D3DRENDERSTATE_ZWRITEENABLE) /* TRUE to enable z writes */
 			if(ctx->depth_bpp)
@@ -1922,7 +1988,7 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 			break;
 		RENDERSTATE(D3DRENDERSTATE_ALPHAREF) /* D3DFIXED */
 			TOPIC("BLEND", "D3DRENDERSTATE_ALPHAREF = 0x%X", state->dwArg[0]);
-			ctx->state.alpha.ref = (GLclampf)(state->dwArg[0]/255.0f); 
+			ctx->state.alpha.ref = (GLclampf)(state->dwArg[0] * MESA_1OVER255); 
 			ctx->state.tmu[0].update = TRUE;
 			break;
 		RENDERSTATE(D3DRENDERSTATE_ALPHAFUNC) /* D3DCMPFUNC */
@@ -2495,11 +2561,7 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 	/*
 	 * Texture blend
 	 */
-	/*if(color_key)
-	{
-		GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE));
-	}
-	else */if(ts->dx6_blend)
+	if(ts->dx6_blend)
 	{
 		GLint color_fn = GL_REPLACE;
 		GLint color_arg1_source = GL_TEXTURE;
@@ -3124,6 +3186,12 @@ void MesaSceneEnd(mesa3d_ctx_t *ctx)
 		if(is_visible)
 			FBHDA_access_end(0);
 	}
+	
+	if(mesa_dump_key() == MESA_KEY_DUMP)
+	{
+		mesa_dump(ctx);
+		mesa_dump_inc();
+	}
 }
 
 #define COPY_MATRIX(_srcdx, _dst) do{ \
@@ -3133,69 +3201,95 @@ void MesaSceneEnd(mesa3d_ctx_t *ctx)
 	(_dst)[12]=(_srcdx)->_41; (_dst)[13]=(_srcdx)->_42; (_dst)[14]=(_srcdx)->_43; (_dst)[15]=(_srcdx)->_44; \
 	}while(0)
 
-void MesaSetTransform(mesa3d_ctx_t *ctx, D3DTRANSFORMSTATETYPE state, D3DMATRIX *matrix)
+void MesaSetTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *matrix)
 {
-	TRACE("MesaSetTransform(ctx, %d, matrix)", state);
+	TOPIC("MATRIX", "MesaSetTransform(ctx, 0x%X, %p)", xtype, matrix);
+
+	/**
+		This is undocumented and comes from reference driver.
+		Original note:
+		  BUGBUG is there a define for 0x80000000?
+	**/
+	BOOL set_identity = (xtype & 0x80000000) == 0 ? FALSE : TRUE;
+	D3DTRANSFORMSTATETYPE state = (D3DTRANSFORMSTATETYPE)(xtype & 0x7FFFFFFF);
+	GLfloat m[16];
+	if(!set_identity && matrix != NULL)
+	{
+		COPY_MATRIX(matrix, m);
+	}
+	else
+	{
+		MesaIdentity(m);
+	}
 	
 	switch(state)
 	{
 		case D3DTRANSFORMSTATE_WORLD:
-			COPY_MATRIX(matrix, ctx->matrix.world[0]);
+			memcpy(ctx->matrix.world[0], m, sizeof(m));
 			MesaApplyTransform(ctx, MESA_TF_WORLD);
 			break;
 		case D3DTRANSFORMSTATE_VIEW:
-			COPY_MATRIX(matrix, ctx->matrix.view);
+			memcpy(ctx->matrix.view, m, sizeof(m));
 			MesaApplyTransform(ctx, MESA_TF_VIEW);
 			break;
 		case D3DTRANSFORMSTATE_PROJECTION:
-			COPY_MATRIX(matrix, ctx->matrix.proj);
+			memcpy(ctx->matrix.proj, m, sizeof(m));
 			MesaApplyTransform(ctx, MESA_TF_PROJECTION);
 			break;
 		case D3DTRANSFORMSTATE_WORLD1:
-			COPY_MATRIX(matrix, ctx->matrix.world[1]);
+			memcpy(ctx->matrix.world[1], m, sizeof(m));
 			MesaApplyTransform(ctx, MESA_TF_WORLD);
 			break;
 		case D3DTRANSFORMSTATE_WORLD2:
-			COPY_MATRIX(matrix, ctx->matrix.world[2]);
+			memcpy(ctx->matrix.world[2], m, sizeof(m));
 			MesaApplyTransform(ctx, MESA_TF_WORLD);
 			break;
 		case D3DTRANSFORMSTATE_WORLD3:
-			COPY_MATRIX(matrix, ctx->matrix.world[3]);
+			memcpy(ctx->matrix.world[3], m, sizeof(m));
 			MesaApplyTransform(ctx, MESA_TF_WORLD);
 			break;
 		case D3DTRANSFORMSTATE_TEXTURE0:
-			COPY_MATRIX(matrix, ctx->state.tmu[0].matrix);
+			memcpy(ctx->state.tmu[0].matrix, m, sizeof(m));
 			ctx->state.tmu[0].move = TRUE;
+			MesaDrawRefreshState(ctx);
 			break;
 		case D3DTRANSFORMSTATE_TEXTURE1:
-			COPY_MATRIX(matrix, ctx->state.tmu[1].matrix);
+			memcpy(ctx->state.tmu[1].matrix, m, sizeof(m));
 			ctx->state.tmu[1].move = TRUE;
+			MesaDrawRefreshState(ctx);
 			break;
 		case D3DTRANSFORMSTATE_TEXTURE2:
-			COPY_MATRIX(matrix, ctx->state.tmu[2].matrix);
+			memcpy(ctx->state.tmu[2].matrix, m, sizeof(m));
 			ctx->state.tmu[2].move = TRUE;
+			MesaDrawRefreshState(ctx);
 			break;
 		case D3DTRANSFORMSTATE_TEXTURE3:
-			COPY_MATRIX(matrix, ctx->state.tmu[3].matrix);
+			memcpy(ctx->state.tmu[3].matrix, m, sizeof(m));
 			ctx->state.tmu[3].move = TRUE;
+			MesaDrawRefreshState(ctx);
 			break;
 		case D3DTRANSFORMSTATE_TEXTURE4:
-			COPY_MATRIX(matrix, ctx->state.tmu[4].matrix);
+			memcpy(ctx->state.tmu[4].matrix, m, sizeof(m));
 			ctx->state.tmu[4].move = TRUE;
+			MesaDrawRefreshState(ctx);
 			break;
 		case D3DTRANSFORMSTATE_TEXTURE5:
-			COPY_MATRIX(matrix, ctx->state.tmu[5].matrix);
+			memcpy(ctx->state.tmu[5].matrix, m, sizeof(m));
 			ctx->state.tmu[5].move = TRUE;
+			MesaDrawRefreshState(ctx);
 			break;
 		case D3DTRANSFORMSTATE_TEXTURE6:
-			COPY_MATRIX(matrix, ctx->state.tmu[6].matrix);
+			memcpy(ctx->state.tmu[6].matrix, m, sizeof(m));
 			ctx->state.tmu[6].move = TRUE;
+			MesaDrawRefreshState(ctx);
 			break;
 		case D3DTRANSFORMSTATE_TEXTURE7:
-			COPY_MATRIX(matrix, ctx->state.tmu[7].matrix);
+			memcpy(ctx->state.tmu[7].matrix, m, sizeof(m));
 			ctx->state.tmu[7].move = TRUE;
+			MesaDrawRefreshState(ctx);
 			break;
 		default:
+			WARN("MesaSetTransform: invalid state=%d, xtype=%X", state, xtype);
 			break;
 	}
 }

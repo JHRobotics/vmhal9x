@@ -311,6 +311,14 @@ DWORD __stdcall Lock32(LPDDHAL_LOCKDATA pld)
 		TOPIC("READBACK", "LOCK %X (non primary)", pld->lpDDSurface->lpGbl->fpVidMem);
 	}
 	
+	if(SurfaceIsEmpty(pld->lpDDSurface))
+	{
+		memset((void*)pld->lpDDSurface->lpGbl->fpVidMem, 0,
+			pld->lpDDSurface->lpGbl->dwBlockSizeX * pld->lpDDSurface->lpGbl->dwBlockSizeY);
+		SurfaceClearEmpty(pld->lpDDSurface);
+		TOPIC("CLEAR", "clear in lock 0x%X", pld->lpDDSurface->lpGbl->fpVidMem);
+	}
+	
 	SurfaceFromMesa(pld->lpDDSurface);
 	
 	return DDHAL_DRIVER_NOTHANDLED; /* let the lock processed */

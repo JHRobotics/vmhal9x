@@ -322,6 +322,10 @@ void MesaTLRecalcModelview(mesa3d_ctx_t *ctx)
 #define PRIM_ALIGN prim = (LPBYTE)((ULONG_PTR)(prim + 3) & ~3)
 #define COMMAND(_s) case _s: TRACE("%s", #_s);
 
+#define SET_DIRTY \
+	ctx->render.dirty = TRUE; \
+	ctx->render.zdirty = TRUE
+
 BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LPBYTE vertices, DWORD *error_offset, LPDWORD RStates)
 {
 	TOPIC("READBACK", "MesaDraw6");
@@ -329,7 +333,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 	mesa3d_entry_t *entry = ctx->entry;
 	
 //	MesaDrawSetSurfaces(ctx);
-	
+
 	LPD3DHAL_DP2COMMAND inst = (LPD3DHAL_DP2COMMAND)cmdBufferStart;
 	DWORD start, count, base;
 	DWORD i;
@@ -351,6 +355,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				start = ((D3DHAL_DP2POINTS*)prim)->wVStart;
 				count = ((D3DHAL_DP2POINTS*)prim)->wCount;
 				MesaDrawFVFs(ctx, GL_POINTS, vertices, start, count);
+				SET_DIRTY;
 				NEXT_INST(sizeof(D3DHAL_DP2POINTS));
 				break;
 			COMMAND(D3DDP2OP_LINELIST)
@@ -365,6 +370,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				// (wVStart+(wPrimitiveCount-1)*2), wVStart+wPrimitiveCount*2 - 1).
 				start = ((D3DHAL_DP2LINELIST*)prim)->wVStart;
 				MesaDrawFVFs(ctx, GL_LINES, vertices, start, inst->wPrimitiveCount*2);
+				SET_DIRTY;
 				NEXT_INST(sizeof(D3DHAL_DP2LINELIST));
 				break;
 			COMMAND(D3DDP2OP_LINESTRIP)
@@ -378,6 +384,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				// (wVStart+wPrimitiveCount, wVStart+wPrimitiveCount+1).
 				start = ((D3DHAL_DP2LINESTRIP*)prim)->wVStart;
 				MesaDrawFVFs(ctx, GL_LINE_STRIP, vertices, start, inst->wPrimitiveCount+1);
+				SET_DIRTY;
 				NEXT_INST(sizeof(D3DHAL_DP2LINESTRIP));
 				break;
 			COMMAND(D3DDP2OP_TRIANGLELIST)
@@ -393,6 +400,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				// vStart+wPrimitiveCount*3-1).
 				start = ((D3DHAL_DP2TRIANGLELIST*)prim)->wVStart;
 				MesaDrawFVFs(ctx, GL_TRIANGLES, vertices, start, inst->wPrimitiveCount*3);
+				SET_DIRTY;
 				NEXT_INST(sizeof(D3DHAL_DP2TRIANGLELIST));
 				break;
 			COMMAND(D3DDP2OP_TRIANGLESTRIP)
@@ -411,6 +419,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				// wVStart+wPrimitiveCount).
 				start = ((D3DHAL_DP2TRIANGLESTRIP*)prim)->wVStart;
 				MesaDrawFVFs(ctx, GL_TRIANGLE_STRIP, vertices, start, inst->wPrimitiveCount+2);
+				SET_DIRTY;
 				NEXT_INST(sizeof(D3DHAL_DP2TRIANGLESTRIP));
 				break;
 			COMMAND(D3DDP2OP_TRIANGLEFAN)
@@ -422,6 +431,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				// wVStart+wPrimitiveCount+1,wVStart).
 				start = ((D3DHAL_DP2TRIANGLEFAN*)prim)->wVStart;
 				MesaDrawFVFs(ctx, GL_TRIANGLE_FAN, vertices, start, inst->wPrimitiveCount+2);
+				SET_DIRTY;
 				NEXT_INST(sizeof(D3DHAL_DP2TRIANGLEFAN));
 				break;
 			COMMAND(D3DDP2OP_INDEXEDLINELIST)
@@ -438,13 +448,14 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				{
 					start = ((D3DHAL_DP2INDEXEDLINELIST*)prim)->wV1;
 					MesaDrawFVFIndex(ctx, vertices, start);
-					
+
 					start = ((D3DHAL_DP2INDEXEDLINELIST*)prim)->wV2;
 					MesaDrawFVFIndex(ctx, vertices, start);
-					
+
 					prim += sizeof(D3DHAL_DP2INDEXEDLINELIST);
 				}
 				entry->proc.pglEnd();
+				SET_DIRTY;
 				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_INDEXEDLINESTRIP)
@@ -469,10 +480,11 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				{
 					start = ((D3DHAL_DP2INDEXEDLINESTRIP*)prim)->wV[0];
 					MesaDrawFVFIndex(ctx, vertices, base+start);
-					
+
 					prim += sizeof(WORD);
 				}
 				entry->proc.pglEnd();
+				SET_DIRTY;
 				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_INDEXEDTRIANGLELIST)
@@ -496,16 +508,17 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				{
 					start = ((D3DHAL_DP2INDEXEDTRIANGLELIST*)prim)->wV1;
 					MesaDrawFVFIndex(ctx, vertices, start);
-					
+
 					start = ((D3DHAL_DP2INDEXEDTRIANGLELIST*)prim)->wV2;
 					MesaDrawFVFIndex(ctx, vertices, start);
-					
+
 					start = ((D3DHAL_DP2INDEXEDTRIANGLELIST*)prim)->wV3;
 					MesaDrawFVFIndex(ctx, vertices, start);
-					
+
 					prim += sizeof(D3DHAL_DP2INDEXEDTRIANGLELIST);
 				}
 				entry->proc.pglEnd();
+				SET_DIRTY;
 				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_INDEXEDTRIANGLESTRIP)
@@ -538,7 +551,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 					prim += sizeof(WORD);
 				}
 				entry->proc.pglEnd();
-
+				SET_DIRTY;
 				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_INDEXEDTRIANGLEFAN)
@@ -561,7 +574,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 					prim += sizeof(WORD);
 				}
 				entry->proc.pglEnd();
-
+				SET_DIRTY;
 				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_INDEXEDTRIANGLELIST2)
@@ -593,6 +606,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 					prim += sizeof(D3DHAL_DP2INDEXEDTRIANGLELIST2);
 				}
 				entry->proc.pglEnd();
+				SET_DIRTY;
 				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_INDEXEDLINELIST2)
@@ -620,6 +634,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 					prim += sizeof(D3DHAL_DP2INDEXEDLINELIST);
 				}
 				entry->proc.pglEnd();
+				SET_DIRTY;
 				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_TRIANGLEFAN_IMM)
@@ -641,7 +656,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
     		MesaDrawFVFs(ctx, GL_TRIANGLE_FAN, prim, 0, count);
 				prim += ctx->state.fvf.stride * count;
 				PRIM_ALIGN;
-
+				SET_DIRTY;
         NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_LINELIST_IMM)
@@ -661,7 +676,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				MesaDrawFVFs(ctx, GL_LINES, prim, 0, count);
 				prim += ctx->state.fvf.stride * count;
 				PRIM_ALIGN;
-				
+				SET_DIRTY;
 				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_RENDERSTATE)
@@ -686,16 +701,16 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
         // texture state associated with the texture at dwStage to 
         // reflect the new value based on TSState.
         
-        for(i = 0; i < inst->wStateCount; i++)
-        {
-        	D3DHAL_DP2TEXTURESTAGESTATE *state = (D3DHAL_DP2TEXTURESTAGESTATE *)(prim);
-        	TRACE("D3DHAL_DP2TEXTURESTAGESTATE(%d, %d, %X)", state->wStage, state->TSState, state->dwValue);
-        	// state->wStage  = texture unit from 0
-        	// state->TSState = D3DTSS_TEXTUREMAP, D3DTSS_TEXTURETRANSFORMFLAGS, ...
-        	// state->dwValue = (value)
-        	MesaSetTextureState(ctx, state->wStage, state->TSState, &state->dwValue);
-        	prim += sizeof(D3DHAL_DP2TEXTURESTAGESTATE);
-        }
+				for(i = 0; i < inst->wStateCount; i++)
+				{
+					D3DHAL_DP2TEXTURESTAGESTATE *state = (D3DHAL_DP2TEXTURESTAGESTATE *)(prim);
+					TRACE("D3DHAL_DP2TEXTURESTAGESTATE(%d, %d, %X)", state->wStage, state->TSState, state->dwValue);
+					// state->wStage  = texture unit from 0
+					// state->TSState = D3DTSS_TEXTUREMAP, D3DTSS_TEXTURETRANSFORMFLAGS, ...
+					// state->dwValue = (value)
+					MesaSetTextureState(ctx, state->wStage, state->TSState, &state->dwValue);
+					prim += sizeof(D3DHAL_DP2TEXTURESTAGESTATE);
+				}
         MesaDrawRefreshState(ctx);
         NEXT_INST(0);
 				break;
@@ -705,7 +720,18 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				// rectangle (i.e. the viewing rectangle) is specified 
 				// by the D3DHAL_DP2 VIEWPORTINFO structures following 
 				// D3DHAL_DP2COMMAND
-				prim += inst->wStateCount * sizeof(D3DHAL_DP2VIEWPORTINFO);
+				for(i = 0; i < inst->wStateCount; i++)
+				{
+					D3DHAL_DP2VIEWPORTINFO *viewport = (D3DHAL_DP2VIEWPORTINFO*)prim;
+					TOPIC("ZVIEW", "viewport = %d %d %d %d",
+						viewport->dwX,
+						viewport->dwY,
+						viewport->dwWidth,
+						viewport->dwHeight);
+						
+					MesaApplyViewport(ctx, viewport->dwX, viewport->dwY, viewport->dwWidth, viewport->dwHeight);
+					prim += sizeof(D3DHAL_DP2VIEWPORTINFO);
+				}
 				// skipped
 				NEXT_INST(0);
 				break;
@@ -896,7 +922,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 						case D3DHAL_STATESETEXECUTE:
 						case D3DHAL_STATESETCAPTURE:
 						default:
-							TOPIC("READBACK", "D3DDP2OP_STATESET: %d", pStateSetOp->dwOperation);
+							WARN("D3DDP2OP_STATESET: %d", pStateSetOp->dwOperation);
 							break;
 					}
 					prim += sizeof(D3DHAL_DP2STATESET);
@@ -1004,10 +1030,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				break;
 		} // switch
 	} // while
-	
-	ctx->render.dirty = TRUE;
-	ctx->render.zdirty = TRUE;
-	
+		
 	return TRUE;
 }
 

@@ -147,6 +147,8 @@ void SurfaceDeattachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_tex, int 
 void SurfaceDeattachCtx(void *mesa_ctx);
 void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf);
 void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf);
+BOOL SurfaceIsEmpty(LPDDRAWI_DDRAWSURFACE_LCL surf);
+void SurfaceClearEmpty(LPDDRAWI_DDRAWSURFACE_LCL surf);
 
 inline static DWORD SurfacePitch(DWORD width, DWORD bpp)
 {

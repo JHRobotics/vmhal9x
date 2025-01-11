@@ -716,7 +716,14 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 			| D3DSTENCILCAPS_INCR
 			| D3DSTENCILCAPS_DECR;
 
+		/* some happy values from ref driver */
+		dxcaps.dvGuardBandLeft   = -32768.0f;
+		dxcaps.dvGuardBandTop    = -32768.0f;
+		dxcaps.dvGuardBandRight  = 32767.0f;
+		dxcaps.dvGuardBandBottom = 32767.0f;
+		dxcaps.dvExtentsAdjust = 0.0f; //  AA kernel is 1.0 x 1.0
 		dxcaps.dvMaxVertexW = 1.0e10;
+
 		/*
     T&L:
     dxcaps.dwMaxActiveLights = 0;

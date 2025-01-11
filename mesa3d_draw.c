@@ -41,14 +41,14 @@
 
 #define SV_UNPROJECT(_v, _x, _y, _z, _w) \
 	_v[3] = 2.0f/(_w); \
-	_v[0] = ((((_x + 0.5) - ctx->matrix.vpnorm[0]) * ctx->matrix.vpnorm[2]) - 1.0f)*_v[3]; \
-	_v[1] = ((((_y - 0.5) - ctx->matrix.vpnorm[1]) * ctx->matrix.vpnorm[3]) - 1.0f)*_v[3]; \
+	_v[0] = ((((_x) - ctx->matrix.vpnorm[0]) * ctx->matrix.vpnorm[2]) - 1.0f)*_v[3]; \
+	_v[1] = ((((_y) - ctx->matrix.vpnorm[1]) * ctx->matrix.vpnorm[3]) - 1.0f)*_v[3]; \
 	_v[2] = (_z)*_v[3]
 
 #define SV_UNPROJECT_NTP(_v, _x, _y, _z) \
 	_v[3] = 1.0f; \
-	_v[0] = ((((_x + 0.5) - ctx->matrix.vpnorm[0]) * ctx->matrix.vpnorm[2]) - 1.0f); \
-	_v[1] = ((((_y - 0.5) - ctx->matrix.vpnorm[1]) * ctx->matrix.vpnorm[3]) - 1.0f); \
+	_v[0] = ((((_x) - ctx->matrix.vpnorm[0]) * ctx->matrix.vpnorm[2]) - 1.0f); \
+	_v[1] = ((((_y) - ctx->matrix.vpnorm[1]) * ctx->matrix.vpnorm[3]) - 1.0f); \
 	_v[2] = (_z)
 
 #define SV_UNPROJECTD(_v, _x, _y, _z, _w) \
@@ -74,13 +74,15 @@ typedef struct _FVF
 	};
 } FVF_t;
 
+//static const GLfloat white[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+
 static void LoadColor1(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, DWORD color)
 {
 	GLfloat cv[4];
 	MESA_D3DCOLOR_TO_FV(color, cv);
 	entry->proc.pglColor4fv(&cv[0]);
-	
-	if(ctx->state.material.lighting)
+
+	if(ctx->state.material.lighting && ctx->state.material.color_vertex)
 	{
 		if(ctx->state.material.untracked & (MESA_MAT_DIFFUSE_C1 | MESA_MAT_AMBIENT_C1))
 		{

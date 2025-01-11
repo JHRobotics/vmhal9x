@@ -273,6 +273,8 @@ typedef struct mesa3d_ctx
 	struct {
 		BOOL dirty;
 		BOOL zdirty;
+		DWORD planemask;
+		DWORD rop2;
 	} render;
 
 	/* dimensions */
@@ -403,7 +405,7 @@ void MesaLightDestroyAll(mesa3d_ctx_t *ctx);
 void MesaBlockLock(mesa3d_ctx_t *ctx);
 void MesaBlockUnlock(mesa3d_ctx_t *ctx);
 BOOL MesaSetCtx(mesa3d_ctx_t *ctx);
-void MesaSetTransform(mesa3d_ctx_t *ctx, D3DTRANSFORMSTATETYPE state, D3DMATRIX *matrix);
+void MesaSetTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *matrix);
 
 /* needs GL_BLOCK */
 mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, DDSURF *surf);
@@ -524,5 +526,13 @@ void MesaChromaFree(void *ptr);
 #define MESA_TMU_CNT() ((VMHALenv.texture_num_units > MESA_TMU_MAX) ? MESA_TMU_MAX : VMHALenv.texture_num_units)
 
 #define SURFACES_TABLE_POOL 1024
+
+/* heavy debug */
+#define MESA_KEY_DUMP 1
+#define MESA_KEY_DUMP_MORE 2
+
+int mesa_dump_key();
+void mesa_dump(mesa3d_ctx_t *ctx);
+void mesa_dump_inc();
 
 #endif /* __MESA3D_H__INCLUDED__ */

@@ -81,7 +81,7 @@ VMHAL9X_OBJS = $(NOCRT_OBJS) vmhal9x.c.o ddraw.c.o 3d_accel.c.o flip32.c.o blt32
 VMDISP9X_OBJS = $(NOCRT_OBJS) vmdisp9x.c.o
 
 ifdef D3DHAL
-	VMHAL9X_OBJS += d3d.c.o mesa3d.c.o mesa3d_buffer.c.o mesa3d_draw.c.o mesa3d_chroma.c.o mesa3d_matrix.c.o mesa3d_draw6.c.o surface.c.o cmath.c.o
+	VMHAL9X_OBJS += d3d.c.o mesa3d.c.o mesa3d_buffer.c.o mesa3d_draw.c.o mesa3d_chroma.c.o mesa3d_matrix.c.o mesa3d_draw6.c.o surface.c.o cmath.c.o mesa3d_dump.c.o
 	CFLAGS += -DD3DHAL
 endif
 

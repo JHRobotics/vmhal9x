@@ -238,7 +238,7 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 				stretchrop3(ddhal->pFBHDA32->bpp, rop3_code,
 					(void*)src->fpVidMem, (void*)dst->fpVidMem, dwColorKey, &srect);
 			}
-			
+			SurfaceToMesa(dstx);
 		}
 		else /* ROP 1:1 pixels */
 		{
