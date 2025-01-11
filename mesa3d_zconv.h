@@ -31,7 +31,7 @@ static void *convert_int_to_s24s8(mesa3d_ctx_t *ctx, const void *in, int bpp)
 	DWORD dst_pitch = SurfacePitch(ctx->state.sw, 32);
 	size_t size = dst_pitch * ctx->state.sh;
 
-	DWORD *plane = HeapAlloc(hSharedHeap, 0, size);
+	DWORD *plane = MesaTempAlloc(ctx, ctx->state.sw, size);
 	DWORD *dst = plane;
 	
 	DWORD x, y;
@@ -120,7 +120,7 @@ static void *convert_float_to_s24s8(mesa3d_ctx_t *ctx, const void *in, int bpp)
 	DWORD dst_pitch = SurfacePitch(ctx->state.sw, 32);
 	size_t size = dst_pitch * ctx->state.sh;
 
-	DWORD *plane = HeapAlloc(hSharedHeap, 0, size);
+	DWORD *plane = MesaTempAlloc(ctx, ctx->state.sw, size);
 	DWORD *dst = plane;
 	
 	DWORD x, y;
@@ -211,7 +211,7 @@ static void *convert_int_to_f32s8(mesa3d_ctx_t *ctx, const void *in, int bpp)
 	DWORD dst_pitch = SurfacePitch(ctx->state.sw, 64);
 	size_t size = dst_pitch * ctx->state.sh;
 
-	DWORD *plane = HeapAlloc(hSharedHeap, 0, size);
+	DWORD *plane = MesaTempAlloc(ctx, ctx->state.sw, size);
 	f32_s8_t *dst = (f32_s8_t*)plane;
 	
 	DWORD x, y;
@@ -296,7 +296,7 @@ static void *convert_float_to_f32s8(mesa3d_ctx_t *ctx, const void *in, int bpp)
 	DWORD dst_pitch = SurfacePitch(ctx->state.sw, 64);
 	size_t size = dst_pitch * ctx->state.sh;
 
-	DWORD *plane = HeapAlloc(hSharedHeap, 0, size);
+	DWORD *plane = MesaTempAlloc(ctx, ctx->state.sw, size);
 	f32_s8_t *dst = (f32_s8_t*)plane;
 	
 	DWORD x, y;

@@ -40,8 +40,6 @@
 
 static const GLfloat black[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 
-extern HANDLE hSharedHeap;
-
 #define MESA_HT_MOD 113
 
 #define MESA_LIB_SW_NAME "mesa3d.dll"
@@ -673,19 +671,19 @@ mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DDSURF *dds, DDSURF *ddz)
 	
 					//ctx->ossize = SurfacePitch(width, bpp)*height;
 					ctx->ossize = SurfacePitch(320, 4)*240;
-					ctx->osbuf = HeapAlloc(hSharedHeap, 0, ctx->ossize);
+					ctx->osbuf = HeapAlloc(hSharedLargeHeap, 0, ctx->ossize);
 					if(ctx->osbuf == NULL)
 						break;
 	
 					if(!entry->proc.pOSMesaMakeCurrent(ctx->osctx, ctx->osbuf, OS_TYPE, OS_WIDTH, OS_HEIGHT))
 						break;
-						
+
 					entry->proc.pOSMesaPixelStore(OSMESA_Y_UP, 1);
 				}
 				else
 				{
 					int ipixel;
-					
+
 					ctx->fbo_win = MesaCreateWindow(width, height);
 					if(ctx->fbo_win == NULL)
 						break;
@@ -747,7 +745,7 @@ mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DDSURF *dds, DDSURF *ddz)
 							entry->proc.pOSMesaDestroyContext(ctx->osctx);
 	
 						if(ctx->osbuf)
-							HeapFree(hSharedHeap, 0, ctx->osbuf);
+							HeapFree(hSharedLargeHeap, 0, ctx->osbuf);
 					}
 					else
 					{
@@ -823,6 +821,7 @@ void MesaDestroyCtx(mesa3d_ctx_t *ctx)
 	TRACE_ENTRY
 	int id = ctx->id;
 	mesa3d_entry_t *entry = ctx->entry;
+	int i;
 	
 	TOPIC("GL", "OSMesaDestroyContext");
 
@@ -852,10 +851,26 @@ void MesaDestroyCtx(mesa3d_ctx_t *ctx)
 #endif
 	
 	entry->ctx[id] = NULL;
+	
+	for(i = 0; i < MESA3D_MAX_TEXS; i++)
+	{
+		if(ctx->tex[i] != NULL)
+		{
+			MesaDestroyTexture(ctx->tex[i], TRUE, FALSE);
+			ctx->tex[i] = NULL;
+		}
+	}
 
 	if(ctx->osbuf != NULL)
 	{
-		HeapFree(hSharedHeap, 0, ctx->osbuf);
+		HeapFree(hSharedLargeHeap, 0, ctx->osbuf);
+	}
+	
+	if(ctx->temp.buf)
+	{
+		HeapFree(hSharedLargeHeap, 0, ctx->temp.buf);
+		ctx->temp.size = ctx->temp.width = 0;
+		ctx->temp.buf = NULL;
 	}
 	
 	MesaLightDestroyAll(ctx);
@@ -1103,75 +1118,76 @@ mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, DDSURF *surf)
 	
 	for(i = 0; i < MESA3D_MAX_TEXS; i++)
 	{
-		if(!ctx->tex[i].alloc)
+		if(ctx->tex[i] == NULL)
 		{
 			mesa3d_entry_t *entry = ctx->entry;
-			
 			TOPIC("RELOAD", "New texture - position: %d", i);
-			
-			memset(&ctx->tex[i], 0, sizeof(mesa3d_texture_t)); // FIXME: necessary? Update: yes, it is!
-			
-			tex                   = &ctx->tex[i];
-			tex->ctx              = ctx;
-			tex->data_surf[0]     = surf->lpLcl;
-			tex->data_ptr[0]      = surf->lpGbl->fpVidMem;
-			tex->data_dirty[0]    = TRUE;
 
-			if(DDSurfaceToGL(surf, &tex->bpp, &tex->internalformat, &tex->format, &tex->type, &tex->compressed))
+			tex = HeapAlloc(hSharedHeap, HEAP_ZERO_MEMORY, sizeof(mesa3d_texture_t));
+			if(tex)
 			{
-				tex->width  = surf->lpGbl->wWidth;
-				tex->height = surf->lpGbl->wHeight;
-				
-				GL_CHECK(entry->proc.pglGenTextures(1, &tex->gltex));
-				TOPIC("FRAMEBUFFER", "new texture: %d", tex->gltex);
-				
-				if((surf->dwFlags & DDRAWISURF_HASCKEYSRCBLT) && ctx->state.tmu[0].colorkey)
+				tex->id               = i;
+				tex->ctx              = ctx;
+				tex->data_surf[0]     = surf->lpLcl;
+				tex->data_ptr[0]      = surf->lpGbl->fpVidMem;
+				tex->data_dirty[0]    = TRUE;
+	
+				if(DDSurfaceToGL(surf, &tex->bpp, &tex->internalformat, &tex->format, &tex->type, &tex->compressed))
 				{
-					if(!tex->compressed)
+					tex->width  = surf->lpGbl->wWidth;
+					tex->height = surf->lpGbl->wHeight;
+					
+					GL_CHECK(entry->proc.pglGenTextures(1, &tex->gltex));
+					TOPIC("FRAMEBUFFER", "new texture: %d", tex->gltex);
+					
+					if((surf->dwFlags & DDRAWISURF_HASCKEYSRCBLT) && ctx->state.tmu[0].colorkey)
 					{
-						tex->colorkey = TRUE;
+						if(!tex->compressed)
+						{
+							tex->colorkey = TRUE;
+						}
 					}
+	
+					if(SurfaceIsEmpty(surf->lpLcl))
+						ClearSurfaceData(surf->lpLcl);
+	
+					SurfaceAttachTexture(surf->lpLcl, tex, 0);
+					
+					/* mipmaps */	
+					if(surf->dwCaps & DDSCAPS_MIPMAP)
+					{
+						int level;
+						for(level = 0; level < surf->dwAttachments; level++)
+						{
+							tex->data_ptr[level+1] = surf->lpAttachmentsGbl[level]->fpVidMem;
+							tex->data_dirty[level+1] = TRUE;
+							tex->data_surf[level+1] = surf->lpAttachmentsLcl[level];
+	
+							if(SurfaceIsEmpty(tex->data_surf[level+1]))
+								ClearSurfaceData(tex->data_surf[level+1]);
+	
+							SurfaceAttachTexture(tex->data_surf[level+1], tex, level+1);
+						}
+						tex->mipmap_level = surf->dwAttachments;
+						tex->mipmap = (tex->mipmap_level > 0) ? TRUE : FALSE;
+						TOPIC("MIPMAP", "Created %d with mipmap, at level: %d", tex->gltex, tex->mipmap_level);
+					} // mipmaps
+					else
+					{
+						tex->mipmap_level = 0;
+						tex->mipmap = FALSE;
+						TOPIC("RELOAD", "Created %d without mipmap", tex->gltex);
+					}
+					
+					//ctx->state.reload_tex_par = TRUE;
+					tex->dirty = TRUE;
+					ctx->tex[i] = tex;
 				}
-
-				if(SurfaceIsEmpty(surf->lpLcl))
-					ClearSurfaceData(surf->lpLcl);
-
-				SurfaceAttachTexture(surf->lpLcl, tex, 0);
-				
-				/* mipmaps */	
-				if(surf->dwCaps & DDSCAPS_MIPMAP)
-				{
-					int level;
-					for(level = 0; level < surf->dwAttachments; level++)
-					{
-						tex->data_ptr[level+1] = surf->lpAttachmentsGbl[level]->fpVidMem;
-						tex->data_dirty[level+1] = TRUE;
-						tex->data_surf[level+1] = surf->lpAttachmentsLcl[level];
-
-						if(SurfaceIsEmpty(tex->data_surf[level+1]))
-							ClearSurfaceData(tex->data_surf[level+1]);
-
-						SurfaceAttachTexture(tex->data_surf[level+1], tex, level+1);
-					}
-					tex->mipmap_level = surf->dwAttachments;
-					tex->mipmap = (tex->mipmap_level > 0) ? TRUE : FALSE;
-					TOPIC("MIPMAP", "Created %d with mipmap, at level: %d", tex->gltex, tex->mipmap_level);
-				} // mipmaps
 				else
 				{
-					tex->mipmap_level = 0;
-					tex->mipmap = FALSE;
-					TOPIC("RELOAD", "Created %d without mipmap", tex->gltex);
+					TOPIC("RELOAD", "Failed to identify image type!");
+					tex = NULL;
 				}
-				
-				//ctx->state.reload_tex_par = TRUE;
-				tex->alloc = TRUE;
-				tex->dirty = TRUE;
-			}
-			else
-			{
-				TOPIC("RELOAD", "Failed to identify image type!");
-				tex = NULL;
 			}
 			
 			break;
@@ -1239,9 +1255,9 @@ void MesaReloadTexture(mesa3d_texture_t *tex, int tmu)
 	}
 }
 
-void MesaDestroyTexture(mesa3d_texture_t *tex)
+void MesaDestroyTexture(mesa3d_texture_t *tex, BOOL ctx_cleanup, LPDDRAWI_DDRAWSURFACE_LCL surface_delete)
 {
-	if(tex->alloc)
+	if(tex)
 	{
 		int i;
 		mesa3d_entry_t *entry = tex->ctx->entry;
@@ -1255,15 +1271,25 @@ void MesaDestroyTexture(mesa3d_texture_t *tex)
 			}
 		}
 		
-		GL_CHECK(entry->proc.pglDeleteTextures(1, &tex->gltex));
+		if(!ctx_cleanup)
+		{
+			GL_CHECK(entry->proc.pglDeleteTextures(1, &tex->gltex));
+		}
+
 		for(i = 0; i <= tex->mipmap_level; i++)
 		{
 			TOPIC("GARBAGE", "level=%d, ptr=%p, vram=%X", i, tex->data_surf[i], tex->data_ptr[i]);
-			//SurfaceDeattachTexture(tex->data_surf[i], tex, i);
-			//FIXME: ^double free here!
+			if(surface_delete != tex->data_surf[i])
+			{
+				SurfaceDeattachTexture(tex->data_surf[i], tex, i);
+			}
 		}
 		
-		tex->alloc = FALSE;
+		if(!ctx_cleanup)
+		{
+			tex->ctx->tex[tex->id] = NULL;
+		}
+		HeapFree(hSharedHeap, 0, tex);
 	}
 }
 
@@ -3399,4 +3425,63 @@ mesa3d_texture_t *MesaTextureFromSurfaceId(mesa3d_ctx_t *ctx, DWORD surfaceId)
 	}
 	
 	return NULL;
+}
+
+void *MesaTempAlloc(mesa3d_ctx_t *ctx, DWORD w, DWORD size)
+{
+	if(ctx->temp.width == 0)
+	{
+		DWORD cmp_w = w;
+		DWORD dst_w = 0;
+		DWORD i;
+		
+		FBHDA_t *hda = FBHDA_setup();
+		if(hda)
+		{
+			if(hda->width > cmp_w)
+			{
+				cmp_w = hda->width;
+			}
+		}
+		
+		for(i = 0; i < sizeof(DWORD)*8; i++)
+		{
+			dst_w = 1 << i;
+			if(dst_w >= cmp_w)
+			{
+				break;
+			}
+		}
+		
+		ctx->temp.width = dst_w;
+		ctx->temp.size = dst_w*dst_w*4;
+		ctx->temp.buf = HeapAlloc(hSharedLargeHeap, 0, ctx->temp.size);
+	}
+
+	if(ctx->temp.buf == NULL ||
+		w > ctx->temp.width ||
+		size > ctx->temp.size ||
+		ctx->temp.lock != 0
+		)
+	{
+		return HeapAlloc(hSharedLargeHeap, 0, size);
+	}
+	
+	ctx->temp.lock = 1;
+	return ctx->temp.buf;
+}
+
+void MesaTempFree(mesa3d_ctx_t *ctx, void *ptr)
+{
+	if(ptr != NULL)
+	{
+		if(ptr == ctx->temp.buf)
+		{
+			ctx->temp.lock = 0;
+		}
+		else
+		{
+			HeapFree(hSharedLargeHeap, 0, ptr);
+		}
+	}
 }

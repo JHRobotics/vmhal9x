@@ -39,8 +39,6 @@
 
 #include "nocrt.h"
 
-extern HANDLE hSharedHeap;
-
 static void LightApply(mesa3d_ctx_t *ctx, DWORD id)
 {
 	if(id >= ctx->light.lights_size)

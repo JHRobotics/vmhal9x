@@ -56,8 +56,6 @@ enum DDRV_RETURN {
 #define D3DHAL2_CB32_DRAWPRIMITIVES     0x00000010L
 #endif
 
-extern HANDLE hSharedHeap;
-
 static BOOL ValidateCtx(DWORD dwhContext)
 {
 	if(dwhContext != 0)
@@ -1069,7 +1067,7 @@ DWORD __stdcall TextureDestroy32(LPD3DHAL_TEXTUREDESTROYDATA ptcd)
 	#endif
 
 	GL_BLOCK_BEGIN(ptcd->dwhContext)
-		MesaDestroyTexture(MESA_HANDLE_TO_TEX(ptcd->dwHandle));
+		MesaDestroyTexture(MESA_HANDLE_TO_TEX(ptcd->dwHandle), FALSE, FALSE);
 	GL_BLOCK_END
 	
 	ptcd->ddrval = DD_OK;

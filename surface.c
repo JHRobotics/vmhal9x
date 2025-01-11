@@ -53,8 +53,6 @@ void SurfaceCtxUnlock()
 	InterlockedExchange(&sharedLock, 0);
 }
 
-extern HANDLE hSharedHeap;
-
 #define SURF_TYPE_NONE 1
 #define SURF_TYPE_TEX  2
 //#define SURF_TYPE_CTX  3
@@ -352,7 +350,7 @@ void SurfaceDelete(LPDDRAWI_DDRAWSURFACE_LCL surf)
 					if(item->pid == pid)
 					{
 						GL_BLOCK_BEGIN(item->texture.tex->ctx)
-							MesaDestroyTexture(item->texture.tex);
+							MesaDestroyTexture(item->texture.tex, FALSE, surf);
 						GL_BLOCK_END
 					}
 					break;

@@ -40,6 +40,7 @@
 #endif
 
 HANDLE hSharedHeap;
+HANDLE hSharedLargeHeap;
 static HINSTANCE dllHinst = NULL;
 
 VMDAHAL_t *globalHal;
@@ -342,6 +343,7 @@ BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpvReserved)
 			if(tmp == 0) // First process?
 			{
 				hSharedHeap = HeapCreate(HEAP_SHARED, 0x2000, 0);
+				hSharedLargeHeap = HeapCreate(HEAP_SHARED, 0x10000, 0);
 				TRACE("--- vmhal9x created ---");
 			}
 			tmp += 1;
@@ -368,8 +370,10 @@ BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpvReserved)
 
 			if(tmp == 0)         // Last process?
 			{
-				HeapDestroy( hSharedHeap);
+				HeapDestroy(hSharedHeap);
+				HeapDestroy(hSharedLargeHeap);
 				hSharedHeap = NULL;
+				hSharedLargeHeap = NULL;
 				TRACE("--- vmhal9x destroyed ---");
 			}
 			InterlockedExchange(&lProcessCount, tmp);

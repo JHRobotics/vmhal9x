@@ -37,8 +37,6 @@
 
 #include "nocrt.h"
 
-extern HANDLE hSharedHeap;
-
 #define RESET_COLOR 1
 #define RESET_DEPTH 2
 
@@ -284,7 +282,7 @@ void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 				VMHALenv.zfloat ? GL_FLOAT_32_UNSIGNED_INT_24_8_REV : GL_UNSIGNED_INT_24_8,
 				native_src));
 			
-			HeapFree(hSharedHeap, 0, native_src);
+			MesaTempFree(ctx, native_src);
 		}
 	}
 	else /* = DS_CONVERT_GPU, DX depth buffer is in GL compatible format */
@@ -393,12 +391,12 @@ void MesaBufferDownloadDepth(mesa3d_ctx_t *ctx, void *dst)
 	else
 	{
 		size_t s = SurfacePitch(ctx->state.sw, 32) * ctx->state.sh;
-		void *buf = HeapAlloc(hSharedHeap, 0, s);
+		void *buf = MesaTempAlloc(ctx, ctx->state.sw, s);
 		if(buf)
 		{
 			GL_CHECK(entry->proc.pglReadPixels(0, 0, ctx->state.sw, ctx->state.sh, format, type, buf));
 			copy_int_to(ctx, buf, dst, ctx->depth_bpp, ctx->state.depth.wbuffer);
-			HeapFree(hSharedHeap, 0, buf);
+			MesaTempFree(ctx, buf);
 		}
 	}
 	
@@ -465,7 +463,7 @@ void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level
 	ctx->state.tmu[tmu].update = TRUE;
 }
 
-static void *chroma_convert(
+static void *chroma_convert(mesa3d_ctx_t *ctx,
 	int width, int height, int bpp, GLenum type, void *ptr,
 	DWORD chroma_lw, DWORD chroma_hi)
 {
@@ -476,30 +474,30 @@ static void *chroma_convert(
 	switch(bpp)
 	{
 		case 12:
-			data = MesaChroma12(ptr, width, height, chroma_lw, chroma_hi);
+			data = MesaChroma12(ctx, ptr, width, height, chroma_lw, chroma_hi);
 			break;
 		case 15:
-			data = MesaChroma15(ptr, width, height, chroma_lw, chroma_hi);
+			data = MesaChroma15(ctx, ptr, width, height, chroma_lw, chroma_hi);
 			break;
 		case 16:
 			if(type == GL_UNSIGNED_SHORT_4_4_4_4_REV || type == GL_UNSIGNED_SHORT_4_4_4_4)
 			{
-				data = MesaChroma12(ptr, width, height, chroma_lw, chroma_hi);
+				data = MesaChroma12(ctx, ptr, width, height, chroma_lw, chroma_hi);
 			}
 			else if(type == GL_UNSIGNED_SHORT_5_5_5_1 || type == GL_UNSIGNED_SHORT_1_5_5_5_REV)
 			{
-				data = MesaChroma15(ptr, width, height, chroma_lw, chroma_hi);
+				data = MesaChroma15(ctx, ptr, width, height, chroma_lw, chroma_hi);
 			}
 			else
 			{
-				data = MesaChroma16(ptr, width, height, chroma_lw, chroma_hi);
+				data = MesaChroma16(ctx, ptr, width, height, chroma_lw, chroma_hi);
 			}
 			break;
 		case 24:
-			data = MesaChroma24(ptr, width, height, chroma_lw, chroma_hi);
+			data = MesaChroma24(ctx, ptr, width, height, chroma_lw, chroma_hi);
 			break;
 		case 32:
-			data = MesaChroma32(ptr, width, height, chroma_lw, chroma_hi);
+			data = MesaChroma32(ctx, ptr, width, height, chroma_lw, chroma_hi);
 			break;
 		default:
 			TOPIC("FORMAT", "wrong bpp: %d", bpp);
@@ -530,7 +528,7 @@ void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int
 
 	TOPIC("CHROMA", "MesaBufferUploadTextureChroma - level=%d", level);
 
-	void *data = chroma_convert(w, h, tex->bpp, tex->type, (void*)tex->data_ptr[level], chroma_lw, chroma_hi);
+	void *data = chroma_convert(ctx, w, h, tex->bpp, tex->type, (void*)tex->data_ptr[level], chroma_lw, chroma_hi);
 	TOPIC("TEX", "downloaded chroma bpp: %d, success: %X", tex->bpp, data);
 	
 	if(data)
@@ -538,7 +536,7 @@ void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int
 		GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, level, GL_RGBA,
 			w, h, 0, GL_BGRA, GL_UNSIGNED_BYTE, data));
 		
-		MesaChromaFree(data);
+		MesaChromaFree(ctx, data);
 	}
 	ctx->state.tmu[tmu].update = TRUE;
 }

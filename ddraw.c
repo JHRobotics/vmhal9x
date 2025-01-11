@@ -36,8 +36,6 @@
 
 #include "nocrt.h"
 
-extern HANDLE hSharedHeap;
-
 /* Display mode should by controled by system/HEL all time */
 //#define SETMODE_BY_HAL
 

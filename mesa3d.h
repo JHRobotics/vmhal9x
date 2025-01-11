@@ -45,7 +45,7 @@ typedef OSMESAproc (APIENTRYP OSMesaGetProcAddress_h)(const char *funcName);
 
 typedef struct mesa3d_texture
 {
-	BOOL    alloc;
+	int     id; // ctx->tex[_id_]
 	GLuint  gltex;
 	GLuint  width;
 	GLuint  height;
@@ -147,7 +147,7 @@ typedef struct mesa_surfaces_table
 typedef struct mesa3d_ctx
 {
 	LONG thread_lock;
-	mesa3d_texture_t tex[MESA3D_MAX_TEXS];
+	mesa3d_texture_t *tex[MESA3D_MAX_TEXS];
 	struct mesa3d_entry *entry;
 	int id; /* mesa3d_entry.ctx[_id_] */
 	
@@ -294,7 +294,7 @@ typedef struct mesa3d_ctx
 		DWORD outdated_stack; // MesaApplyTransform -> changes
 		int weight;
 	} matrix;
-	
+
 	struct {
 		DWORD lights_size;
 		DWORD active_bitfield;
@@ -302,6 +302,13 @@ typedef struct mesa3d_ctx
 	} light;
 
 	mesa_surfaces_table_t *surfaces;
+
+	struct {
+		DWORD width;
+		DWORD size;
+		void *buf;
+		DWORD lock;
+	} temp;
 } mesa3d_ctx_t;
 
 /* maximum for 24bit signed zbuff = (1<<23) - 1 */
@@ -410,7 +417,7 @@ void MesaSetTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *matrix);
 /* needs GL_BLOCK */
 mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, DDSURF *surf);
 void MesaReloadTexture(mesa3d_texture_t *tex, int tmu);
-void MesaDestroyTexture(mesa3d_texture_t *tex);
+void MesaDestroyTexture(mesa3d_texture_t *tex, BOOL ctx_cleanup, LPDDRAWI_DDRAWSURFACE_LCL surface_delete);
 void MesaApplyTransform(mesa3d_ctx_t *ctx, DWORD changes);
 void MesaApplyViewport(mesa3d_ctx_t *ctx, GLint x, GLint y, GLint w, GLint h);
 
@@ -498,12 +505,12 @@ void MesaApplyMaterial(mesa3d_ctx_t *ctx);
 void MesaTLRecalcModelview(mesa3d_ctx_t *ctx);
 
 /* chroma to alpha conversion */
-void *MesaChroma32(const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
-void *MesaChroma24(const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
-void *MesaChroma16(const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
-void *MesaChroma15(const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
-void *MesaChroma12(const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
-void MesaChromaFree(void *ptr);
+void *MesaChroma32(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
+void *MesaChroma24(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
+void *MesaChroma16(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
+void *MesaChroma15(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
+void *MesaChroma12(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
+void MesaChromaFree(mesa3d_ctx_t *ctx, void *ptr);
 
 #define MESA_1OVER16       0.0625f
 #define MESA_1OVER255	     0.003921568627451f
@@ -534,5 +541,12 @@ void MesaChromaFree(void *ptr);
 int mesa_dump_key();
 void mesa_dump(mesa3d_ctx_t *ctx);
 void mesa_dump_inc();
+
+/* memory */
+void *MesaTempAlloc(mesa3d_ctx_t *ctx, DWORD w, DWORD size);
+void MesaTempFree(mesa3d_ctx_t *ctx, void *ptr);
+/* heaps */
+extern HANDLE hSharedHeap;
+extern HANDLE hSharedLargeHeap;
 
 #endif /* __MESA3D_H__INCLUDED__ */
