@@ -123,7 +123,8 @@ struct mesa3d_tmustate
 	GLfloat border[4];
 	BOOL colorkey;
 	int coordindex; /* D3DTSS_TEXCOORDINDEX */
-	int coordnum; /* D3DTSS_TEXTURETRANSFORMFLAGS */
+	DWORD mapping; /* D3DTSS_TCI_ */
+	int coordscalc; /* D3DTSS_TEXTURETRANSFORMFLAGS */
 	BOOL projected;
 	GLfloat matrix[16];
 	
@@ -205,10 +206,12 @@ typedef struct mesa3d_ctx
 		struct {
 			DWORD stride;
 			DWORD type;
+			int begin;
 			int pos_normal;
 			int pos_diffuse;
 			int pos_specular;
-			int pos_tmu[MESA_TMU_MAX];
+			int pos_tmu[MESA_TMU_MAX]; // coords at pos
+			int coords[MESA_TMU_MAX]; // num coords for pos
 			int betas;
 		} fvf;
 		struct {

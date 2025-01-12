@@ -84,7 +84,8 @@ static void LoadColor1(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, DWORD color)
 
 	if(ctx->state.material.lighting && ctx->state.material.color_vertex)
 	{
-		if(ctx->state.material.untracked & (MESA_MAT_DIFFUSE_C1 | MESA_MAT_AMBIENT_C1))
+		if((ctx->state.material.untracked & (MESA_MAT_DIFFUSE_C1 | MESA_MAT_AMBIENT_C1)) == 
+			(MESA_MAT_DIFFUSE_C1 | MESA_MAT_AMBIENT_C1))
 		{
 			entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, &cv[0]);
 		}
@@ -114,9 +115,10 @@ static void LoadColor2(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, DWORD color)
 	GLfloat cv[4];
 	MESA_D3DCOLOR_TO_FV(color, cv);
 
-	if(ctx->state.material.lighting)
+	if(ctx->state.material.lighting && ctx->state.material.color_vertex)
 	{
-		if(ctx->state.material.untracked & (MESA_MAT_DIFFUSE_C2 | MESA_MAT_AMBIENT_C2))
+		if((ctx->state.material.untracked & (MESA_MAT_DIFFUSE_C2 | MESA_MAT_AMBIENT_C2)) ==
+			(MESA_MAT_DIFFUSE_C2 | MESA_MAT_AMBIENT_C2))
 		{
 			entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, &cv[0]);
 		}
@@ -282,6 +284,16 @@ void MesaFVFRecalc(mesa3d_ctx_t *ctx)
 			break;
 	}
 	
+	if(type & D3DFVF_RESERVED0)
+	{
+		ctx->state.fvf.begin = 1;
+		offset++;
+	}
+	else
+	{
+		ctx->state.fvf.begin = 0;
+	}
+	
 	if(type & D3DFVF_NORMAL)
 	{
 		ctx->state.fvf.pos_normal = offset;
@@ -321,25 +333,36 @@ void MesaFVFRecalc(mesa3d_ctx_t *ctx)
 		if(tc > i)
 		{
 			ctx->state.fvf.pos_tmu[i] = offset;
-			if((type & D3DFVF_POSITION_MASK) == D3DFVF_XYZRHW)
+			DWORD coords = (type >> ((2*i) + 16)) & 3;
+			switch(coords)
 			{
-				offset += 2;
+				case D3DFVF_TEXTUREFORMAT1:
+					ctx->state.fvf.coords[i] = 1;
+					break;
+				case D3DFVF_TEXTUREFORMAT2:
+					ctx->state.fvf.coords[i] = 2;
+					break;
+				case D3DFVF_TEXTUREFORMAT3:
+					ctx->state.fvf.coords[i] = 3;
+					break;
+				case D3DFVF_TEXTUREFORMAT4:
+					ctx->state.fvf.coords[i] = 4;
+					break;
 			}
-			else
-			{
-				offset += ctx->state.tmu[i].coordnum;
-			}
+			
+			offset += ctx->state.fvf.coords[i];
 		}
 		else
 		{
 			ctx->state.fvf.pos_tmu[i] = 0;
+			ctx->state.fvf.coords[i]  = 0;
 		}
 	}
 
 	ctx->state.fvf.stride = offset * sizeof(D3DVALUE);
 }
 
-static const GLfloat normal_one[3] = {1.0, 1.0, 1.0};
+static const GLfloat normal_def[3] = {0.0, 0.0, -1.0};
 
 inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, FVF_t *vertex)
 {
@@ -350,7 +373,7 @@ inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx
 		if(ctx->state.tmu[i].image)
 		{
 			int coordindex = ctx->state.tmu[i].coordindex;
-			int coordnum = ctx->state.tmu[i].coordnum;
+			int coordnum = ctx->state.fvf.coords[coordindex];
 			if(ctx->state.fvf.pos_tmu[coordindex] && coordnum > 0)
 			{
 				switch(coordnum)
@@ -401,35 +424,42 @@ inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx
 	if((ctx->state.fvf.type & D3DFVF_POSITION_MASK) == D3DFVF_XYZRHW)
 	{
 		GLfloat v[4];
-		if(ctx->state.texperspective)
-		{
-			SV_UNPROJECT(v, vertex->fv[FVF_X], vertex->fv[FVF_Y], vertex->fv[FVF_Z], vertex->fv[FVF_RHW]);
-		}
-		else
-		{
-			SV_UNPROJECT_NTP(v, vertex->fv[FVF_X], vertex->fv[FVF_Y], vertex->fv[FVF_Z]);
-		}
+		SV_UNPROJECT(v,
+			vertex->fv[ctx->state.fvf.begin+FVF_X],
+			vertex->fv[ctx->state.fvf.begin+FVF_Y],
+			vertex->fv[ctx->state.fvf.begin+FVF_Z],
+			vertex->fv[ctx->state.fvf.begin+FVF_RHW]);
 		entry->proc.pglVertex4fv(&v[0]);
 	}
 	else
 	{
-		if(ctx->state.fvf.pos_normal && ctx->state.texperspective)
-		{
-			entry->proc.pglNormal3fv(&vertex->fv[ctx->state.fvf.pos_normal]);
-		}
-		else
-		{
-			entry->proc.pglNormal3fv(&normal_one[0]);
-		}
-
 		if(ctx->matrix.weight == 0)
 		{
-			entry->proc.pglVertex3fv(&vertex->fv[FVF_X]);
+			if(ctx->state.fvf.pos_normal)
+				entry->proc.pglNormal3fv(&vertex->fv[ctx->state.fvf.pos_normal]);
+			else
+				entry->proc.pglNormal3fv(&normal_def[0]);
+			
+			entry->proc.pglVertex3fv(&vertex->fv[ctx->state.fvf.begin+FVF_X]);
 		}
 		else
 		{
 			GLfloat coords[4];
-			MesaVetexBlend(ctx, &vertex->fv[FVF_X], &vertex->fv[FVF_BETA1], 
+			if(ctx->state.fvf.pos_normal)
+			{
+				MesaVetexBlend(ctx,
+					&vertex->fv[ctx->state.fvf.pos_normal],
+					&vertex->fv[ctx->state.fvf.begin+FVF_BETA1], 
+					ctx->state.fvf.betas, coords);
+				entry->proc.pglNormal3fv(&coords[0]);
+			}
+			else
+			{
+				entry->proc.pglNormal3fv(&normal_def[0]);
+			}
+			MesaVetexBlend(ctx,
+				&vertex->fv[ctx->state.fvf.begin+FVF_X],
+				&vertex->fv[ctx->state.fvf.begin+FVF_BETA1], 
 				ctx->state.fvf.betas, coords);
 			entry->proc.pglVertex3fv(&coords[0]);
 		}

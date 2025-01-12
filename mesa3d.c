@@ -38,6 +38,10 @@
 
 #include "nocrt.h"
 
+#ifndef D3DTSS_TCI_SPHEREMAP
+#define D3DTSS_TCI_SPHEREMAP 0x40000
+#endif
+
 static const GLfloat black[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 
 #define MESA_HT_MOD 113
@@ -956,7 +960,6 @@ void MesaInitCtx(mesa3d_ctx_t *ctx)
 		ctx->state.tmu[i].reload = TRUE;
 		ctx->state.tmu[i].update = TRUE;
 		ctx->state.tmu[i].texblend = D3DTBLEND_DECAL;
-		ctx->state.tmu[i].coordnum = 2;
 		
 		/*
 			defaults:
@@ -1070,7 +1073,7 @@ DWORD DDSurf_GetBPP(DDSURF *surf)
 	{
 		bpp = surf->lpGbl->ddpfSurface.dwRGBBitCount;
 	}
-	
+
 	return bpp;
 }
 
@@ -1486,21 +1489,21 @@ void MesaApplyMaterial(mesa3d_ctx_t *ctx)
 	}
 
 	GL_CHECK(entry->proc.pglMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, ctx->state.material.shininess));
-	
+
 	TOPIC("LIGHT", "Material ambient=(%f %f %f %f), diffuse=(%f %f %f %f)",
 		ctx->state.material.ambient[0], ctx->state.material.ambient[1],
 		ctx->state.material.ambient[2], ctx->state.material.ambient[3],
 		ctx->state.material.diffuse[0], ctx->state.material.diffuse[1],
 		ctx->state.material.diffuse[2], ctx->state.material.diffuse[3]
 	);
-	
+
 	TOPIC("LIGHT", "Material emissive=(%f %f %f %f), specular=(%f %f %f %f)",
 		ctx->state.material.emissive[0], ctx->state.material.emissive[1],
 		ctx->state.material.emissive[2], ctx->state.material.emissive[3],
 		ctx->state.material.specular[0], ctx->state.material.specular[1],
 		ctx->state.material.specular[2], ctx->state.material.specular[3]
 	);
-	
+
 	TOPIC("LIGHT", "Material shininess=%f", ctx->state.material.shininess);
 }
 
@@ -1517,13 +1520,8 @@ static void MesaApplyColorMaterial(mesa3d_ctx_t *ctx)
 	if(ctx->state.material.emissive_source == D3DMCS_COLOR1)
 		ctx->state.material.untracked |= MESA_MAT_EMISSIVE_C1;
 
-	if(ctx->state.material.specular_source == D3DMCS_COLOR1)
+	if(ctx->state.specular && ctx->state.material.specular_source == D3DMCS_COLOR1)
 		ctx->state.material.untracked |= MESA_MAT_SPECULAR_C1;
-
-	if(ctx->state.specular && ctx->state.material.specular_source == D3DMCS_COLOR2)
-		ctx->state.specular_vertex = TRUE;
-	else
-		ctx->state.specular_vertex = FALSE;
 
 	if(ctx->state.material.diffuse_source == D3DMCS_COLOR2)
 		ctx->state.material.untracked |= MESA_MAT_DIFFUSE_C2;
@@ -1533,6 +1531,22 @@ static void MesaApplyColorMaterial(mesa3d_ctx_t *ctx)
 
 	if(ctx->state.material.emissive_source == D3DMCS_COLOR2)
 		ctx->state.material.untracked |= MESA_MAT_EMISSIVE_C2;
+
+	if(ctx->state.specular && ctx->state.material.specular_source == D3DMCS_COLOR2)
+		ctx->state.specular_vertex = TRUE;
+	else
+		ctx->state.specular_vertex = FALSE;
+
+	TOPIC("LIGHT", "Vertex color: primary=%d%d%d%d, secondary=%d%d%d%d",
+		ctx->state.material.diffuse_source  == D3DMCS_COLOR1 ? 1 : 0,
+		ctx->state.material.ambient_source  == D3DMCS_COLOR1 ? 1 : 0,
+		ctx->state.material.emissive_source == D3DMCS_COLOR1 ? 1 : 0,
+		ctx->state.material.specular_source == D3DMCS_COLOR1 ? 1 : 0,
+		ctx->state.material.diffuse_source  == D3DMCS_COLOR2 ? 1 : 0,
+		ctx->state.material.ambient_source  == D3DMCS_COLOR2 ? 1 : 0,
+		ctx->state.material.emissive_source == D3DMCS_COLOR2 ? 1 : 0,
+		ctx->state.material.specular_source == D3DMCS_COLOR2 ? 1 : 0
+	);
 
 	MesaApplyMaterial(ctx);
 }
@@ -1620,8 +1634,49 @@ void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value)
 			// and normal in the camera space) should be taken as texture coordinates
 			// Low 16 bits are used to specify texture coordinate index, to take the WRAP mode from
 			// D3DTSS_TCI_*
-			ts->coordindex = (TSS_DWORD) & 0xFFFF;
-			TOPIC("TEXCOORDINDEX", "TEXCOORDINDEX %d for unit %d", TSS_DWORD, tmu);
+			ts->coordindex = TSS_DWORD & 0xFFFF;
+			if(ts->coordindex >= 8)
+			{
+				WARN("Too high TEXCOORDINDEX: %d", ts->coordindex);
+				ts->coordindex = 0;
+			}
+			
+			switch(TSS_DWORD & 0xFFFF0000)
+			{
+				case D3DTSS_TCI_PASSTHRU:
+					/* Use the specified texture coordinates contained within the vertex format.
+					   This value resolves to zero. */
+					ts->mapping = D3DTSS_TCI_PASSTHRU;
+					break;
+				case D3DTSS_TCI_CAMERASPACENORMAL:
+					/* Use the vertex normal, transformed to camera space, as the input texture
+					   coordinates for this stage's texture transformation. */
+					ts->mapping = D3DTSS_TCI_CAMERASPACENORMAL;
+					break;
+				case D3DTSS_TCI_CAMERASPACEPOSITION:
+					/* Use the vertex position, transformed to camera space, as the input texture
+					   coordinates for this stage's texture transformation. */
+					ts->mapping = D3DTSS_TCI_CAMERASPACEPOSITION;
+					break;
+				case D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR:
+					/* Use the reflection vector, transformed to camera space, as the input
+					   texture coordinate for this stage's texture transformation. The reflection
+					   vector is computed from the input vertex position and normal vector. */
+					ts->mapping = D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR;
+					break;
+				case D3DTSS_TCI_SPHEREMAP: /* DX8/9 */
+					/* Use the specified texture coordinates for sphere mapping. */
+					ts->mapping = D3DTSS_TCI_SPHEREMAP;
+					break;
+				default:
+					WARN("Unknown D3DTSS_TCI mode: 0x%X", TSS_DWORD & 0xFFFF0000);
+					break;
+			}
+
+			ts->move = TRUE;
+			MesaFVFRecalc(ctx);
+
+			TOPIC("MAPPING", "TEXCOORDINDEX 0x%X for unit %d", TSS_DWORD, tmu);
 			break;
 		}
 		/* D3DTEXTUREADDRESS for both coordinates */
@@ -1694,23 +1749,23 @@ void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value)
 		RENDERSTATE(D3DTSS_TEXTURETRANSFORMFLAGS)
 		{
 			DWORD tflags = TSS_DWORD;
-			TOPIC("MATRIX", "D3DTSS_TEXTURETRANSFORMFLAGS=0x%X", tflags);
+			TOPIC("MAPPING", "D3DTSS_TEXTURETRANSFORMFLAGS=0x%X", tflags);
 			switch(tflags & (D3DTTFF_PROJECTED-1))
 			{
 				case D3DTTFF_DISABLE:// texture coordinates are passed directly
-					ts->coordnum = 2;
+					ts->coordscalc = 0;
 					break;
 				case D3DTTFF_COUNT1: // rasterizer should expect 1-D texture coords
-					ts->coordnum = 1;
+					ts->coordscalc = 1;
 					break;
 				case D3DTTFF_COUNT2: // rasterizer should expect 2-D texture coords
-					ts->coordnum = 2;
+					ts->coordscalc = 2;
 					break;
 				case D3DTTFF_COUNT3: // rasterizer should expect 3-D texture coords
-					ts->coordnum = 3;
+					ts->coordscalc = 3;
 					break;
 				case D3DTTFF_COUNT4: // rasterizer should expect 4-D texture coords
-					ts->coordnum = 4;
+					ts->coordscalc = 4;
 					break;
 			}
 			if(tflags & D3DTTFF_PROJECTED)
@@ -2046,16 +2101,13 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 			// need EXT_SECONDARY_COLOR
 			if(state->dwArg[0])
 			{
-				ctx->entry->proc.pglEnable(GL_COLOR_SUM);
-				ctx->entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, &ctx->state.material.specular[0]);
 				ctx->state.specular = TRUE;
 			}
 			else
 			{
-				ctx->entry->proc.pglDisable(GL_COLOR_SUM);
-				ctx->entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, &black[0]);
 				ctx->state.specular = FALSE;
 			}
+			MesaApplyColorMaterial(ctx);
 			TOPIC("LIGHT", "SPECULARENABLE=%d", state->dwArg[0]);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_ZVISIBLE) /* TRUE to enable z checking */
@@ -2212,7 +2264,6 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 			{
 				ctx->state.tmu[i].update = TRUE;
 			}
-			
 			break;
 		}
 		case D3DRENDERSTATE_STIPPLEPATTERN00 ... D3DRENDERSTATE_STIPPLEPATTERN31:
@@ -2227,7 +2278,7 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 			ctx->state.tmu[type - D3DRENDERSTATE_WRAP0].update = TRUE;
 			break;
 		}
-  /* d3d7 */
+		/* d3d7 */
 		RENDERSTATE(D3DRENDERSTATE_CLIPPING)
 			ctx->state.clipping.enabled = (state->dwArg[0] == 0) ? FALSE : TRUE;
 			MesaSetClipping(ctx);
@@ -2290,12 +2341,10 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 		RENDERSTATE(D3DRENDERSTATE_AMBIENTMATERIALSOURCE)
 			ctx->state.material.ambient_source = state->dwArg[0];
 			MesaApplyColorMaterial(ctx);
-			// D3DMATERIALCOLORSOURCE
 			break;
 		RENDERSTATE(D3DRENDERSTATE_EMISSIVEMATERIALSOURCE)
 			ctx->state.material.emissive_source = state->dwArg[0];
 			MesaApplyColorMaterial(ctx);
-			// D3DMATERIALCOLORSOURCE
 			break;
 		RENDERSTATE(D3DRENDERSTATE_VERTEXBLEND)
 			switch(state->dwArg[0])
@@ -2825,7 +2874,7 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 				break;
 		}
 	} // !dx6_blend
-		
+
 	/*
 	 * Texture addressing
 	 */
@@ -2835,7 +2884,7 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 		GL_CHECK(entry->proc.pglTexParameterfv(GL_TEXTURE_2D,
 			GL_TEXTURE_BORDER_COLOR, &(ts->border[0])));
 	}
-	
+
 	switch(ts->texaddr_u)
 	{
 		case D3DTADDRESS_MIRROR:
@@ -2852,7 +2901,7 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 			GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT));
 			break;
 	}
-	
+
 	switch(ts->texaddr_v)
 	{
 		case D3DTADDRESS_MIRROR:
@@ -2892,9 +2941,52 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 	}
 }
 
+static void setTexGen(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int num_coords)
+{
+	switch(num_coords)
+	{
+		case 4:
+			GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_GEN_Q));
+			/* thru */
+		case 3:
+			GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_GEN_R));
+			/* thru */
+		case 2:
+			GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_GEN_T));
+			/* thru */
+		case 1:
+			GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_GEN_S));
+			/* thru */
+		default:
+			break;
+	}
+	
+	switch(4 - num_coords)
+	{
+		case 4:
+			GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_GEN_S));
+			/* thru */
+		case 3:
+			GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_GEN_T));
+			/* thru */
+		case 2:
+			GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_GEN_R));
+			/* thru */
+		case 1:
+			GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_GEN_Q));
+			/* thru */
+		default:
+			break;
+	}
+}
+
 void MesaDrawRefreshState(mesa3d_ctx_t *ctx)
 {
 	int i;
+	static const GLfloat s_plane[] = { 1.0f, 0.0f, 0.0f, 0.0f };
+	static const GLfloat t_plane[] = { 0.0f, 1.0f, 0.0f, 0.0f };
+	static const GLfloat r_plane[] = { 0.0f, 0.0f, 1.0f, 0.0f };
+	static const GLfloat q_plane[] = { 0.0f, 0.0f, 0.0f, 1.0f };
 
 	for(i = 0; i < ctx->tmu_count; i++)
 	{
@@ -2927,14 +3019,78 @@ void MesaDrawRefreshState(mesa3d_ctx_t *ctx)
 			mesa3d_entry_t *entry = ctx->entry;
 			
 			GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0 + i));
-			GL_CHECK(entry->proc.pglMatrixMode(GL_TEXTURE));
-			GL_CHECK(entry->proc.pglLoadMatrixf(&ctx->state.tmu[i].matrix[0]));
+//			GL_CHECK(entry->proc.pglMatrixMode(GL_TEXTURE));
+//			GL_CHECK(entry->proc.pglLoadMatrixf(&ctx->state.tmu[i].matrix[0]));
+
+			switch(ctx->state.tmu[i].mapping)
+			{
+				case D3DTSS_TCI_CAMERASPACENORMAL:
+					TOPIC("MAPPING", "(%d)D3DTSS_TCI_CAMERASPACENORMAL: %d", i, ctx->state.tmu[i].coordscalc);
+
+					MesaSpaceModelviewSet(ctx);
+					GL_CHECK(entry->proc.pglTexGenfv(GL_S, GL_EYE_PLANE, s_plane));
+					GL_CHECK(entry->proc.pglTexGenfv(GL_T, GL_EYE_PLANE, t_plane));
+					GL_CHECK(entry->proc.pglTexGenfv(GL_R, GL_EYE_PLANE, r_plane));
+					GL_CHECK(entry->proc.pglTexGenfv(GL_Q, GL_EYE_PLANE, q_plane));
+					MesaSpaceModelviewReset(ctx);
+
+					GL_CHECK(entry->proc.pglTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_NORMAL_MAP));
+					GL_CHECK(entry->proc.pglTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_NORMAL_MAP));
+					GL_CHECK(entry->proc.pglTexGeni(GL_R, GL_TEXTURE_GEN_MODE, GL_NORMAL_MAP));
+
+					setTexGen(entry, ctx, ctx->state.tmu[i].coordscalc);
+					break;
+				case D3DTSS_TCI_CAMERASPACEPOSITION:
+					TOPIC("MAPPING", "(%d)D3DTSS_TCI_CAMERASPACEPOSITION: %d", i, ctx->state.tmu[i].coordscalc);
+
+					MesaSpaceModelviewSet(ctx);
+					GL_CHECK(entry->proc.pglTexGenfv(GL_S, GL_EYE_PLANE, s_plane));
+					GL_CHECK(entry->proc.pglTexGenfv(GL_T, GL_EYE_PLANE, t_plane));
+					GL_CHECK(entry->proc.pglTexGenfv(GL_R, GL_EYE_PLANE, r_plane));
+					GL_CHECK(entry->proc.pglTexGenfv(GL_Q, GL_EYE_PLANE, q_plane));
+					MesaSpaceModelviewReset(ctx);
+
+					GL_CHECK(entry->proc.pglTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_EYE_LINEAR));
+					GL_CHECK(entry->proc.pglTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_EYE_LINEAR));
+					GL_CHECK(entry->proc.pglTexGeni(GL_R, GL_TEXTURE_GEN_MODE, GL_EYE_LINEAR));
+
+					setTexGen(entry, ctx, ctx->state.tmu[i].coordscalc);
+					break;
+				case D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR:
+					TOPIC("MAPPING", "(%d)D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR: %d", i, ctx->state.tmu[i].coordscalc);
+
+					MesaSpaceModelviewSet(ctx);
+					GL_CHECK(entry->proc.pglTexGenfv(GL_S, GL_EYE_PLANE, s_plane));
+					GL_CHECK(entry->proc.pglTexGenfv(GL_T, GL_EYE_PLANE, t_plane));
+					GL_CHECK(entry->proc.pglTexGenfv(GL_R, GL_EYE_PLANE, r_plane));
+					GL_CHECK(entry->proc.pglTexGenfv(GL_Q, GL_EYE_PLANE, q_plane));
+					MesaSpaceModelviewReset(ctx);
+
+					GL_CHECK(entry->proc.pglTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_REFLECTION_MAP));
+					GL_CHECK(entry->proc.pglTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_REFLECTION_MAP));
+					GL_CHECK(entry->proc.pglTexGeni(GL_R, GL_TEXTURE_GEN_MODE, GL_REFLECTION_MAP));
+
+					setTexGen(entry, ctx, ctx->state.tmu[i].coordscalc);
+					break;
+				case D3DTSS_TCI_SPHEREMAP:
+					TOPIC("MAPPING", "(%d)D3DTSS_TCI_SPHEREMAP: %d", i, ctx->state.tmu[i].coordscalc);
+					
+					GL_CHECK(entry->proc.pglTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP));
+					GL_CHECK(entry->proc.pglTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP));
+
+					setTexGen(entry, ctx, 2);
+					break;
+				case D3DTSS_TCI_PASSTHRU:
+				default:
+					TOPIC("MAPPING", "(%d)D3DTSS_TCI_PASSTHRU: %d", i, ctx->state.tmu[i].coordscalc);
+					setTexGen(entry, ctx, 0);
+					break;
+			}
+			
 			ctx->state.tmu[i].move = FALSE;
 		}
-		
 	}
 }
-
 
 void MesaDraw(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype, LPVOID vertices, DWORD verticesCnt)
 {
@@ -3255,12 +3411,18 @@ void MesaSetTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *matrix)
 			MesaApplyTransform(ctx, MESA_TF_WORLD);
 			break;
 		case D3DTRANSFORMSTATE_VIEW:
-			memcpy(ctx->matrix.view, m, sizeof(m));
-			MesaApplyTransform(ctx, MESA_TF_VIEW);
+			if(memcpy(ctx->matrix.view, m, sizeof(m)) != 0)
+			{
+				memcpy(ctx->matrix.view, m, sizeof(m));
+				MesaApplyTransform(ctx, MESA_TF_VIEW);
+			}
 			break;
 		case D3DTRANSFORMSTATE_PROJECTION:
-			memcpy(ctx->matrix.proj, m, sizeof(m));
-			MesaApplyTransform(ctx, MESA_TF_PROJECTION);
+			if(memcpy(ctx->matrix.proj, m, sizeof(m)) != 0)
+			{
+				memcpy(ctx->matrix.proj, m, sizeof(m));
+				MesaApplyTransform(ctx, MESA_TF_PROJECTION);
+			}
 			break;
 		case D3DTRANSFORMSTATE_WORLD1:
 			memcpy(ctx->matrix.world[1], m, sizeof(m));
@@ -3274,6 +3436,7 @@ void MesaSetTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *matrix)
 			memcpy(ctx->matrix.world[3], m, sizeof(m));
 			MesaApplyTransform(ctx, MESA_TF_WORLD);
 			break;
+#if 0 /* disabled for now */
 		case D3DTRANSFORMSTATE_TEXTURE0:
 			memcpy(ctx->state.tmu[0].matrix, m, sizeof(m));
 			ctx->state.tmu[0].move = TRUE;
@@ -3314,6 +3477,10 @@ void MesaSetTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *matrix)
 			ctx->state.tmu[7].move = TRUE;
 			MesaDrawRefreshState(ctx);
 			break;
+#else
+		case D3DTRANSFORMSTATE_TEXTURE0...D3DTRANSFORMSTATE_TEXTURE7:
+			break;
+#endif
 		default:
 			WARN("MesaSetTransform: invalid state=%d, xtype=%X", state, xtype);
 			break;
