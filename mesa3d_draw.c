@@ -362,7 +362,7 @@ void MesaFVFRecalc(mesa3d_ctx_t *ctx)
 	ctx->state.fvf.stride = offset * sizeof(D3DVALUE);
 }
 
-static const GLfloat normal_def[3] = {0.0, 0.0, -1.0};
+//static const GLfloat normal_def[3] = {0.0, 0.0, 1.0};
 
 inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, FVF_t *vertex)
 {
@@ -378,28 +378,21 @@ inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx
 			{
 				switch(coordnum)
 				{
-					// TODO: use glMultiTexCoord2fv
 					case 1:
-						entry->proc.pglMultiTexCoord1f(GL_TEXTURE0 + i,
-							vertex->fv[ctx->state.fvf.pos_tmu[coordindex] + 0]);
+						entry->proc.pglMultiTexCoord1fv(GL_TEXTURE0 + i,
+							&vertex->fv[ctx->state.fvf.pos_tmu[coordindex]]);
 						break;
 					case 2:
-						entry->proc.pglMultiTexCoord2f(GL_TEXTURE0 + i,
-							vertex->fv[ctx->state.fvf.pos_tmu[coordindex] + 0],
-							vertex->fv[ctx->state.fvf.pos_tmu[coordindex] + 1]);
+						entry->proc.pglMultiTexCoord2fv(GL_TEXTURE0 + i,
+							&vertex->fv[ctx->state.fvf.pos_tmu[coordindex]]);
 						break;
 					case 3:
-						entry->proc.pglMultiTexCoord3f(GL_TEXTURE0 + i,
-							vertex->fv[ctx->state.fvf.pos_tmu[coordindex] + 0],
-							vertex->fv[ctx->state.fvf.pos_tmu[coordindex] + 1],
-							vertex->fv[ctx->state.fvf.pos_tmu[coordindex] + 2]);
+						entry->proc.pglMultiTexCoord3fv(GL_TEXTURE0 + i,
+							&vertex->fv[ctx->state.fvf.pos_tmu[coordindex]]);
 						break;
 					case 4:
-						entry->proc.pglMultiTexCoord4f(GL_TEXTURE0 + i,
-							vertex->fv[ctx->state.fvf.pos_tmu[coordindex] + 0],
-							vertex->fv[ctx->state.fvf.pos_tmu[coordindex] + 1],
-							vertex->fv[ctx->state.fvf.pos_tmu[coordindex] + 2],
-							vertex->fv[ctx->state.fvf.pos_tmu[coordindex] + 3]);
+						entry->proc.pglMultiTexCoord4fv(GL_TEXTURE0 + i,
+							&vertex->fv[ctx->state.fvf.pos_tmu[coordindex]]);
 						break;
 				} // switch(coordnum)
 			}
@@ -429,6 +422,7 @@ inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx
 			vertex->fv[ctx->state.fvf.begin+FVF_Y],
 			vertex->fv[ctx->state.fvf.begin+FVF_Z],
 			vertex->fv[ctx->state.fvf.begin+FVF_RHW]);
+
 		entry->proc.pglVertex4fv(&v[0]);
 	}
 	else
@@ -436,10 +430,10 @@ inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx
 		if(ctx->matrix.weight == 0)
 		{
 			if(ctx->state.fvf.pos_normal)
+			{
 				entry->proc.pglNormal3fv(&vertex->fv[ctx->state.fvf.pos_normal]);
-			else
-				entry->proc.pglNormal3fv(&normal_def[0]);
-			
+			}
+
 			entry->proc.pglVertex3fv(&vertex->fv[ctx->state.fvf.begin+FVF_X]);
 		}
 		else
@@ -452,10 +446,6 @@ inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx
 					&vertex->fv[ctx->state.fvf.begin+FVF_BETA1], 
 					ctx->state.fvf.betas, coords);
 				entry->proc.pglNormal3fv(&coords[0]);
-			}
-			else
-			{
-				entry->proc.pglNormal3fv(&normal_def[0]);
 			}
 			MesaVetexBlend(ctx,
 				&vertex->fv[ctx->state.fvf.begin+FVF_X],

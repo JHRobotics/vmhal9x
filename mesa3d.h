@@ -423,6 +423,7 @@ void MesaReloadTexture(mesa3d_texture_t *tex, int tmu);
 void MesaDestroyTexture(mesa3d_texture_t *tex, BOOL ctx_cleanup, LPDDRAWI_DDRAWSURFACE_LCL surface_delete);
 void MesaApplyTransform(mesa3d_ctx_t *ctx, DWORD changes);
 void MesaApplyViewport(mesa3d_ctx_t *ctx, GLint x, GLint y, GLint w, GLint h);
+void MesaApplyLighting(mesa3d_ctx_t *ctx);
 
 #define MESA_TF_PROJECTION 1
 #define MESA_TF_VIEW       2

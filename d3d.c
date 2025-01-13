@@ -311,7 +311,7 @@ DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 		{
 			MesaSpaceIdentitySet(ctx);
 		}
-		
+		MesaApplyLighting(ctx);
 		rc = MesaDraw6(ctx, cmdBufferStart, cmdBufferEnd, vertices, &pd->dwErrorOffset, RStates);
 		MesaSpaceIdentityReset(ctx);
 	GL_BLOCK_END

@@ -63,6 +63,7 @@ static void LightApply(mesa3d_ctx_t *ctx, DWORD id)
 		case D3DLIGHT_POINT:
 			TOPIC("LIGHT", "D3DLIGHT_POINT");
 			GL_CHECK(entry->proc.pglLightfv(lindex, GL_POSITION,              &light->pos[0]));
+			GL_CHECK(entry->proc.pglLightf(lindex,  GL_SPOT_EXPONENT,         0.0f));
 			GL_CHECK(entry->proc.pglLightf(lindex,  GL_SPOT_CUTOFF,           180.0f));
 			GL_CHECK(entry->proc.pglLightf(lindex,  GL_CONSTANT_ATTENUATION,  light->attenuation[0]));
 			GL_CHECK(entry->proc.pglLightf(lindex,  GL_LINEAR_ATTENUATION,    light->attenuation[1]));
@@ -89,8 +90,11 @@ static void LightApply(mesa3d_ctx_t *ctx, DWORD id)
 
 			/* Note GL uses w position of 0 for direction! */
 			GL_CHECK(entry->proc.pglLightfv(lindex, GL_POSITION,      &vd[0]));
-			GL_CHECK(entry->proc.pglLightf(lindex,  GL_SPOT_CUTOFF,   180.0f));
 			GL_CHECK(entry->proc.pglLightf(lindex,  GL_SPOT_EXPONENT,   0.0f));
+			GL_CHECK(entry->proc.pglLightf(lindex,  GL_SPOT_CUTOFF,   180.0f));
+			GL_CHECK(entry->proc.pglLightf(lindex,  GL_CONSTANT_ATTENUATION,  1.0f));
+			GL_CHECK(entry->proc.pglLightf(lindex,  GL_LINEAR_ATTENUATION,    0.0f));
+			GL_CHECK(entry->proc.pglLightf(lindex,  GL_QUADRATIC_ATTENUATION, 0.0f));
 			break;
 		}
 		case D3DLIGHT_PARALLELPOINT:
