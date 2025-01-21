@@ -153,7 +153,8 @@ static void *convert_float_to_s24s8(mesa3d_ctx_t *ctx, const void *in, int bpp)
 				{
 					for(x = 0; x < ctx->state.sw; x++)
 					{
-						DWORD dwtmp = *((DWORD*)&src[x*3]);
+						//DWORD dwtmp = *((DWORD*)&src[x*3]); = faster but break mem. allign
+						DWORD dwtmp = ((DWORD)src[x*3]) | ((DWORD)src[x*3+1] << 8) | ((DWORD)src[x*3+2] << 16); // LE only
 						DWORD ftmp_dw = FLOAT_24_TO_FLOAT(dwtmp);
 						float ftmp = COPY_DW_TO_FLOAT(ftmp_dw);
 						dst[x] = (DWORD)(ftmp * 0x7FFFFF);

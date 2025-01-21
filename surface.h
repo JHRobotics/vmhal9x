@@ -28,7 +28,7 @@
 
 typedef struct surface_info surface_info_t;
 
-#define DDSURF_ATTACH_MAX 32
+#define DDSURF_ATTACH_MAX (6*16)
 
 typedef struct _DDSURF
 {
@@ -43,5 +43,7 @@ typedef struct _DDSURF
 } DDSURF;
 
 void SurfaceCopyLCL(LPDDRAWI_DDRAWSURFACE_LCL surf, DDSURF *dest);
+LPDDRAWI_DDRAWSURFACE_LCL SurfaceDuplicate(LPDDRAWI_DDRAWSURFACE_LCL original);
+LPDDRAWI_DDRAWSURFACE_LCL SurfaceSubimage(DDSURF *surf, DWORD id);
 
 #endif /* __SURFACE_H__INCLUDED__ */

@@ -28,6 +28,7 @@ typedef OSMESAproc (APIENTRYP OSMesaGetProcAddress_h)(const char *funcName);
 #define MESA3D_MAX_TEXS 65536
 #define MESA3D_MAX_CTXS 128
 #define MESA3D_MAX_MIPS 16
+#define MESA3D_CUBE_SIDES 6
 
 #define MESA_TMU_MAX 8
 #define MESA_CLIPS_MAX 8
@@ -43,6 +44,13 @@ typedef OSMESAproc (APIENTRYP OSMesaGetProcAddress_h)(const char *funcName);
 #define MESA_MAT_EMISSIVE_C2 0x40
 #define MESA_MAT_SPECULAR_C2 0x80
 
+#define MESA_POSITIVEX 0
+#define MESA_NEGATIVEX 1
+#define MESA_POSITIVEY 2
+#define MESA_NEGATIVEY 3
+#define MESA_POSITIVEZ 4
+#define MESA_NEGATIVEZ 5
+
 typedef struct mesa3d_texture
 {
 	int     id; // ctx->tex[_id_]
@@ -53,13 +61,15 @@ typedef struct mesa3d_texture
 	GLint   internalformat;
 	GLenum  format;
 	GLenum  type;
-	FLATPTR data_ptr[MESA3D_MAX_MIPS];
-	BOOL    data_dirty[MESA3D_MAX_MIPS];
-	LPDDRAWI_DDRAWSURFACE_LCL data_surf[MESA3D_MAX_MIPS];
+	FLATPTR data_ptr[MESA3D_CUBE_SIDES][MESA3D_MAX_MIPS];
+	BOOL    data_dirty[MESA3D_CUBE_SIDES][MESA3D_MAX_MIPS];
+	LPDDRAWI_DDRAWSURFACE_LCL data_surf[MESA3D_CUBE_SIDES][MESA3D_MAX_MIPS];
 	BOOL dirty;
 	struct mesa3d_ctx *ctx;
 	BOOL mipmap;
+	BOOL cube;
 	int mipmap_level;
+	int sides; // 1 or 6
 	BOOL colorkey;
 	BOOL compressed;
 	BOOL tmu[MESA_TMU_MAX];
@@ -143,6 +153,26 @@ typedef struct mesa_surfaces_table
 	DWORD table_size;
 } mesa_surfaces_table_t;
 
+typedef struct mesa_fbo
+{
+	/* dimensions */
+	GLuint width;
+	GLuint height;
+	/* main plain */
+	GLuint plane_fb;
+	GLuint plane_color_tex;
+	GLuint plane_depth_tex;
+	/* conversion and blit */
+	GLuint color_tex;
+	GLuint color_fb;
+	GLenum color_format;
+	GLuint depth_tex;
+	GLuint depth_fb;
+	GLuint stencil_tex;
+	GLuint stencil_fb;
+	GLenum depth_type;
+} mesa_fbo_t;
+
 #define SURFACE_TABLES_PER_ENTRY 8 /* in theory there should by only 1 */
 
 typedef struct mesa3d_ctx
@@ -168,7 +198,13 @@ typedef struct mesa3d_ctx
 	//DDRAWI_DDRAWSURFACE_LCL flips[MESA3D_MAX_FLIPS];
 	//int flips_cnt;
 	DDSURF backbuffer;
+	void *backbuffer_vidmem;
+	LPDDRAWI_DDRAWSURFACE_LCL backbuffer_lcl;
+
 	DDSURF depth;
+	void *depth_vidmem;
+	LPDDRAWI_DDRAWSURFACE_LCL depth_lcl;
+
 	LPDDRAWI_DIRECTDRAW_GBL dd;
 	BOOL depth_stencil;	
 	int tmu_count;
@@ -188,6 +224,7 @@ typedef struct mesa3d_ctx
 		DWORD stipple[32];
 		GLfloat tfactor[4]; // TEXTUREFACTOR eq. GL_CONSTANT
 		BOOL texperspective;
+		BOOL textarget;
 		struct {
 			BOOL     enabled;
 			GLenum   func;
@@ -252,25 +289,9 @@ typedef struct mesa3d_ctx
 	} state;
 
 	/* fbo */
-	struct {
-		/* dimensions */
-		GLuint width;
-		GLuint height;
-		/* main plain */
-		GLuint plane_fb;
-		GLuint plane_color_tex;
-		GLuint plane_depth_tex;
-		/* conversion and blit */
-		GLuint color_tex;
-		GLuint color_fb;
-		GLenum color_format;
-		GLuint depth_tex;
-		GLuint depth_fb;
-		GLuint stencil_tex;
-		GLuint stencil_fb;
-		GLenum depth_type;
-		int tmu; /* can be higher than tmu_count, if using extra TMU for FBO operations */
-	} fbo;
+	mesa_fbo_t fbo;
+	mesa_fbo_t fbo_swap;
+	int fbo_tmu; /* can be higher than tmu_count, if using extra TMU for FBO operations */
 
 	/* rendering state */
 	struct {
@@ -406,7 +427,7 @@ void Mesa3DFree(DWORD pid);
 #define GL_CHECK(_code) _code
 #endif
 
-mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DDSURF *dds, DDSURF *ddz);
+mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DDSURF *dds,  DWORD dds_id, DDSURF *ddz, DWORD ddz_id);
 void MesaDestroyCtx(mesa3d_ctx_t *ctx);
 void MesaDestroyAllCtx(mesa3d_entry_t *entry);
 void MesaInitCtx(mesa3d_ctx_t *ctx);
@@ -437,7 +458,7 @@ void MesaDrawIndex(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE v
 
 void MesaRender(mesa3d_ctx_t *ctx);
 void MesaReadback(mesa3d_ctx_t *ctx, GLbitfield mask);
-BOOL MesaSetTarget(mesa3d_ctx_t *ctx, DDSURF *dss, DDSURF *dsz);
+BOOL MesaSetTarget(mesa3d_ctx_t *ctx, DDSURF *dds, DWORD dds_id, DDSURF *ddz, DWORD ddz_id, BOOL create);
 void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value);
 
 void MesaDrawRefreshState(mesa3d_ctx_t *ctx);
@@ -455,8 +476,8 @@ void MesaBufferUploadColor(mesa3d_ctx_t *ctx, const void *src);
 void MesaBufferDownloadColor(mesa3d_ctx_t *ctx, void *dst);
 void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src);
 void MesaBufferDownloadDepth(mesa3d_ctx_t *ctx, void *dst);
-void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level, int tmu);
-void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level, int tmu, DWORD chroma_lw, DWORD chroma_hi);
+void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level, int side, int tmu);
+void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level, int side, int tmu, DWORD chroma_lw, DWORD chroma_hi);
 BOOL MesaBufferFBOSetup(mesa3d_ctx_t *ctx, int width, int height);
 
 /* calculation */
@@ -499,7 +520,8 @@ void MesaSurfacesTableRemoveDDLcl(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL
 void MesaSurfacesTableInsertSurface(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, DWORD id, DDSURF *surf);
 
 BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, LPDDRAWI_DDRAWSURFACE_LCL surface);
-mesa3d_texture_t *SurfaceGetTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *ctx, int level);
+void SurfaceFree(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, LPDDRAWI_DDRAWSURFACE_LCL surface);
+mesa3d_texture_t *SurfaceGetTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *ctx, int level, int side);
 
 /* need GL block */
 mesa3d_texture_t *MesaTextureFromSurfaceId(mesa3d_ctx_t *ctx, DWORD surfaceId);

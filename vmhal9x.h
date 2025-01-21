@@ -140,15 +140,16 @@ void SurfaceCtxLock();
 void SurfaceCtxUnlock();
 
 DWORD SurfaceCreate(LPDDRAWI_DDRAWSURFACE_LCL surf);
-void SurfaceDelete(LPDDRAWI_DDRAWSURFACE_LCL surf);
-void SurfaceAttachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_tex, int level);
+BOOL SurfaceDelete(LPDDRAWI_DDRAWSURFACE_LCL surf);
+void SurfaceAttachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_tex, int level, int side);
 void SurfaceAttachCtx(void *mesa_ctx);
-void SurfaceDeattachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_tex, int level);
+void SurfaceDeattachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_tex, int level, int side);
 void SurfaceDeattachCtx(void *mesa_ctx);
-void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf);
-void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf);
+void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly);
+void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly);
 BOOL SurfaceIsEmpty(LPDDRAWI_DDRAWSURFACE_LCL surf);
 void SurfaceClearEmpty(LPDDRAWI_DDRAWSURFACE_LCL surf);
+void SurfaceClearData(LPDDRAWI_DDRAWSURFACE_LCL surf);
 
 inline static DWORD SurfacePitch(DWORD width, DWORD bpp)
 {
@@ -173,6 +174,7 @@ typedef struct _VMHAL_enviroment
 	DWORD num_clips;
 	BOOL zfloat;
 	DWORD max_anisotropy;
+	BOOL vertexblend;
 } VMHAL_enviroment_t;
 
 #define DX7_SURFACE_NEST_TYPES (DDSCAPS_TEXTURE | DDSCAPS_3DDEVICE | DDSCAPS_ZBUFFER)

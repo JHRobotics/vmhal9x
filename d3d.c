@@ -99,7 +99,7 @@ DWORD __stdcall SetRenderTarget32(LPD3DHAL_SETRENDERTARGETDATA lpSetRenderData)
 		}
 		
 		GL_BLOCK_BEGIN(lpSetRenderData->dwhContext)
-			MesaSetTarget(ctx, &dds, lpSetRenderData->lpDDSZ ? &ddz : NULL);
+			MesaSetTarget(ctx, &dds, 0, lpSetRenderData->lpDDSZ ? &ddz : NULL, 0, FALSE);
 		GL_BLOCK_END
 
 		lpSetRenderData->ddrval = DD_OK;
@@ -445,9 +445,23 @@ DWORD __stdcall CreateSurfaceEx32(LPDDHAL_CREATESURFACEEXDATA lpcsxd)
 	
 	LPDDRAWI_DDRAWSURFACE_LCL surf = lpcsxd->lpDDSLcl;
 	
+	/* this is from 3dlabs driver... */
+	if((surf->lpGbl->fpVidMem == 0) &&
+		(surf->ddsCaps.dwCaps & DDSCAPS_SYSTEMMEMORY))
+	{
+		// this is a system memory destroy notification
+		// so go ahead free the slot for this surface if we have it
+		SurfaceFree(entry, lpcsxd->lpDDLcl, surf);
+		return DDHAL_DRIVER_HANDLED;
+	}
+	
 	if(surf->ddsCaps.dwCaps & DX7_SURFACE_NEST_TYPES)
 	{
 		SurfaceExInsert(entry, lpcsxd->lpDDLcl, surf);
+	}
+	else
+	{
+		WARN("CreateSurfaceEx32: ignoring type 0x%X, id %d", surf->ddsCaps.dwCaps, surf->lpSurfMore->dwSurfaceHandle);
 	}
 	
 	if(!((surf->ddsCaps.dwCaps & DDSCAPS_MIPMAP) || (surf->lpSurfMore->ddsCapsEx.dwCaps2 & DDSCAPS2_CUBEMAP)))
@@ -473,7 +487,6 @@ DWORD __stdcall CreateSurfaceEx32(LPDDHAL_CREATESURFACEEXDATA lpcsxd)
 				if(curr->lpAttached->ddsCaps.dwCaps & DX7_SURFACE_NEST_TYPES)
 				{
 					SurfaceExInsert(entry, lpcsxd->lpDDLcl, curr->lpAttached);
-					//SurfaceNestCreate(curr->lpAttached, lpcsxd->lpDDLcl);
 				}
 				
 				curr = curr->lpAttached->lpAttachList;
@@ -728,40 +741,44 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
     */
     if(VMHALenv.hw_tl && VMHALenv.ddi >= 7)
   	{
-    	dxcaps.dwMaxActiveLights = VMHALenv.num_light;
-    	dxcaps.wMaxUserClipPlanes = VMHALenv.num_clips; // ref driver = 6
-    	dxcaps.wMaxVertexBlendMatrices = MESA_WORLDS_MAX; // this need GL_ARB_vertex_blend;
+			dxcaps.dwMaxActiveLights = VMHALenv.num_light;
+			dxcaps.wMaxUserClipPlanes = VMHALenv.num_clips; // ref driver = 6
+			dxcaps.wMaxVertexBlendMatrices = 0;
 
-    	dxcaps.dwVertexProcessingCaps = 
-    		//D3DVTXPCAPS_TEXGEN |
-    		D3DVTXPCAPS_LOCALVIEWER |
+			if(VMHALenv.vertexblend)
+				dxcaps.wMaxVertexBlendMatrices = MESA_WORLDS_MAX;
+				//^ this need GL_ARB_vertex_blend or some extra CPU power
+
+			dxcaps.dwVertexProcessingCaps = 
+				//D3DVTXPCAPS_TEXGEN |
+				D3DVTXPCAPS_LOCALVIEWER |
 				D3DVTXPCAPS_MATERIALSOURCE7   |
 				D3DVTXPCAPS_VERTEXFOG         |
 				D3DVTXPCAPS_DIRECTIONALLIGHTS |
 				D3DVTXPCAPS_POSITIONALLIGHTS;
-    }
-    
-    if(VMHALenv.max_anisotropy > 1)
-    {
-    	dxcaps.dwMaxAnisotropy = VMHALenv.max_anisotropy;
-    }
-    
-    if(VMHALenv.ddi <= 5)
-    {
-    	dxcaps.dwSize = sizeof(D3DHAL_D3DEXTENDEDCAPS5);
-    	COPY_INFO(lpInput, dxcaps, D3DHAL_D3DEXTENDEDCAPS5);
-    }
-    else if(VMHALenv.ddi <= 6)
-    {
-    	dxcaps.dwSize = sizeof(D3DHAL_D3DEXTENDEDCAPS6);
-    	COPY_INFO(lpInput, dxcaps, D3DHAL_D3DEXTENDEDCAPS6);
-    }
-    else
-    {
-    	dxcaps.dwSize = sizeof(D3DHAL_D3DEXTENDEDCAPS7);
-    	COPY_INFO(lpInput, dxcaps, D3DHAL_D3DEXTENDEDCAPS7);
-    }
-    
+		}
+
+		if(VMHALenv.max_anisotropy > 1)
+		{
+			dxcaps.dwMaxAnisotropy = VMHALenv.max_anisotropy;
+		}
+
+		if(VMHALenv.ddi <= 5)
+		{
+			dxcaps.dwSize = sizeof(D3DHAL_D3DEXTENDEDCAPS5);
+			COPY_INFO(lpInput, dxcaps, D3DHAL_D3DEXTENDEDCAPS5);
+		}
+		else if(VMHALenv.ddi <= 6)
+		{
+			dxcaps.dwSize = sizeof(D3DHAL_D3DEXTENDEDCAPS6);
+			COPY_INFO(lpInput, dxcaps, D3DHAL_D3DEXTENDEDCAPS6);
+		}
+		else
+		{
+			dxcaps.dwSize = sizeof(D3DHAL_D3DEXTENDEDCAPS7);
+			COPY_INFO(lpInput, dxcaps, D3DHAL_D3DEXTENDEDCAPS7);
+		}
+
 		TRACE("GUID_D3DExtendedCaps success");
 	}
 	else if(IsEqualIID(&lpInput->guidInfo, &GUID_ZPixelFormats) && VMHALenv.ddi >= 6)
@@ -790,6 +807,16 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 		zformats.pixfmt[i].dwSize             = sizeof(DDPIXELFORMAT);
 		zformats.pixfmt[i].dwFlags            = DDPF_ZBUFFER;
 		zformats.pixfmt[i].dwFourCC           = 0;
+		zformats.pixfmt[i].dwZBufferBitDepth  = 24;
+		zformats.pixfmt[i].dwStencilBitDepth  = 0;
+		zformats.pixfmt[i].dwZBitMask         = 0x00FFFFFF;
+		zformats.pixfmt[i].dwStencilBitMask   = 0;
+		zformats.pixfmt[i].dwRGBZBitMask      = 0;
+		i++;
+
+		zformats.pixfmt[i].dwSize             = sizeof(DDPIXELFORMAT);
+		zformats.pixfmt[i].dwFlags            = DDPF_ZBUFFER;
+		zformats.pixfmt[i].dwFourCC           = 0;
 		zformats.pixfmt[i].dwZBufferBitDepth  = 32;
 		zformats.pixfmt[i].dwStencilBitDepth  = 0;
 		zformats.pixfmt[i].dwZBitMask         = 0xFFFFFFFF;
@@ -806,12 +833,12 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 		zformats.pixfmt[i].dwStencilBitMask   = 0x000000FF;
 		zformats.pixfmt[i].dwRGBZBitMask      = 0;
 		i++;
-		
+
 		zformats.cnt = i;
 		DWORD real_size = sizeof(DWORD) + sizeof(DDPIXELFORMAT)*zformats.cnt;
 		lpInput->dwActualSize = real_size;
 		memcpy(lpInput->lpvData, &zformats, min(lpInput->dwExpectedSize, real_size));
-		
+
 		lpInput->ddRVal = DD_OK;
 		TRACE("GUID_ZPixelFormats success");
 	}
@@ -880,7 +907,7 @@ DWORD __stdcall ContextCreate32(LPD3DHAL_CONTEXTCREATEDATA pccd)
 				SurfaceCopyLCL(pccd->lpDDSZLcl, &dsz);
 			}
 			
-			ctx = MesaCreateCtx(entry, &dss, pccd->lpDDSZLcl ? &dsz : NULL);
+			ctx = MesaCreateCtx(entry, &dss, 0, pccd->lpDDSZLcl ? &dsz : NULL, 0);
 			
 			ctx->surfaces = MesaSurfacesTableGet(entry, pccd->lpDDLcl, SURFACES_TABLE_POOL-1);
 			
@@ -902,7 +929,7 @@ DWORD __stdcall ContextCreate32(LPD3DHAL_CONTEXTCREATEDATA pccd)
 				SurfaceCopyLCL(dss_int->lpLcl, &dsz);
 			}
 
-			ctx = MesaCreateCtx(entry, &dss, dsz_int ? &dsz : NULL);
+			ctx = MesaCreateCtx(entry, &dss, 0, dsz_int ? &dsz : NULL, 0);
 		}
 		
 		if(ctx)
@@ -1063,11 +1090,11 @@ DWORD __stdcall TextureDestroy32(LPD3DHAL_TEXTUREDESTROYDATA ptcd)
 
 	#ifdef TRACE_ON
 	mesa3d_texture_t *tex = MESA_HANDLE_TO_TEX(ptcd->dwHandle);
-	TOPIC("DESTROY", "Destroy tex, base %X", tex->data_ptr[0]);
+	TOPIC("DESTROY", "Destroy tex, base %X", tex->data_ptr[0][0]);
 	#endif
 
 	GL_BLOCK_BEGIN(ptcd->dwhContext)
-		MesaDestroyTexture(MESA_HANDLE_TO_TEX(ptcd->dwHandle), FALSE, FALSE);
+		MesaDestroyTexture(MESA_HANDLE_TO_TEX(ptcd->dwHandle), FALSE, NULL);
 	GL_BLOCK_END
 	
 	ptcd->ddrval = DD_OK;
@@ -1085,10 +1112,10 @@ DWORD __stdcall TextureSwap32(LPD3DHAL_TEXTURESWAPDATA ptsd)
 	
 	if(tex1 && tex2)
 	{
-		mesa3d_texture_t cp = *tex1;
-		*tex1 = *tex2;
-		*tex2 = cp;
-
+		mesa3d_texture_t cp;
+		memcpy(&cp, tex2, sizeof(mesa3d_texture_t));
+		memcpy(tex2, tex1, sizeof(mesa3d_texture_t));
+		memcpy(tex1, &cp, sizeof(mesa3d_texture_t));
 		ptsd->ddrval = DD_OK;
 	}
 	else
@@ -1231,7 +1258,7 @@ DWORD __stdcall GetState32(LPD3DHAL_GETSTATEDATA pgsd)
 	{
 		// You must be able to do transform/lighting
 	}
-	// JH: ^this is REAL code from S3 driver inclusing the comment
+	// JH: ^this is REAL code from S3 driver including the comment
 
 	pgsd->ddrval = DD_OK;
 	return DDHAL_DRIVER_HANDLED;
@@ -1373,8 +1400,8 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, VM
 	}
 	
 	lpHALFlags->ddscaps = DDSCAPS_3DDEVICE | DDSCAPS_TEXTURE | DDSCAPS_ZBUFFER | DDSCAPS_MIPMAP;
- 	lpHALFlags->zcaps = DDBD_16 | DDBD_32;
- 	
+ 	lpHALFlags->zcaps = DDBD_16 | DDBD_24 | DDBD_32;
+ 	lpHALFlags->caps2 = DDSCAPS2_CUBEMAP | DDCAPS2_WIDESURFACES;
  	//lpHALFlags->caps2 = DDCAPS2_NO2DDURING3DSCENE;
 
 /*

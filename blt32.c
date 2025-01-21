@@ -153,7 +153,7 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 			isInFront = TRUE;
 		}
 		
-		SurfaceFromMesa(srcx);
+		SurfaceFromMesa(srcx, FALSE);
 		
 		/* check if need stretch */
 		if(dwDstWidth != dwSrcWidth ||
@@ -238,7 +238,7 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 				stretchrop3(ddhal->pFBHDA32->bpp, rop3_code,
 					(void*)src->fpVidMem, (void*)dst->fpVidMem, dwColorKey, &srect);
 			}
-			SurfaceToMesa(dstx);
+			SurfaceToMesa(dstx, FALSE);
 		}
 		else /* ROP 1:1 pixels */
 		{
@@ -278,7 +278,7 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 			}
 		}
 		
-		SurfaceToMesa(dstx);
+		SurfaceToMesa(dstx, FALSE);
 	}
 	else if (dwFlags & (DDBLT_COLORFILL | DDBLT_DEPTHFILL))
 	{
@@ -311,7 +311,7 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 				pbd->rDest.left, pbd->rDest.top, pbd->rDest.left, pbd->rDest.top, dwDstWidth, dwDstHeight, dst->lPitch, dst->lPitch);
 		}
 		
-		SurfaceToMesa(dstx);
+		SurfaceToMesa(dstx, FALSE);
 	}
 	else
 	{

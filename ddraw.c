@@ -79,6 +79,8 @@ DWORD __stdcall CanCreateSurface(LPDDHAL_CANCREATESURFACEDATA pccsd)
 		return DDHAL_DRIVER_HANDLED;
 	}
 
+	WARN("Cannot create surface: 0x%X", lpDDSurfaceDesc->ddsCaps.dwCaps);
+
 	pccsd->ddRVal = DDERR_INVALIDPIXELFORMAT;
 	return DDHAL_DRIVER_HANDLED;
 } /* CanCreateSurface */
@@ -138,6 +140,7 @@ DWORD __stdcall CreateSurface(LPDDHAL_CREATESURFACEDATA pcsd)
 				lpSurf->lpGbl->dwBlockSizeY = 1;
 				lpSurf->lpGbl->fpVidMem     = DDHAL_PLEASEALLOC_BLOCKSIZE;
 
+				TOPIC("CUBE", "Alloc RGB %d x %d = %d (pitch %d)", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->lPitch);
 				TOPIC("MIPMAP", "Alloc RGB %d x %d = %d (pitch %d)", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->lPitch);
 				TOPIC("ALLOC", "RGB %d x %d = %d (pitch %d)", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->lPitch);
 			}
@@ -182,7 +185,7 @@ DWORD __stdcall CreateSurface(LPDDHAL_CREATESURFACEDATA pcsd)
 		SurfaceCreate(pcsd->lplpSList[0]);
 	}
 
-	TOPIC("ALLOC", "Alloc by HEL, type 0x%X", pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps);
+	WARN("Alloc by HEL, type 0x%X", pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps);
 
 	pcsd->ddRVal = DD_OK;
 	return DDHAL_DRIVER_NOTHANDLED;
@@ -203,18 +206,6 @@ DWORD __stdcall DestroySurface(LPDDHAL_DESTROYSURFACEDATA lpd)
 		lpd->lpDDSurface->lpGbl->lPitch,
 		lpd->lpDDSurface->lpGbl->ddpfSurface.dwFlags);
 	TOPIC("DESTROY", "VRAM ptr: 0x%X", lpd->lpDDSurface->lpGbl->fpVidMem);
-
-/*
-	if((lpd->lpDDSurface->ddsCaps.dwCaps & DX7_SURFACE_NEST_TYPES) != 0 && VMHALenv.ddi >= 7)
-	{
-		if(lpd->lpDDSurface->lpSurfMore->dwSize >= sizeof(DDRAWI_DDRAWSURFACE_MORE))
-		{
-			if(lpd->lpDDSurface->lpSurfMore->dwSurfaceHandle)
-			{
-			 	SurfaceNestDestroy(lpd->lpDDSurface->lpSurfMore->dwSurfaceHandle, TRUE);
-			}
-		}
-	}*/
 
 	TOPIC("GARBAGE", "destroy surface vram=%X", lpd->lpDDSurface->lpGbl->fpVidMem);
 
@@ -317,7 +308,7 @@ DWORD __stdcall Lock32(LPDDHAL_LOCKDATA pld)
 		TOPIC("CLEAR", "clear in lock 0x%X", pld->lpDDSurface->lpGbl->fpVidMem);
 	}
 	
-	SurfaceFromMesa(pld->lpDDSurface);
+	SurfaceFromMesa(pld->lpDDSurface, FALSE);
 	
 	return DDHAL_DRIVER_NOTHANDLED; /* let the lock processed */
 }
@@ -334,7 +325,7 @@ DWORD __stdcall Unlock32(LPDDHAL_UNLOCKDATA pld)
 	
 	TOPIC("READBACK", "UNLOCK %X", pld->lpDDSurface->lpGbl->fpVidMem);
 	
-	SurfaceToMesa(pld->lpDDSurface);
+	SurfaceToMesa(pld->lpDDSurface, FALSE);
 
 	return DDHAL_DRIVER_NOTHANDLED; /* let the unlock processed */
 }

@@ -800,9 +800,9 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 			COMMAND(D3DDP2OP_ZRANGE)
 				for(i = 0; i < inst->wStateCount; i++)
 				{
-					D3DHAL_DP2ZRANGE *zrange = (D3DHAL_DP2ZRANGE*)prim;
+					//D3DHAL_DP2ZRANGE *zrange = (D3DHAL_DP2ZRANGE*)prim;
 					prim += sizeof(D3DHAL_DP2ZRANGE);
-					TOPIC("ZRANGE", "D3DDP2OP_ZRANGE = %f %f", zrange->dvMinZ, zrange->dvMaxZ);
+					//TOPIC("ZRANGE", "D3DDP2OP_ZRANGE = %f %f", zrange->dvMinZ, zrange->dvMaxZ);
 					// entry->glDepthRange(zrange->dvMinZ, zrange->dvMaxZ);
 					// ^JH: I only sees values 0.0 and 1.0, so nothing set when
 					// something sets here some junk
@@ -953,7 +953,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 
 					if(front_dds)
 					{
-						MesaSetTarget(ctx, front_dds, depth_dds);
+						MesaSetTarget(ctx, front_dds, pSRTData->hRenderTarget, depth_dds, pSRTData->hZBuffer, FALSE);
 					}
 					else
 					{
