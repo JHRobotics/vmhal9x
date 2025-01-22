@@ -34,6 +34,7 @@
 #include "vmhal9x.h"
 #include "mesa3d.h"
 #include "surface.h"
+#include "ddrawi_ddk.h"
 
 #include "nocrt.h"
 
@@ -59,7 +60,9 @@ void SurfaceCtxUnlock()
 
 #define SURF_FLAG_EMPTY 1
 #define SURF_FLAG_COPY 2
-#define SURF_FLAG_DELETED 4
+#define SURF_FLAG_NO_VIDMEM 4
+
+#define MAX_SURFACES 65535
 
 typedef struct surface_attachment
 {
@@ -93,13 +96,73 @@ typedef struct context_info
 	context_attachment_t *first;
 } context_info_t;
 
+typedef struct surface_info_table
+{
+	surface_info_t **table;
+	DWORD tablesize;
+	DWORD next_id;
+} surface_info_table_t;
+
 static context_info_t contexts = {NULL};
+static surface_info_table_t infos = {NULL, 0, 1};
+
+static DWORD SurfaceNextId()
+{
+	if(infos.next_id >= infos.tablesize)
+	{
+		DWORD new_size = ((infos.next_id + 1024) / 1024) * 1024;
+		
+		if(infos.table == NULL)
+		{
+			infos.table = HeapAlloc(hSharedHeap, HEAP_ZERO_MEMORY, new_size*sizeof(surface_info_table_t*));
+			infos.tablesize = new_size;
+		}
+		else
+		{
+			infos.table = HeapReAlloc(hSharedHeap, HEAP_ZERO_MEMORY, infos.table, new_size*sizeof(surface_info_table_t*));
+			infos.tablesize = new_size;
+		}
+		
+		infos.tablesize = new_size;
+	}
+	
+	DWORD ret_id = infos.next_id++;
+	
+	if(infos.next_id >= MAX_SURFACES)
+	{
+		infos.next_id = 1;
+	}
+	
+	while(infos.table[infos.next_id] != NULL)
+	{
+		infos.next_id++;
+		if(infos.next_id >= infos.tablesize)
+		{
+			break;
+		}
+	}
+
+	return ret_id;
+}
 
 #define SURFACE_TABLE_MAGIC 0xD3D01234
 
-static surface_info_t *SurfaceCreateInfo(LPDDRAWI_DDRAWSURFACE_LCL surf)
+static void SurfaceCopyLCL(LPDDRAWI_DDRAWSURFACE_LCL surf, DDSURF *dest, BOOL recursion);
+
+static surface_info_t *SurfaceCreateInfo(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL recursion)
 {
 	TRACE_ENTRY
+	
+	if(surf->dwReserved1 != 0)
+	{
+		if(surf->dwReserved1 < infos.tablesize)
+		{
+			if(infos.table[surf->dwReserved1] != NULL)
+			{
+				return infos.table[surf->dwReserved1];
+			}
+		}
+	}
 	
 	surface_info_t *info = HeapAlloc(hSharedHeap, HEAP_ZERO_MEMORY, sizeof(surface_info_t));
 	if(info)
@@ -108,39 +171,139 @@ static surface_info_t *SurfaceCreateInfo(LPDDRAWI_DDRAWSURFACE_LCL surf)
 		info->first = NULL;
 		info->flags = SURF_FLAG_EMPTY;
 		
-		SurfaceCopyLCL(surf, &info->surf);
+		SurfaceCopyLCL(surf, &info->surf, recursion);
 	}
 	
-	surf->dwReserved1 = (DWORD)info;
+	if(info->surf.fpVidMem <= DDHAL_PLEASEALLOC_LINEARSIZE)
+	{
+		info->flags |= SURF_FLAG_NO_VIDMEM;
+		info->surf.fpVidMem = 0;
+	}
 
-	return info;
+	DWORD id = SurfaceNextId();
+	if(id)
+	{
+		infos.table[id] = info;
+		surf->dwReserved1 = id;
+
+		return info;
+	}
+	else
+	{
+		HeapFree(hSharedHeap, 0, info);
+	}
+	
+	return NULL;
+}
+
+static void SurfaceCopyLCL(LPDDRAWI_DDRAWSURFACE_LCL surf, DDSURF *dest, BOOL recursion)
+{
+	dest->lpLcl    = surf;
+	dest->lpGbl    = surf->lpGbl;
+	dest->fpVidMem = surf->lpGbl->fpVidMem;
+	dest->dwFlags  = surf->dwFlags;
+	dest->attachments_cnt = 0;
+	dest->dwCaps   = surf->ddsCaps.dwCaps;
+
+	if(recursion)
+	{
+		LPATTACHLIST item = surf->lpAttachList;
+		for(;;)
+		{
+			if(!item) break;
+			if(!item->lpAttached) break;
+			if(item->lpAttached == surf) break;
+	
+			if(dest->attachments_cnt < DDSURF_ATTACH_MAX)
+			{
+				if(item->lpAttached->dwReserved1 == 0)
+				{
+					SurfaceCreateInfo(item->lpAttached, FALSE);
+				}
+				
+				dest->attachments[dest->attachments_cnt] = item->lpAttached->dwReserved1;
+				dest->attachments_cnt++;
+			}
+	
+			item = item->lpAttached->lpAttachList;
+		}
+	}
 }
 
 DWORD SurfaceCreate(LPDDRAWI_DDRAWSURFACE_LCL surf)
 {
-	SurfaceCreateInfo(surf);
+	SurfaceCreateInfo(surf, TRUE);
 
 	return surf->dwReserved1;
 }
 
-static surface_info_t *SurfaceGetInfo(LPDDRAWI_DDRAWSURFACE_LCL surf)
+static surface_info_t *SurfaceGetInfo(surface_id sid)
 {
-	/* hack: allocation from shared heap resides in shared memory */
-	if(surf != NULL && surf->dwReserved1 >= 0x80000000)
+	if(sid > 0 && sid < infos.next_id)
 	{
-		surface_info_t *info = (surface_info_t*)surf->dwReserved1;
+		surface_info_t *info = infos.table[sid];
 		if(info)
 		{
 			if(info->magic == SURFACE_TABLE_MAGIC)
 			{
-				if((info->flags & SURF_FLAG_DELETED) == 0)
+				if(info->flags & SURF_FLAG_NO_VIDMEM)
 				{
-					return info;
+					if(info->surf.lpGbl->fpVidMem > DDHAL_PLEASEALLOC_LINEARSIZE)
+					{
+						info->surf.fpVidMem = info->surf.lpGbl->fpVidMem;
+						info->flags &= ~SURF_FLAG_NO_VIDMEM;
+					}
 				}
+				
+				return info;
 			}
 		}
 	}
+
+	return NULL;
+}
+
+static surface_info_t *SurfaceGetInfoFromLcl(LPDDRAWI_DDRAWSURFACE_LCL surf)
+{
+	if(surf != NULL)
+	{
+		surface_info_t *info = SurfaceGetInfo(surf->dwReserved1);
+		return info;
+	}
+
+	return NULL;
+}
+
+DDSURF *SurfaceGetSURF(surface_id sid)
+{
+	surface_info_t *info = SurfaceGetInfo(sid);
+	if(info)
+	{
+		return &info->surf;
+	}
 	
+	return NULL;
+}
+
+void *SurfaceGetVidMem(surface_id sid)
+{
+	surface_info_t *info = SurfaceGetInfo(sid);
+	if(info)
+	{
+		return (void*)info->surf.fpVidMem;
+	}
+
+	return NULL;
+}
+
+LPDDRAWI_DDRAWSURFACE_LCL SurfaceGetLCL(surface_id sid)
+{
+	surface_info_t *info = SurfaceGetInfo(sid);
+	if(info)
+	{
+		return (void*)info->surf.lpLcl;
+	}
+
 	return NULL;
 }
 
@@ -188,11 +351,11 @@ static void SurfaceAttachTexture_int(surface_info_t *info, void *tex, int level,
 	} // info
 }
 
-void SurfaceAttachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_tex, int level, int side)
+void SurfaceAttachTexture(surface_id sid, void *mesa_tex, int level, int side)
 {
 	TRACE_ENTRY
 
-	surface_info_t *info = SurfaceGetInfo(surf);
+	surface_info_t *info = SurfaceGetInfo(sid);
 	if(info)
 	{
 		SurfaceAttachTexture_int(info, mesa_tex, level, side);
@@ -238,7 +401,7 @@ void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 {
 	TRACE_ENTRY
 	
-	surface_info_t *info = SurfaceGetInfo(surf);
+	surface_info_t *info = SurfaceGetInfoFromLcl(surf);
 	if(info)
 	{
 		// something was write to surface, remove empty flag
@@ -274,20 +437,20 @@ void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 	{
 		if(citem->pid == pid)
 		{
-			if(citem->ctx->backbuffer_vidmem == vidmem)
+			if(SurfaceGetVidMem(citem->ctx->backbuffer) == vidmem)
 			{
 				GL_BLOCK_BEGIN(citem->ctx)
-					MesaBufferUploadColor(ctx, (void*)vidmem);
+					MesaBufferUploadColor(ctx, vidmem);
 					ctx->render.dirty = FALSE;
 				GL_BLOCK_END
 			}
 			
 			if(citem->ctx->depth_bpp)
 			{
-				if(citem->ctx->depth_vidmem == vidmem)
+				if(SurfaceGetVidMem(citem->ctx->depth) == vidmem)
 				{
 					GL_BLOCK_BEGIN(citem->ctx)
-						MesaBufferUploadDepth(ctx, (void*)vidmem);
+						MesaBufferUploadDepth(ctx, vidmem);
 						ctx->render.zdirty = FALSE;
 					GL_BLOCK_END
 				}
@@ -302,7 +465,7 @@ void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 {
 	TRACE_ENTRY
 
-	surface_info_t *info = SurfaceGetInfo(surf);
+	surface_info_t *info = SurfaceGetInfoFromLcl(surf);
 	if(info)
 	{
 		surface_attachment_t *item = info->first;
@@ -331,9 +494,7 @@ void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 		TRACE("SurfaceFromMesa - citem->pid = %X, pid = %X", citem->pid, pid);
 		if(citem->pid == pid)
 		{
-			TOPIC("TARGET", "SurfaceFromMesa - citem->ctx->backbuffer.fpVidMem = %X, vidmem = %X",
-				citem->ctx->backbuffer_vidmem, vidmem);
-			if(citem->ctx->backbuffer_vidmem == vidmem && citem->ctx->render.dirty)
+			if(SurfaceGetVidMem(citem->ctx->backbuffer) == vidmem && citem->ctx->render.dirty)
 			{
 				GL_BLOCK_BEGIN(citem->ctx)
 					MesaBufferDownloadColor(ctx, vidmem);
@@ -343,7 +504,7 @@ void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 			
 			if(citem->ctx->render.zdirty && citem->ctx->depth_bpp)
 			{
-				if(citem->ctx->depth_vidmem == vidmem && citem->ctx->render.zdirty)
+				if(SurfaceGetVidMem(citem->ctx->depth) == vidmem && citem->ctx->render.zdirty)
 				{
 					GL_BLOCK_BEGIN(citem->ctx)
 						MesaBufferDownloadDepth(ctx, vidmem);
@@ -357,11 +518,11 @@ void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 	}
 }
 
-BOOL SurfaceDelete(LPDDRAWI_DDRAWSURFACE_LCL surf)
+BOOL SurfaceDelete(surface_id sid)
 {
 	TRACE_ENTRY
 	
-	surface_info_t *info = SurfaceGetInfo(surf);
+	surface_info_t *info = SurfaceGetInfo(sid);
 	DWORD pid = GetCurrentProcessId();
 	
 	TOPIC("GARBAGE", "SurfaceDelete: pid=%X, info=%p", pid, info);
@@ -377,14 +538,19 @@ BOOL SurfaceDelete(LPDDRAWI_DDRAWSURFACE_LCL surf)
 					if(item->pid == pid)
 					{
 						GL_BLOCK_BEGIN(item->texture.tex->ctx)
-							MesaDestroyTexture(item->texture.tex, FALSE, surf);
+							MesaDestroyTexture(item->texture.tex, FALSE, sid);
 						GL_BLOCK_END
 					}
+#if 0
 					else
 					{
-						info->flags |= SURF_FLAG_DELETED;
 						TOPIC("GARBAGE", "wrong pid=%X", item->pid);
+						if(ProcessExists(item->pid))
+						{
+							MesaDestroyTexture(item->texture.tex, TRUE, sid);
+						}
 					}
+#endif
 					break;
 			}
 			
@@ -394,75 +560,68 @@ BOOL SurfaceDelete(LPDDRAWI_DDRAWSURFACE_LCL surf)
 		mesa3d_entry_t *entry = Mesa3DGet(pid, FALSE);
 		if(entry)
 		{
-			MesaSurfacesTableRemoveSurface(entry, &info->surf);
+			MesaSurfacesTableRemoveSurface(entry, sid);
 		}
 		
-		if(info->flags & SURF_FLAG_DELETED)
-		{
-			// FIXME: there will be memory leaks!
-			return FALSE;
-		}
-
 		while(info->first)
 		{
 			surface_attachment_t *item = info->first;
 			info->first = item->next;
 			HeapFree(hSharedHeap, 0, item);
 		}
-	}
 
-	HeapFree(hSharedHeap, 0, info);
-	surf->dwReserved1 = 0;
+		infos.table[sid] = NULL;
+		HeapFree(hSharedHeap, 0, info);
+//		surf->dwReserved1 = 0;
+	}
 	return TRUE;
 }
 
 void SurfaceFree(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, LPDDRAWI_DDRAWSURFACE_LCL surface)
 {
-	DWORD id = surface->lpSurfMore->dwSurfaceHandle;
+	DWORD handle = surface->lpSurfMore->dwSurfaceHandle;
 	
-	mesa_surfaces_table_t *t = MesaSurfacesTableGet(entry, lpDDLcl, id);
+	mesa_surfaces_table_t *t = MesaSurfacesTableGet(entry, lpDDLcl, handle);
 	if(t)
 	{
-		DDSURF *s = t->table[id];
+		surface_id sid = t->table[handle];
 
-		if(s)
+		if(sid)
 		{
 			BOOL is_sys = FALSE;
-			surface_info_t *info = SurfaceGetInfo(s->lpLcl);
+			surface_info_t *info = SurfaceGetInfo(sid);
 			if(info)
 			{
 				is_sys = (info->flags & SURF_FLAG_COPY) == 0 ? TRUE : FALSE;
 			}
-			info = NULL;
-			
+
 			if(is_sys)
 			{
 				DWORD i;
-				LPDDRAWI_DDRAWSURFACE_LCL garbage[DDSURF_ATTACH_MAX];
-				DWORD garbage_cnt = s->dwAttachments;
-				memcpy(garbage, s->lpAttachmentsLcl, garbage_cnt*sizeof(LPDDRAWI_DDRAWSURFACE_LCL));
-				garbage[garbage_cnt++] = s->lpLcl;
+				surface_id garbage[DDSURF_ATTACH_MAX];
+				DWORD garbage_cnt = info->surf.attachments_cnt;
+				memcpy(garbage, info->surf.attachments, garbage_cnt*sizeof(surface_id));
+				garbage[garbage_cnt++] = sid;
 
 				for(i = 0; i < garbage_cnt; i++)
 				{
-					SurfaceDelete(garbage[i]);
-				}
-
-				for(i = 0; i < garbage_cnt; i++)
-				{
-					TOPIC("FBSWAP", "free system %d", garbage[i]->lpSurfMore->dwSurfaceHandle);
-					HeapFree(hSharedLargeHeap, 0, garbage[i]);
+					LPDDRAWI_DDRAWSURFACE_LCL lcl = SurfaceGetLCL(garbage[i]);
+					if(lcl)
+					{
+						SurfaceDelete(garbage[i]);
+						HeapFree(hSharedLargeHeap, 0, lcl);
+					}
 				}
 			}
 		}
 	}
 }
 
-void SurfaceDeattachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_tex, int level, int side)
+void SurfaceDeattachTexture(surface_id sid, void *mesa_tex, int level, int side)
 {
 	TRACE_ENTRY
 
-	surface_info_t *info = SurfaceGetInfo(surf);
+	surface_info_t *info = SurfaceGetInfo(sid);
 	if(info)
 	{
 		surface_attachment_t *item = info->first;
@@ -529,11 +688,11 @@ void SurfaceDeattachCtx(void *mesa_ctx)
 	}
 }
 
-mesa3d_texture_t *SurfaceGetTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *ctx, int level, int side)
+mesa3d_texture_t *SurfaceGetTexture(surface_id sid, void *ctx, int level, int side)
 {
 	TRACE_ENTRY
 
-	surface_info_t *info = SurfaceGetInfo(surf);
+	surface_info_t *info = SurfaceGetInfo(sid);
 	if(info)
 	{
 		surface_attachment_t *item = info->first;
@@ -558,33 +717,6 @@ mesa3d_texture_t *SurfaceGetTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *ctx, i
 	return NULL;
 }
 
-void SurfaceCopyLCL(LPDDRAWI_DDRAWSURFACE_LCL surf, DDSURF *dest)
-{
-	dest->lpLcl    = surf;
-	dest->lpGbl    = surf->lpGbl;
-	dest->fpVidMem = surf->lpGbl->fpVidMem;
-	dest->dwFlags  = surf->dwFlags;
-	dest->dwAttachments = 0;
-	dest->dwCaps   = surf->ddsCaps.dwCaps;
-
-	LPATTACHLIST item = surf->lpAttachList;
-	for(;;)
-	{
-		if(!item) break;
-		if(!item->lpAttached) break;
-		if(item->lpAttached == surf) break;
-
-		if(dest->dwAttachments < DDSURF_ATTACH_MAX)
-		{
-			dest->lpAttachmentsLcl[dest->dwAttachments] = item->lpAttached;
-			dest->lpAttachmentsGbl[dest->dwAttachments] = item->lpAttached->lpGbl;
-			dest->dwAttachments++;
-		}
-			
-		item = item->lpAttached->lpAttachList;
-	}
-}
-
 static void SurfaceLoopDuplicate(LPDDRAWI_DDRAWSURFACE_LCL base, LPDDRAWI_DDRAWSURFACE_LCL target, surface_info_t *info)
 {
 	LPATTACHLIST item = target->lpAttachList;
@@ -595,16 +727,16 @@ static void SurfaceLoopDuplicate(LPDDRAWI_DDRAWSURFACE_LCL base, LPDDRAWI_DDRAWS
 
 		if(item->lpAttached)
 		{
-			if(info->surf.dwAttachments < DDSURF_ATTACH_MAX)
+			if(info->surf.attachments_cnt < DDSURF_ATTACH_MAX)
 			{
-				int k = info->surf.dwAttachments;
-				info->surf.lpAttachmentsLcl[k] = SurfaceDuplicate(item->lpAttached);
-				if(info->surf.lpAttachmentsLcl[k])
+				int k = info->surf.attachments_cnt;
+				LPDDRAWI_DDRAWSURFACE_LCL dup = SurfaceDuplicate(item->lpAttached);
+				if(dup)
 				{
-					info->surf.lpAttachmentsGbl[k] = info->surf.lpAttachmentsLcl[k]->lpGbl;
+					info->surf.attachments[k] = SurfaceCreate(dup);
+					TOPIC("CUBE", "cube subimage dwCaps=0x%X", item->lpAttached->ddsCaps.dwCaps);
 				}
-				TOPIC("CUBE", "cube subimage dwCaps=0x%X", item->lpAttached->ddsCaps.dwCaps);
-				info->surf.dwAttachments++;
+				info->surf.attachments_cnt++;
 			}
 
 			SurfaceLoopDuplicate(base, item->lpAttached, info);
@@ -634,7 +766,7 @@ BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, LPD
 		LPDDRAWI_DDRAWSURFACE_LCL scopy = SurfaceDuplicate(surface);
 		if(scopy)
 		{
-			surface_info_t *info = SurfaceCreateInfo(scopy);
+			surface_info_t *info = SurfaceCreateInfo(scopy, TRUE);
 			scopy->ddsCaps.dwCaps &= ~DDSCAPS_SYSTEMMEMORY;
 			if(info)
 			{
@@ -642,24 +774,23 @@ BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, LPD
 				info->flags |=  SURF_FLAG_COPY;
 				SurfaceLoopDuplicate(surface, surface, info);
 				
-				MesaSurfacesTableInsertSurface(entry, lpDDLcl, scopy->lpSurfMore->dwSurfaceHandle, &info->surf);
+				MesaSurfacesTableInsertHandle(entry, lpDDLcl, scopy->lpSurfMore->dwSurfaceHandle, scopy->dwReserved1);
 
 				DWORD i;
-				for(i = 0; i < info->surf.dwAttachments; i++)
+				for(i = 0; i < info->surf.attachments_cnt; i++)
 				{
-					LPDDRAWI_DDRAWSURFACE_LCL sub_lcl = info->surf.lpAttachmentsLcl[i];
-					
-					if((sub_lcl->lpSurfMore->ddsCapsEx.dwCaps2 & DDSCAPS2_MIPMAPSUBLEVEL) == 0)
+					surface_id sub_sid = info->surf.attachments[i];
+					if(sub_sid)
 					{
-						surface_info_t *sub = SurfaceCreateInfo(sub_lcl);
-						if(sub)
+						LPDDRAWI_DDRAWSURFACE_LCL sub_lcl = SurfaceGetLCL(sub_sid);
+					
+						if(sub_lcl)
 						{
-							DWORD sub_id = sub->surf.lpLcl->lpSurfMore->dwSurfaceHandle;
-							MesaSurfacesTableInsertSurface(entry, lpDDLcl, sub_id, &sub->surf);
-						}
-						else
-						{
-							WARN("SurfaceGetInfo == NULL");
+							if((sub_lcl->lpSurfMore->ddsCapsEx.dwCaps2 & DDSCAPS2_MIPMAPSUBLEVEL) == 0)
+							{
+								DWORD sub_handle = sub_lcl->lpSurfMore->dwSurfaceHandle;
+								MesaSurfacesTableInsertHandle(entry, lpDDLcl, sub_handle, sub_sid);
+							}
 						}
 					}
 				}
@@ -672,30 +803,21 @@ BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, LPD
 		return FALSE;
 	}
 
-	surface_info_t *info = SurfaceGetInfo(surface);
+	surface_info_t *info = SurfaceGetInfoFromLcl(surface);
 	if(info)
 	{
-		/* update vram ptr */
-		info->surf.fpVidMem = info->surf.lpGbl->fpVidMem;
-		TOPIC("TARGET", "SurfaceExInsert(%d), info->surf.fpVidMem = 0x%X",
-			surface->lpSurfMore->dwSurfaceHandle,
-			info->surf.lpGbl->fpVidMem
-		);
-
-		MesaSurfacesTableInsertSurface(entry, lpDDLcl, surface->lpSurfMore->dwSurfaceHandle, &info->surf);
+		MesaSurfacesTableInsertHandle(entry, lpDDLcl, surface->lpSurfMore->dwSurfaceHandle, surface->dwReserved1);
 
 		DWORD i;
-		for(i = 0; i < info->surf.dwAttachments; i++)
+		for(i = 0; i < info->surf.attachments_cnt; i++)
 		{
-			LPDDRAWI_DDRAWSURFACE_LCL sub_lcl = info->surf.lpAttachmentsLcl[i];
-
-			if((sub_lcl->lpSurfMore->ddsCapsEx.dwCaps2 & DDSCAPS2_MIPMAPSUBLEVEL) == 0)
+			LPDDRAWI_DDRAWSURFACE_LCL sub_lcl = SurfaceGetLCL(info->surf.attachments[i]);
+			if(sub_lcl)
 			{
-				surface_info_t *sub = SurfaceCreateInfo(sub_lcl);
-				if(sub)
+				if((sub_lcl->lpSurfMore->ddsCapsEx.dwCaps2 & DDSCAPS2_MIPMAPSUBLEVEL) == 0)
 				{
-					DWORD sub_id = sub->surf.lpLcl->lpSurfMore->dwSurfaceHandle;
-					MesaSurfacesTableInsertSurface(entry, lpDDLcl, sub_id, &sub->surf);
+					DWORD sub_handle = sub_lcl->lpSurfMore->dwSurfaceHandle;
+					MesaSurfacesTableInsertHandle(entry, lpDDLcl, sub_handle, info->surf.attachments[i]);
 				}
 			}
 		}
@@ -712,9 +834,9 @@ BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, LPD
 	return FALSE;
 }
 
-BOOL SurfaceIsEmpty(LPDDRAWI_DDRAWSURFACE_LCL surf)
+BOOL SurfaceIsEmpty(surface_id sid)
 {
-	surface_info_t *info = SurfaceGetInfo(surf);
+	surface_info_t *info = SurfaceGetInfo(sid);
 	if(info)
 	{
 		if(info->flags & SURF_FLAG_EMPTY)
@@ -726,9 +848,9 @@ BOOL SurfaceIsEmpty(LPDDRAWI_DDRAWSURFACE_LCL surf)
 	return FALSE;
 }
 
-void SurfaceClearEmpty(LPDDRAWI_DDRAWSURFACE_LCL surf)
+void SurfaceClearEmpty(surface_id sid)
 {
-	surface_info_t *info = SurfaceGetInfo(surf);
+	surface_info_t *info = SurfaceGetInfo(sid);
 	if(info)
 	{
 		info->flags &= ~SURF_FLAG_EMPTY;
@@ -737,49 +859,56 @@ void SurfaceClearEmpty(LPDDRAWI_DDRAWSURFACE_LCL surf)
 
 static DWORD SurfaceDataSize(LPDDRAWI_DDRAWSURFACE_LCL surf)
 {
-	if(surf->lpGbl->ddpfSurface.dwFlags & DDPF_FOURCC)
+	if(surf)
 	{
-		DWORD blksize = 0;
-
-		switch(surf->lpGbl->ddpfSurface.dwFourCC)
+		if(surf->lpGbl->ddpfSurface.dwFlags & DDPF_FOURCC)
 		{
-			case MAKEFOURCC('D', 'X', 'T', '1'):
-				blksize = 8;
-				break;
-			case MAKEFOURCC('D', 'X', 'T', '2'):
-			case MAKEFOURCC('D', 'X', 'T', '3'):
-				blksize = 16;
-				break;
-			case MAKEFOURCC('D', 'X', 'T', '4'):
-			case MAKEFOURCC('D', 'X', 'T', '5'):
-				blksize = 16;
-				break;
-			default:
-				return 0;
-				break;
+			DWORD blksize = 0;
+	
+			switch(surf->lpGbl->ddpfSurface.dwFourCC)
+			{
+				case MAKEFOURCC('D', 'X', 'T', '1'):
+					blksize = 8;
+					break;
+				case MAKEFOURCC('D', 'X', 'T', '2'):
+				case MAKEFOURCC('D', 'X', 'T', '3'):
+					blksize = 16;
+					break;
+				case MAKEFOURCC('D', 'X', 'T', '4'):
+				case MAKEFOURCC('D', 'X', 'T', '5'):
+					blksize = 16;
+					break;
+				default:
+					return 0;
+					break;
+			}
+	
+			DWORD dx = (surf->lpGbl->wWidth  + 3) >> 2;
+			DWORD dy = (surf->lpGbl->wHeight + 3) >> 2;
+			
+			return dx * dy *  blksize;
 		}
-
-		DWORD dx = (surf->lpGbl->wWidth  + 3) >> 2;
-		DWORD dy = (surf->lpGbl->wHeight + 3) >> 2;
 		
-		return dx * dy *  blksize;
+		return surf->lpGbl->wHeight * surf->lpGbl->lPitch;
 	}
 	
-	return surf->lpGbl->wHeight * surf->lpGbl->lPitch;
+	return 0;
 }
 
-void SurfaceClearData(LPDDRAWI_DDRAWSURFACE_LCL surf)
+void SurfaceClearData(surface_id sid)
 {
-	if(surf->lpGbl->fpVidMem != 0)
+	surface_info_t *info = SurfaceGetInfo(sid);
+	
+	if(info && info->surf.fpVidMem != 0)
 	{
-		DWORD s = SurfaceDataSize(surf);
+		DWORD s = SurfaceDataSize(info->surf.lpLcl);
 		if(s)
 		{
-			memset((void*)surf->lpGbl->fpVidMem, 0, s);
+			memset((void*)info->surf.fpVidMem, 0, s);
 		}
-		TOPIC("CLEAR", "clear surface 0x%X", surf->lpGbl->fpVidMem);
+		TOPIC("CLEAR", "clear surface 0x%X", info->surf.fpVidMem);
 		
-		SurfaceClearEmpty(surf);
+		SurfaceClearEmpty(sid);
 	}
 }
 
@@ -806,13 +935,13 @@ LPDDRAWI_DDRAWSURFACE_LCL SurfaceDuplicate(LPDDRAWI_DDRAWSURFACE_LCL original)
 		if(original->lpSurfMore != NULL)
 		{
 			memcpy(copy->lpSurfMore, original->lpSurfMore, sizeof(DDRAWI_DDRAWSURFACE_MORE));
-			copy->lpGbl = (DDRAWI_DDRAWSURFACE_GBL*)(copy->lpSurfMore+1);
 		}
 		else
 		{
-			copy->lpGbl = (DDRAWI_DDRAWSURFACE_GBL*)(copy+1);
+			memset(copy->lpSurfMore, 0, sizeof(DDRAWI_DDRAWSURFACE_MORE));
 		}
 
+		copy->lpGbl = (DDRAWI_DDRAWSURFACE_GBL*)(copy->lpSurfMore+1);
 		memcpy(copy->lpGbl, original->lpGbl, sizeof(DDRAWI_DDRAWSURFACE_GBL));
 		copy->lpGbl->fpVidMem = (FLATPTR)(copy->lpGbl+1);
 		copy->lpAttachList = NULL;
@@ -830,21 +959,4 @@ LPDDRAWI_DDRAWSURFACE_LCL SurfaceDuplicate(LPDDRAWI_DDRAWSURFACE_LCL original)
 	}
 
 	return NULL;
-}
-
-LPDDRAWI_DDRAWSURFACE_LCL SurfaceSubimage(DDSURF *surf, DWORD id)
-{
-	if(id)
-	{
-		DWORD i;
-		for(i = 0; i < surf->dwAttachments; i++)
-		{
-			if(surf->lpAttachmentsLcl[i]->lpSurfMore->dwSurfaceHandle == id)
-			{
-				return surf->lpAttachmentsLcl[i];
-			}
-		}
-	}
-	
-	return surf->lpLcl;
 }

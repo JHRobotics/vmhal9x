@@ -537,12 +537,14 @@ static void MesaDepthReeval(mesa3d_ctx_t *ctx)
 	
 	if(ctx->depth_bpp)
 	{
+		DDSURF *surf = SurfaceGetSURF(ctx->depth);
 		GL_CHECK(entry->proc.pglEnable(GL_DEPTH_TEST));
 		GL_CHECK(entry->proc.pglDepthMask(GL_TRUE));
 		ctx->state.depth.enabled = TRUE;
 		ctx->state.depth.writable = TRUE;
+
 		
-		if(ctx->depth.lpGbl->ddpfSurface.dwFlags & DDPF_STENCILBUFFER)
+		if(surf->lpGbl->ddpfSurface.dwFlags & DDPF_STENCILBUFFER)
 		{
 			ctx->depth_stencil = TRUE;
 		}
@@ -558,35 +560,26 @@ static void MesaDepthReeval(mesa3d_ctx_t *ctx)
 	MesaStencilApply(ctx);
 }
 
-static void *MesaFindBackbuffer(mesa3d_ctx_t *ctx, BOOL *is_visible, BOOL get_spare)
+static BOOL MesaBackbufferIfFront(mesa3d_ctx_t *ctx)
 {
-	if(get_spare)
+	DWORD addr = (DWORD)SurfaceGetVidMem(ctx->backbuffer);
+	TRACE("MesaBackbufferIfFront addr=0x%X", addr);
+	
+	FBHDA_t *hda = FBHDA_setup();
+	DWORD visible_addr = ((DWORD)hda->vram_pm32) + hda->surface;
+	
+	if(addr == visible_addr)
 	{
-		return NULL;
+		return TRUE; 
 	}
-	
-	DWORD addr = ctx->backbuffer.fpVidMem;
-	TRACE("MesaFindBackbuffer addr=0x%X", addr);
-	
-	if(is_visible)
+	else
 	{
-		FBHDA_t *hda = FBHDA_setup();
-		DWORD visible_addr = ((DWORD)hda->vram_pm32) + hda->surface;
-		
-		if(addr == visible_addr)
-		{
-			*is_visible = TRUE; 
-		}
-		else
-		{
-			*is_visible = FALSE; 
-		}
+		return FALSE; 
 	}
-	
-	return (void*)addr;
 }
 
-mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DDSURF *dds, DWORD dds_id, DDSURF *ddz, DWORD ddz_id)
+
+mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DWORD dds_sid, DWORD ddz_sid)
 {
 	TRACE_ENTRY
 	int i;
@@ -623,9 +616,9 @@ mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DDSURF *dds, DWORD dds_id, DD
 				if(ctx == NULL)
 					break;
 
-				if(SurfaceIsEmpty(dds->lpLcl))
+				if(SurfaceIsEmpty(dds_sid))
 				{
-					SurfaceClearEmpty(dds->lpLcl);
+					SurfaceClearEmpty(dds_sid);
 				}
 
 				ctx->thread_lock = 0;
@@ -679,8 +672,7 @@ mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DDSURF *dds, DWORD dds_id, DD
 					entry->proc.pDrvSetContext(ctx->dc, ctx->glrc, NULL);
 				}
 
-				MesaSetTarget(ctx, dds, dds_id, ddz, ddz_id, TRUE);
-
+				MesaSetTarget(ctx, dds_sid, ddz_sid, TRUE);
 //				MesaBufferFBOSetup(ctx, width, height);
 
 #ifdef TRACE_ON
@@ -746,58 +738,51 @@ mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DDSURF *dds, DWORD dds_id, DD
 	return ctx;
 }
 
-BOOL MesaSetTarget(mesa3d_ctx_t *ctx, DDSURF *dds, DWORD dds_id, DDSURF *ddz, DWORD ddz_id, BOOL create)
+BOOL MesaSetTarget(mesa3d_ctx_t *ctx, surface_id dds_sid, surface_id ddz_sid, BOOL create)
 {
-	TOPIC("TARGET", "MesaSetTarget(ctx, 0x%X, %d, 0x%X, %d, %d)",
-		dds, dds_id, ddz, ddz_id, create
-	);
-	
-	ctx->backbuffer_lcl = SurfaceSubimage(dds, dds_id);
-	
-	int width  = ctx->backbuffer_lcl->lpGbl->wWidth;
-	int height = ctx->backbuffer_lcl->lpGbl->wHeight;
+	TOPIC("TARGET", "MesaSetTarget(ctx, %d, %d, %d)", dds_sid, ddz_sid, create);
+
+	DDSURF *dds = SurfaceGetSURF(dds_sid);
+
+	int width  = dds->lpGbl->wWidth;
+	int height = dds->lpGbl->wHeight;
 	int bpp = DDSurf_GetBPP(dds);
-	int bpp_depth = DDSurf_GetBPP(ddz);
+	int bpp_depth = 0;
+
+	if(ddz_sid)
+	{
+		DDSURF *ddz = SurfaceGetSURF(ddz_sid);
+		bpp_depth = DDSurf_GetBPP(ddz);
+	}
 
 	if(create || ctx->state.sw != width || ctx->state.sh != height/* || ctx->front_bpp != bpp*/)
 	{
 		MesaBufferFBOSetup(ctx, width, height);
 	}
 	
-	if(SurfaceIsEmpty(ctx->backbuffer_lcl))
+	if(SurfaceIsEmpty(dds_sid))
 	{
-		SurfaceClearData(ctx->backbuffer_lcl);
+		SurfaceClearData(dds_sid);
 	}
 
 	ctx->front_bpp = bpp;
 	ctx->depth_bpp = bpp_depth;
-	if(ddz)
+	ctx->backbuffer = dds_sid;
+	ctx->depth = ddz_sid;
+
+	if(ddz_sid)
 	{
-		ctx->depth_lcl = SurfaceSubimage(ddz, ddz_id);
-		
-		if(SurfaceIsEmpty(ctx->depth_lcl))
+		if(SurfaceIsEmpty(ddz_sid))
 		{
-			SurfaceClearData(ctx->depth_lcl);
+			SurfaceClearData(ddz_sid);
 		}
-		
-		memcpy(&ctx->depth, ddz, sizeof(DDSURF));
-		ctx->depth_vidmem = (void*)ctx->depth_lcl->lpGbl->fpVidMem;
 	}
-	else
-	{
-		ctx->depth_vidmem = NULL;
-	}
-	
+
 	ctx->state.sw = width;
 	ctx->state.sh = height;
-	memcpy(&ctx->backbuffer, dds, sizeof(DDSURF));
-	ctx->backbuffer_vidmem = (void*)ctx->backbuffer_lcl->lpGbl->fpVidMem;	
-	TOPIC("TARGET", "New target bpp %d, bpz %d - FP 0x%X", bpp, bpp_depth, ctx->backbuffer_vidmem);
-	TOPIC("TARGET", "Target dss=%d (a)", ctx->backbuffer_lcl->lpSurfMore->dwSurfaceHandle);
-	TOPIC("TARGET", "Target dss=%d (b)", ctx->backbuffer.lpLcl->lpSurfMore->dwSurfaceHandle);
 
 	//UpdateScreenCoords(ctx, (GLfloat)width, (GLfloat)height);
-	ctx->state.textarget = (ctx->backbuffer_lcl->ddsCaps.dwCaps & DDSCAPS_TEXTURE) ? TRUE : FALSE;
+	ctx->state.textarget = (dds->lpLcl->ddsCaps.dwCaps & DDSCAPS_TEXTURE) ? TRUE : FALSE;
 
 	MesaApplyViewport(ctx, 0, 0, width, height);
 	MesaDepthReeval(ctx);
@@ -845,7 +830,7 @@ void MesaDestroyCtx(mesa3d_ctx_t *ctx)
 	{
 		if(ctx->tex[i] != NULL)
 		{
-			MesaDestroyTexture(ctx->tex[i], TRUE, NULL);
+			MesaDestroyTexture(ctx->tex[i], TRUE, 0);
 			ctx->tex[i] = NULL;
 		}
 	}
@@ -1116,10 +1101,14 @@ static int GetCubeSide(DWORD dwCaps2)
 	return 0;
 }
 
-mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, DDSURF *surf)
+mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, surface_id sid)
 {
 	mesa3d_texture_t *tex = NULL;
+	DDSURF *surf = SurfaceGetSURF(sid);
 	int i;
+
+	if(surf == NULL)
+		return NULL;
 
 	TOPIC("GL", "new texture");
 
@@ -1147,8 +1136,7 @@ mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, DDSURF *surf)
 				tex->ctx              = ctx;
 				tex->sides            = 1;
 				tex->cube             = is_cube;
-				tex->data_surf[cube_index][0]  = surf->lpLcl;
-				tex->data_ptr[cube_index][0]   = surf->lpGbl->fpVidMem;
+				tex->data_sid[cube_index][0]   = sid;
 				tex->data_dirty[cube_index][0] = TRUE;
 				if(is_cube)
 				{
@@ -1172,29 +1160,31 @@ mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, DDSURF *surf)
 						}
 					}
 
-					if(SurfaceIsEmpty(surf->lpLcl))
-						SurfaceClearData(surf->lpLcl);
+					if(SurfaceIsEmpty(sid))
+						SurfaceClearData(sid);
 
-					SurfaceAttachTexture(surf->lpLcl, tex, 0, 0);
+					SurfaceAttachTexture(sid, tex, 0, 0);
 					if(is_cube)
 					{
 						int i;
-						for(i = 0; i < surf->dwAttachments; i++)
+						for(i = 0; i < surf->attachments_cnt; i++)
 						{
-							cube_index = GetCubeSide(surf->lpAttachmentsLcl[i]->lpSurfMore->ddsCapsEx.dwCaps2);
+							surface_id subsid = surf->attachments[i];
+							DDSURF *subsurf = SurfaceGetSURF(subsid);
+
+							cube_index = GetCubeSide(subsurf->lpLcl->lpSurfMore->ddsCapsEx.dwCaps2);
+
 							int cube_pos = cube_levels[cube_index];
-
-							tex->data_ptr[cube_index][cube_pos] = surf->lpAttachmentsGbl[i]->fpVidMem;
 							tex->data_dirty[cube_index][cube_pos] = TRUE;
-							tex->data_surf[cube_index][cube_pos] = surf->lpAttachmentsLcl[i];
+							tex->data_sid[cube_index][cube_pos]   = subsid;
 
-							if(SurfaceIsEmpty(tex->data_surf[cube_index][cube_pos]))
-								SurfaceClearData(tex->data_surf[cube_index][cube_pos]);
+							if(SurfaceIsEmpty(subsid))
+								SurfaceClearData(subsid);
 
-							SurfaceAttachTexture(tex->data_surf[cube_index][cube_pos], tex, cube_pos, cube_index);
+							SurfaceAttachTexture(subsid, tex, cube_pos, cube_index);
 
 							TOPIC("CUBE", "added size[%d][%d], dwCaps2=0x%X", cube_index, cube_pos,
-								surf->lpAttachmentsLcl[i]->lpSurfMore->ddsCapsEx.dwCaps2
+								surf->lpLcl->lpSurfMore->ddsCapsEx.dwCaps2
 							);
 
 							cube_levels[cube_index]++;
@@ -1215,18 +1205,19 @@ mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, DDSURF *surf)
 					else if(surf->dwCaps & DDSCAPS_MIPMAP) /* mipmaps */
 					{
 						int level;
-						for(level = 0; level < surf->dwAttachments; level++)
+						for(level = 0; level < surf->attachments_cnt; level++)
 						{
-							tex->data_ptr[0][level+1] = surf->lpAttachmentsGbl[level]->fpVidMem;
+							surface_id subsid = surf->attachments[level];
+
 							tex->data_dirty[0][level+1] = TRUE;
-							tex->data_surf[0][level+1] = surf->lpAttachmentsLcl[level];
+							tex->data_sid[0][level+1] = subsid;
 
-							if(SurfaceIsEmpty(tex->data_surf[0][level+1]))
-								SurfaceClearData(tex->data_surf[0][level+1]);
+							if(SurfaceIsEmpty(subsid))
+								SurfaceClearData(subsid);
 
-							SurfaceAttachTexture(tex->data_surf[0][level+1], tex, level+1, 0);
+							SurfaceAttachTexture(subsid, tex, level+1, 0);
 						}
-						tex->mipmap_level = surf->dwAttachments;
+						tex->mipmap_level = surf->attachments_cnt;
 						tex->mipmap = (tex->mipmap_level > 0) ? TRUE : FALSE;
 						TOPIC("MIPMAP", "Created %d with mipmap, at level: %d", tex->gltex, tex->mipmap_level);
 					} // mipmaps
@@ -1267,23 +1258,24 @@ void MesaReloadTexture(mesa3d_texture_t *tex, int tmu)
 		reload = TRUE;
 		TOPIC("RELOAD", "Load texture %d to TMU %d", tex->gltex, tmu);
 	}
-	
+
 	if(tex->ctx->state.tmu[tmu].colorkey != tex->colorkey)
 	{
 		reload = TRUE;
 	}
-	
+
 	TOPIC("GL", "reload tex? %d", reload);
-	
+
 	for(side = 0; side < tex->sides; side++)
 	{
 		for(level = 0; level <= tex->mipmap_level; level++)
 		{
 			/* TODO: now we're realoading all levels, even there is change only on one */
-			if(reload || tex->data_dirty[0][level])
+			if(reload || tex->data_dirty[side][level])
 			{
-				if(tex->ctx->state.tmu[tmu].colorkey && 
-					(tex->data_surf[0][0]->dwFlags & DDRAWISURF_HASCKEYSRCBLT))
+				DDSURF *primary = SurfaceGetSURF(tex->data_sid[0][0]);
+
+				if(tex->ctx->state.tmu[tmu].colorkey && (primary->dwFlags & DDRAWISURF_HASCKEYSRCBLT))
 				{
 					if(tex->compressed)
 					{
@@ -1292,24 +1284,24 @@ void MesaReloadTexture(mesa3d_texture_t *tex, int tmu)
 					else
 					{
 						MesaBufferUploadTextureChroma(tex->ctx, tex, level, side, tmu,
-								tex->data_surf[0][0]->ddckCKSrcBlt.dwColorSpaceLowValue,
-								tex->data_surf[0][0]->ddckCKSrcBlt.dwColorSpaceHighValue);
+								primary->lpLcl->ddckCKSrcBlt.dwColorSpaceLowValue,
+								primary->lpLcl->ddckCKSrcBlt.dwColorSpaceHighValue);
 					}
 				}
 				else
 				{
 					MesaBufferUploadTexture(tex->ctx, tex, level, side, tmu);
 				}
-				
-				tex->data_dirty[0][level] = FALSE;
+
+				tex->data_dirty[side][level] = FALSE;
 				reload_done = TRUE;
-				
+
 				TOPIC("RELOAD", "Reloading: %d, level %d", tex->gltex, level);
 			}
 			tex->dirty = FALSE;
 		}
 	}
-	
+
 	if(reload_done)
 	{
 		tex->colorkey = tex->ctx->state.tmu[tmu].colorkey;
@@ -1317,13 +1309,13 @@ void MesaReloadTexture(mesa3d_texture_t *tex, int tmu)
 	}
 }
 
-void MesaDestroyTexture(mesa3d_texture_t *tex, BOOL ctx_cleanup, LPDDRAWI_DDRAWSURFACE_LCL surface_delete)
+void MesaDestroyTexture(mesa3d_texture_t *tex, BOOL ctx_cleanup, surface_id surface_delete)
 {
 	if(tex)
 	{
 		int i, j;
 		mesa3d_entry_t *entry = tex->ctx->entry;
-		
+
 		for(i = 0; i < tex->ctx->tmu_count; i++)
 		{
 			if(tex->ctx->state.tmu[i].image == tex)
@@ -1332,7 +1324,7 @@ void MesaDestroyTexture(mesa3d_texture_t *tex, BOOL ctx_cleanup, LPDDRAWI_DDRAWS
 				tex->ctx->state.tmu[i].reload = TRUE;
 			}
 		}
-		
+
 		if(!ctx_cleanup)
 		{
 			GL_CHECK(entry->proc.pglDeleteTextures(1, &tex->gltex));
@@ -1342,14 +1334,15 @@ void MesaDestroyTexture(mesa3d_texture_t *tex, BOOL ctx_cleanup, LPDDRAWI_DDRAWS
 		{
 			for(i = tex->mipmap_level; i >= 0; i--)
 			{
-				TOPIC("GARBAGE", "level=%d, side=%d, ptr=%p, vram=%X", i, j, tex->data_surf[j][i], tex->data_ptr[j][i]);
-				if(surface_delete != tex->data_surf[j][i])
+				surface_id sid = tex->data_sid[j][i];
+				TOPIC("GARBAGE", "level=%d, side=%d, sid=%d", i, j, sid);
+				if(surface_delete != sid)
 				{
-					SurfaceDeattachTexture(tex->data_surf[j][i], tex, i, j);
+					SurfaceDeattachTexture(sid, tex, i, j);
 				}
 			}
 		}
-		
+
 		if(!ctx_cleanup)
 		{
 			tex->ctx->tex[tex->id] = NULL;
@@ -1387,7 +1380,7 @@ static GLenum GetBlendFactor(D3DBLEND dxfactor)
     default:
     	return 0;
 	}
-	
+
 	return 0;
 }
 
@@ -1409,7 +1402,7 @@ static GLenum GetGLTexFilter(D3DTEXTUREFILTER dxfilter)
     default:
     	return GL_NEAREST;
 	}
-	
+
 	return GL_NEAREST;
 }
 
@@ -1640,16 +1633,16 @@ void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value)
 	{
 		return;
 	}
-	
+
 	struct mesa3d_tmustate *ts = &ctx->state.tmu[tmu];
-	
+
 	switch(state)
 	{
 		/* texture resource */
 		RENDERSTATE(D3DTSS_TEXTUREMAP)
 			if(ctx->entry->runtime_ver >= 7)
 			{
-				ts->image = MesaTextureFromSurfaceId(ctx, TSS_DWORD);
+				ts->image = MesaTextureFromSurfaceHandle(ctx, TSS_DWORD);
 			}
 			else
 			{
@@ -1718,7 +1711,7 @@ void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value)
 				WARN("Too high TEXCOORDINDEX: %d", ts->coordindex);
 				ts->coordindex = 0;
 			}
-			
+
 			switch(TSS_DWORD & 0xFFFF0000)
 			{
 				case D3DTSS_TCI_PASSTHRU:
@@ -1933,7 +1926,7 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 			{
 				if(ctx->entry->runtime_ver >= 7)
 				{
-					ctx->state.tmu[0].image = MesaTextureFromSurfaceId(ctx, state->dwArg[0]);
+					ctx->state.tmu[0].image = MesaTextureFromSurfaceHandle(ctx, state->dwArg[0]);
 				}
 				else
 				{
@@ -2513,7 +2506,7 @@ static GLenum DX2GLPrimitive(D3DPRIMITIVETYPE dx_type)
 			/* NOP */
 			break;
 	}
-	
+
 	return gl_type;
 }
 
@@ -2526,7 +2519,7 @@ static GLenum nonMipFilter(GLenum filter)
 		case GL_LINEAR_MIPMAP_NEAREST:
 			return GL_LINEAR;
 	}
-	
+
 	return GL_NEAREST;
 }
 
@@ -3386,7 +3379,7 @@ void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, D
 
 	if(flags & D3DCLEAR_TARGET)
 	{
-		void *ptr = MesaFindBackbuffer(ctx, NULL, FALSE);
+		void *ptr = SurfaceGetVidMem(ctx->backbuffer);
 		if(ptr)
 		{
 			MesaBufferUploadColor(ctx, ptr);
@@ -3395,8 +3388,8 @@ void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, D
 	
 	if(ctx->depth_bpp && (flags & (D3DCLEAR_ZBUFFER | D3DCLEAR_STENCIL)))
 	{
-		
-		MesaBufferUploadDepth(ctx, ctx->depth_vidmem);
+		void *ptr = SurfaceGetVidMem(ctx->depth);
+		MesaBufferUploadDepth(ctx, ptr);
 	}
 
 	// FIXME: ^when is done full clear, is not needed to readback the surface! 
@@ -3464,7 +3457,7 @@ void MesaSceneBegin(mesa3d_ctx_t *ctx)
 {
 	if(!ctx->render.dirty)
 	{
-		void *ptr = MesaFindBackbuffer(ctx, NULL, FALSE);
+		void *ptr = SurfaceGetVidMem(ctx->backbuffer);
 		if(ptr)
 		{
 			MesaBufferUploadColor(ctx, ptr);
@@ -3474,8 +3467,8 @@ void MesaSceneBegin(mesa3d_ctx_t *ctx)
 
 void MesaSceneEnd(mesa3d_ctx_t *ctx)
 {
-	BOOL is_visible;
-	void *ptr = MesaFindBackbuffer(ctx, &is_visible, FALSE);
+	BOOL is_visible = MesaBackbufferIfFront(ctx);
+	void *ptr = SurfaceGetVidMem(ctx->backbuffer);
 	if(ptr)
 	{
 		if(is_visible) /* fixme: check for DDSCAPS_PRIMARYSURFACE */
@@ -3486,8 +3479,9 @@ void MesaSceneEnd(mesa3d_ctx_t *ctx)
 		
 		if(ctx->state.textarget)
 		{
-			TOPIC("TEXTARGET", "Render to texture %d", ctx->backbuffer_lcl->lpSurfMore->dwSurfaceHandle);
-			SurfaceToMesa(ctx->backbuffer_lcl, TRUE);
+			DDSURF *surf = SurfaceGetSURF(ctx->backbuffer);
+			TOPIC("TEXTARGET", "Render to texture");
+			SurfaceToMesa(surf->lpLcl, TRUE);
 		}
 
 		if(is_visible)
@@ -3629,7 +3623,7 @@ mesa_surfaces_table_t *MesaSurfacesTableGet(mesa3d_entry_t *entry, LPDDRAWI_DIRE
 			break;
 		}
 	}
-	
+
 	if(table)
 	{
 		table->lpDDLcl = lpDDLcl;
@@ -3639,11 +3633,11 @@ mesa_surfaces_table_t *MesaSurfacesTableGet(mesa3d_entry_t *entry, LPDDRAWI_DIRE
 			
 			if(table->table == NULL)
 			{
-				table->table = HeapAlloc(hSharedHeap, HEAP_ZERO_MEMORY, sizeof(DDSURF*)*new_size);
+				table->table = HeapAlloc(hSharedHeap, HEAP_ZERO_MEMORY, sizeof(surface_id)*new_size);
 			}
 			else
 			{
-				table->table = HeapReAlloc(hSharedHeap, HEAP_ZERO_MEMORY, table->table, sizeof(DDSURF*)*new_size);
+				table->table = HeapReAlloc(hSharedHeap, HEAP_ZERO_MEMORY, table->table, sizeof(surface_id)*new_size);
 			}
 			
 			table->table_size = new_size;
@@ -3653,16 +3647,16 @@ mesa_surfaces_table_t *MesaSurfacesTableGet(mesa3d_entry_t *entry, LPDDRAWI_DIRE
 	return table;
 }
 
-void MesaSurfacesTableRemoveSurface(mesa3d_entry_t *entry, DDSURF *surf)
+void MesaSurfacesTableRemoveSurface(mesa3d_entry_t *entry, surface_id sid)
 {
 	int t, i;
 	for(t = 0; t < SURFACE_TABLES_PER_ENTRY; t++)
 	{
 		for(i = 0; i < entry->surfaces_tables[t].table_size; i++)
 		{
-			if(entry->surfaces_tables[t].table[i] == surf)
+			if(entry->surfaces_tables[t].table[i] == sid)
 			{
-				entry->surfaces_tables[t].table[i] = NULL;
+				entry->surfaces_tables[t].table[i] = 0;
 			}
 		}
 	}
@@ -3684,60 +3678,31 @@ void MesaSurfacesTableRemoveDDLcl(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL
 	}
 }
 
-void MesaSurfacesTableInsertSurface(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, DWORD id, DDSURF *surf)
+void MesaSurfacesTableInsertHandle(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, DWORD handle, surface_id sid)
 {
-//	TOPIC("TARGET", "inserting id=%d, table=%X", id, lpDDLcl);
-	
-	mesa_surfaces_table_t *table = MesaSurfacesTableGet(entry, lpDDLcl, id);
+	mesa_surfaces_table_t *table = MesaSurfacesTableGet(entry, lpDDLcl, handle);
 	if(table)
 	{
-		table->table[id] = surf;
+		table->table[handle] = sid;
 	}
-
-#if 0
-	/* register also all sublevels */
-	if(surf->dwCaps & DDSCAPS_TEXTURE)
-	{
-		DWORD i;
-		for(i = 0; i < surf->dwAttachments; i++)
-		{
-			if((surf->lpAttachmentsLcl[i]->lpSurfMore->ddsCapsEx.dwCaps2 & DDSCAPS2_MIPMAPSUBLEVEL) == 0)
-			{
-				if(surf->lpAttachmentsLcl[i]->lpSurfMore->dwSurfaceHandle != id)
-				{
-					DWORD sid = surf->lpAttachmentsLcl[i]->lpSurfMore->dwSurfaceHandle;
-					if(sid != 0)
-					{
-						table->table[sid] = surf; // surf->lpAttachmentsLcl[i]; //surf; (!)
-					}
-				}
-			}
-		}
-	}
-#endif
 }
 
-mesa3d_texture_t *MesaTextureFromSurfaceId(mesa3d_ctx_t *ctx, DWORD surfaceId)
+mesa3d_texture_t *MesaTextureFromSurfaceHandle(mesa3d_ctx_t *ctx, DWORD handle)
 {
 	if(ctx->surfaces)
 	{
-		DDSURF *surf = ctx->surfaces->table[surfaceId];
-		
-		if(surf)
+		surface_id sid = ctx->surfaces->table[handle];
+		if(sid)
 		{
 			mesa3d_texture_t *tex;
-			
-			tex = SurfaceGetTexture(surf->lpLcl, ctx, 0, 0);
+			tex = SurfaceGetTexture(sid, ctx, 0, 0);
 			if(tex == NULL)
 			{
-				tex = MesaCreateTexture(ctx, surf);
+				tex = MesaCreateTexture(ctx, sid);
 			}
-			
 			return tex;
 		}
-		
 	}
-	
 	return NULL;
 }
 

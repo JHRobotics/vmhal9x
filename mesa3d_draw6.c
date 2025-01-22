@@ -948,12 +948,12 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 					
 					TOPIC("TARGET", "hRenderTarget=%d, hZBuffer=%d", pSRTData->hRenderTarget, pSRTData->hZBuffer);
 					
-					DDSURF *front_dds = ctx->surfaces->table[pSRTData->hRenderTarget];
-					DDSURF *depth_dds = ctx->surfaces->table[pSRTData->hZBuffer];
+					surface_id dds_sid = ctx->surfaces->table[pSRTData->hRenderTarget];
+					surface_id ddz_sid = ctx->surfaces->table[pSRTData->hZBuffer];
 
-					if(front_dds)
+					if(dds_sid)
 					{
-						MesaSetTarget(ctx, front_dds, pSRTData->hRenderTarget, depth_dds, pSRTData->hZBuffer, FALSE);
+						MesaSetTarget(ctx, dds_sid, ddz_sid, FALSE);
 					}
 					else
 					{

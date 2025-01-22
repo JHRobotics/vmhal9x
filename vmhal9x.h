@@ -113,6 +113,9 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, VM
 /* FBHDA */
 BOOL FBHDA_load_ex(VMDAHAL_t *pHal);
 
+/* memory and proc management */
+BOOL ProcessExists(DWORD pid);
+
 /* framebuffer */
 #define INVALID_OFFSET 0xFFFFFFFF
 BOOL IsInFront(VMDAHAL_t *ddhal, void *ptr);
@@ -139,17 +142,20 @@ void Mesa3DCleanProc();
 void SurfaceCtxLock();
 void SurfaceCtxUnlock();
 
+typedef DWORD surface_id;
+
 DWORD SurfaceCreate(LPDDRAWI_DDRAWSURFACE_LCL surf);
-BOOL SurfaceDelete(LPDDRAWI_DDRAWSURFACE_LCL surf);
-void SurfaceAttachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_tex, int level, int side);
+BOOL SurfaceDelete(surface_id sid);
+void SurfaceAttachTexture(surface_id sid, void *mesa_tex, int level, int side);
 void SurfaceAttachCtx(void *mesa_ctx);
-void SurfaceDeattachTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *mesa_tex, int level, int side);
+void SurfaceDeattachTexture(surface_id sid, void *mesa_tex, int level, int side);
 void SurfaceDeattachCtx(void *mesa_ctx);
 void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly);
 void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly);
-BOOL SurfaceIsEmpty(LPDDRAWI_DDRAWSURFACE_LCL surf);
-void SurfaceClearEmpty(LPDDRAWI_DDRAWSURFACE_LCL surf);
-void SurfaceClearData(LPDDRAWI_DDRAWSURFACE_LCL surf);
+BOOL SurfaceIsEmpty(surface_id sid);
+void SurfaceClearEmpty(surface_id sid);
+void SurfaceClearData(surface_id sid);
+LPDDRAWI_DDRAWSURFACE_LCL SurfaceGetLCL(surface_id sid);
 
 inline static DWORD SurfacePitch(DWORD width, DWORD bpp)
 {

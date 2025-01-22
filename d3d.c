@@ -89,20 +89,31 @@ DWORD __stdcall SetRenderTarget32(LPD3DHAL_SETRENDERTARGETDATA lpSetRenderData)
 			lpSetRenderData->lpDDSZ
 		);
 		
-		DDSURF dds;
-		DDSURF ddz;
-
-		SurfaceCopyLCL(((LPDDRAWI_DDRAWSURFACE_INT)lpSetRenderData->lpDDS)->lpLcl, &dds);
-		if(lpSetRenderData->lpDDSZ)
+		surface_id dds_sid = 0;
+		surface_id ddz_sid = 0;
+		
+		if(lpSetRenderData->lpDDS != NULL)
 		{
-			SurfaceCopyLCL(((LPDDRAWI_DDRAWSURFACE_INT)lpSetRenderData->lpDDSZ)->lpLcl, &ddz);
+			dds_sid = ((LPDDRAWI_DDRAWSURFACE_INT)lpSetRenderData->lpDDS)->lpLcl->dwReserved1;
 		}
 		
-		GL_BLOCK_BEGIN(lpSetRenderData->dwhContext)
-			MesaSetTarget(ctx, &dds, 0, lpSetRenderData->lpDDSZ ? &ddz : NULL, 0, FALSE);
-		GL_BLOCK_END
+		if(lpSetRenderData->lpDDSZ)
+		{
+			ddz_sid = ((LPDDRAWI_DDRAWSURFACE_INT)lpSetRenderData->lpDDSZ)->lpLcl->dwReserved1;
+		}
+		
+		if(dds_sid)
+		{
+			GL_BLOCK_BEGIN(lpSetRenderData->dwhContext)
+				MesaSetTarget(ctx, dds_sid, ddz_sid, FALSE);
+			GL_BLOCK_END
 
-		lpSetRenderData->ddrval = DD_OK;
+			lpSetRenderData->ddrval = DD_OK;
+		}
+		else
+		{
+			lpSetRenderData->ddrval = DDERR_INVALIDPARAMS;
+		}
 	}
 
 	return DDHAL_DRIVER_HANDLED;
@@ -893,58 +904,63 @@ DWORD __stdcall ContextCreate32(LPD3DHAL_CONTEXTCREATEDATA pccd)
 		{
 			entry->runtime_ver = 7;
 		}
+		
+		surface_id dds_sid = 0;
+		surface_id ddz_sid = 0;
 
 		if(entry->runtime_ver >= 7)
 		{
 			TRACE("ContextCreate32 DX7+");
-			DDSURF dss;
-			DDSURF dsz;
-			
-			SurfaceCopyLCL(pccd->lpDDSLcl, &dss);
-			
+			if(pccd->lpDDSLcl)
+			{
+				dds_sid = pccd->lpDDSLcl->dwReserved1;
+			}
+
 			if(pccd->lpDDSZLcl)
 			{
-				SurfaceCopyLCL(pccd->lpDDSZLcl, &dsz);
+				ddz_sid = pccd->lpDDSZLcl->dwReserved1;
 			}
 			
-			ctx = MesaCreateCtx(entry, &dss, 0, pccd->lpDDSZLcl ? &dsz : NULL, 0);
-			
-			ctx->surfaces = MesaSurfacesTableGet(entry, pccd->lpDDLcl, SURFACES_TABLE_POOL-1);
-			
-			TRACE("ContextCreate32 lpDDLcl=%X", pccd->lpDDLcl);
+			if(dds_sid)
+			{
+				ctx = MesaCreateCtx(entry, dds_sid,  ddz_sid);
+				ctx->surfaces = MesaSurfacesTableGet(entry, pccd->lpDDLcl, SURFACES_TABLE_POOL-1);
+				TRACE("ContextCreate32 lpDDLcl=%X", pccd->lpDDLcl);
+			}
 		}
 		else
 		{
 			TRACE("ContextCreate32 -DX6");
 			
-			LPDDRAWI_DDRAWSURFACE_INT dss_int = (LPDDRAWI_DDRAWSURFACE_INT)pccd->lpDDS;
-			LPDDRAWI_DDRAWSURFACE_INT dsz_int = (LPDDRAWI_DDRAWSURFACE_INT)pccd->lpDDSZ;
-			DDSURF dss;
-			DDSURF dsz;
-
-			SurfaceCopyLCL(dss_int->lpLcl, &dss);
-
-			if(dsz_int)
+			LPDDRAWI_DDRAWSURFACE_INT dds_int = (LPDDRAWI_DDRAWSURFACE_INT)pccd->lpDDS;
+			LPDDRAWI_DDRAWSURFACE_INT ddz_int = (LPDDRAWI_DDRAWSURFACE_INT)pccd->lpDDSZ;
+			
+			if(dds_int && dds_int->lpLcl)
 			{
-				SurfaceCopyLCL(dss_int->lpLcl, &dsz);
+				dds_sid = dds_int->lpLcl->dwReserved1;
+			}
+			
+			if(ddz_int && ddz_int->lpLcl)
+			{
+				ddz_sid = ddz_int->lpLcl->dwReserved1;
 			}
 
-			ctx = MesaCreateCtx(entry, &dss, 0, dsz_int ? &dsz : NULL, 0);
+			if(dds_sid)
+			{
+				ctx = MesaCreateCtx(entry, dds_sid, ddz_sid);
+			}
 		}
-		
+
 		if(ctx)
 		{
 			SurfaceAttachCtx(ctx);
 			pccd->dwhContext = MESA_CTX_TO_HANDLE(ctx);
 			pccd->ddrval = DD_OK;
+
 			if(entry->runtime_ver >= 7)
-			{
 				ctx->dd = NULL;
-			}
 			else
-			{
 				ctx->dd = pccd->lpDDGbl;
-			}
 		}
 	}
 
@@ -963,7 +979,6 @@ DWORD __stdcall ContextDestroy32(LPD3DHAL_CONTEXTDESTROYDATA pcdd)
 	mesa3d_ctx_t *ctx = MESA_HANDLE_TO_CTX(pcdd->dwhContext);
 	SurfaceDeattachCtx(ctx);
 	MesaDestroyCtx(ctx);	
-//	SurfaceNestCleanupCtx(ctx);
 
 	pcdd->dwhContext = 0;
 
@@ -975,7 +990,7 @@ DWORD __stdcall ContextDestroyAllCallback32(LPVOID lpData, HDDRVITEM hItem, DWOR
 {
 	TRACE_ENTRY
 	
-	return DDRV_SUCCESS_CONTINUE;
+	return DDRV_SUCCESS_CONTINUE; // FIXME: check documentation
 }
 
 DWORD __stdcall ContextDestroyAll32(LPD3DHAL_CONTEXTDESTROYALLDATA pcdd)
@@ -1047,17 +1062,19 @@ DWORD __stdcall TextureCreate32(LPD3DHAL_TEXTURECREATEDATA ptcd)
 	
 	VALIDATE(ptcd)
 	
-	ptcd->ddrval = DDERR_OUTOFVIDEOMEMORY;
+	surface_id sid = 0;
 	
-	LPDDRAWI_DDRAWSURFACE_INT dss = (LPDDRAWI_DDRAWSURFACE_INT)ptcd->lpDDS;
+	ptcd->ddrval = DDERR_OUTOFVIDEOMEMORY;
+	LPDDRAWI_DDRAWSURFACE_INT dds = (LPDDRAWI_DDRAWSURFACE_INT)ptcd->lpDDS;
+	if(dds && dds->lpLcl)
+	{
+		sid = dds->lpLcl->dwReserved1;
+	}
 
-	if(dss)
+	if(sid)
 	{
 		GL_BLOCK_BEGIN(ptcd->dwhContext)
-			DDSURF dds;
-			SurfaceCopyLCL(dss->lpLcl, &dds);
-		
-			mesa3d_texture_t *tex = MesaCreateTexture(ctx, &dds);
+			mesa3d_texture_t *tex = MesaCreateTexture(ctx, sid);
 			if(tex)
 			{
 				ptcd->dwHandle = MESA_TEX_TO_HANDLE(tex);
@@ -1088,13 +1105,8 @@ DWORD __stdcall TextureDestroy32(LPD3DHAL_TEXTUREDESTROYDATA ptcd)
 		return DDHAL_DRIVER_HANDLED;
 	}
 
-	#ifdef TRACE_ON
-	mesa3d_texture_t *tex = MESA_HANDLE_TO_TEX(ptcd->dwHandle);
-	TOPIC("DESTROY", "Destroy tex, base %X", tex->data_ptr[0][0]);
-	#endif
-
 	GL_BLOCK_BEGIN(ptcd->dwhContext)
-		MesaDestroyTexture(MESA_HANDLE_TO_TEX(ptcd->dwHandle), FALSE, NULL);
+		MesaDestroyTexture(MESA_HANDLE_TO_TEX(ptcd->dwHandle), FALSE, 0);
 	GL_BLOCK_END
 	
 	ptcd->ddrval = DD_OK;
@@ -1135,7 +1147,7 @@ DWORD __stdcall TextureGetSurf32(LPD3DHAL_TEXTUREGETSURFDATA ptgd)
 	mesa3d_texture_t *tex = MESA_HANDLE_TO_TEX(ptgd->dwHandle);
 	if(tex)
 	{
-		ptgd->lpDDS  = (DWORD)tex->data_surf[0];
+		ptgd->lpDDS  = (DWORD)SurfaceGetLCL(tex->data_sid[0][0]);
 		ptgd->ddrval = DD_OK;
 	}
 	else

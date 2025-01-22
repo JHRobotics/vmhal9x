@@ -203,6 +203,29 @@ void UpdateCustomMode(VMDAHAL_t *hal)
 	}
 }
 
+BOOL ProcessExists(DWORD pid)
+{
+	BOOL rc = FALSE;
+	HANDLE proc = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, pid);
+	if(proc != NULL)
+	{
+		DWORD code;
+		
+		rc = TRUE;
+		if(GetExitCodeProcess(proc, &code))
+		{
+			if(code != STILL_ACTIVE)
+			{
+				rc = FALSE;
+			}
+		}
+
+		CloseHandle(proc);
+	}
+	
+	return rc;
+}
+
 //VMDAHAL_t __stdcall *DriverInit(LPVOID ptr)
 DWORD __stdcall DriverInit(LPVOID ptr)
 {

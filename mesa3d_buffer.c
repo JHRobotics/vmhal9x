@@ -472,96 +472,107 @@ void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level
 
 	TOPIC("CHROMA", "MesaBufferUploadTexture - level=%d", level);
 
-	TOPIC("GL", "MesaBufferUploadTexture: is_cube=%d level=%d, side=%d internalformat=%X, w=%d, h=%d, format=%X, type=%X, ptr=%X)",
-		tex->cube, level, side, tex->internalformat, w, h, tex->format, tex->type, tex->data_ptr[side][level]);
+	TOPIC("GL", "MesaBufferUploadTexture: is_cube=%d level=%d, side=%d internalformat=%X, w=%d, h=%d, format=%X, type=%X, sid=%X)",
+		tex->cube, level, side, tex->internalformat, w, h, tex->format, tex->type, tex->data_sid[side][level]);
 
-	if(tex->data_ptr[side][level] == 0)
+	surface_id sid = tex->data_sid[side][level];
+
+	if(sid == 0)
 	{
-		ERR("Null pointer on side %d, level %d", side, level);
+		ERR("Zero sid on side %d, level %d", side, level);
+		return;
+	}
+
+	DDSURF *surf = SurfaceGetSURF(sid);
+	if(surf == NULL)
+	{
+		ERR("NULL on side %d, level %d", side, level);
+		return;
+	}
+
+	void *ptr = (void*)surf->fpVidMem;
+	if(ptr == NULL)
+	{
+		ERR("NULL vram on side %d, level %d", side, level);
 		return;
 	}
 
 	GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0+tmu));
 	GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_CUBE_MAP));
 	GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
-	
-	if(!tex->cube)
-	{
-		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, tex->gltex));
-		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_CUBE_MAP, 0));
-	}
-	else
+
+	if(tex->cube)
 	{
 		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, 0));
 		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_CUBE_MAP, tex->gltex));
-	}
 
-	if(tex->compressed)
-	{
-		entry->proc.pglPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-		
-		if(tex->cube)
+		void *flipped = NULL;
+		void *dst = ptr;
+
+		switch(side)
 		{
-			GL_CHECK(entry->proc.pglCompressedTexImage2D(Mesa2GLSide[side], level, tex->internalformat,
-				w, h, 0, compressed_size(tex->internalformat, w, h), (void*)tex->data_ptr[side][level]));
+			case MESA_POSITIVEX:
+				dst = flipped = flip_xy(ctx, ptr, w, h, tex->bpp);
+				break;
+			case MESA_NEGATIVEX:
+				dst = flipped = flip_y(ctx, ptr, w, h, tex->bpp);
+				break;
+			case MESA_POSITIVEY:
+				// nop
+				break;
+			case MESA_NEGATIVEY:
+				dst = flipped = flip_y(ctx, ptr, w, h, tex->bpp);
+				break;
+			case MESA_POSITIVEZ:
+				dst = flipped = flip_y(ctx, ptr, w, h, tex->bpp);
+				break;
+			case MESA_NEGATIVEZ:
+				dst = flipped = flip_xy(ctx, ptr, w, h, tex->bpp);
+				break;
 		}
-		else
+
+		if(dst)
 		{
-			GL_CHECK(entry->proc.pglCompressedTexImage2D(GL_TEXTURE_2D, level, tex->internalformat,
-				w, h, 0, compressed_size(tex->internalformat, w, h), (void*)tex->data_ptr[0][level]));
+			TOPIC("CUBE", "glTexImage2D(0x%X, %d, ...)", Mesa2GLSide[side], level);
+			if(!tex->compressed)
+			{
+				GL_CHECK(entry->proc.pglTexImage2D(Mesa2GLSide[side], level, tex->internalformat,
+					w, h, 0, tex->format, tex->type, dst));
+			}
+			else
+			{
+				GL_CHECK(entry->proc.pglPixelStorei(GL_UNPACK_ALIGNMENT, 1));
+				GL_CHECK(entry->proc.pglCompressedTexImage2D(Mesa2GLSide[side], level, tex->internalformat,
+					w, h, 0, compressed_size(tex->internalformat, w, h), dst));
+				GL_CHECK(entry->proc.pglPixelStorei(GL_UNPACK_ALIGNMENT, FBHDA_ROW_ALIGN));
+			}
+
+			if(flipped)
+			{
+				MesaTempFree(ctx, flipped);
+			}
 		}
-		
-		entry->proc.pglPixelStorei(GL_UNPACK_ALIGNMENT, FBHDA_ROW_ALIGN);
 	}
 	else
 	{
-		if(tex->cube)
+		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, tex->gltex));
+		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_CUBE_MAP, 0));
+
+		TOPIC("CUBE", "glTexImage2D(GL_TEXTURE_2D, %d, ...)", level);
+		if(!tex->compressed)
 		{
-			void *flipped = NULL;
-			void *dst = (void*)tex->data_ptr[side][level];
-			
-			switch(side)
-			{
-				case MESA_POSITIVEX:
-					dst = flipped = flip_xy(ctx, (void*)tex->data_ptr[side][level], w, h, tex->bpp);
-					break;
-				case MESA_NEGATIVEX:
-					dst = flipped = flip_y(ctx, (void*)tex->data_ptr[side][level], w, h, tex->bpp);
-					break;
-				case MESA_POSITIVEY:
-					// nop
-					break;
-				case MESA_NEGATIVEY:
-					dst = flipped = flip_y(ctx, (void*)tex->data_ptr[side][level], w, h, tex->bpp);
-					break;
-				case MESA_POSITIVEZ:
-					dst = flipped = flip_y(ctx, (void*)tex->data_ptr[side][level], w, h, tex->bpp);
-					break;
-				case MESA_NEGATIVEZ:
-					dst = flipped = flip_xy(ctx, (void*)tex->data_ptr[side][level], w, h, tex->bpp);
-					break;
-			}
-
-			if(dst)
-			{
-				TOPIC("CUBE", "glTexImage2D(0x%X, %d, ...)", Mesa2GLSide[side], level);
-				GL_CHECK(entry->proc.pglTexImage2D(Mesa2GLSide[side], level, tex->internalformat,
-					w, h, 0, tex->format, tex->type, dst));
-
-				if(flipped)
-				{
-					MesaTempFree(ctx, flipped);
-				}
-			}
+			GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, level, tex->internalformat,
+				w, h, 0, tex->format, tex->type, ptr));
 		}
 		else
 		{
-			TOPIC("CUBE", "glTexImage2D(GL_TEXTURE_2D, %d, ...)", level);
-			GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, level, tex->internalformat,
-				w, h, 0, tex->format, tex->type, (void*)tex->data_ptr[0][level]));
+			GL_CHECK(entry->proc.pglPixelStorei(GL_UNPACK_ALIGNMENT, 1));
+			GL_CHECK(entry->proc.pglCompressedTexImage2D(GL_TEXTURE_2D, level, tex->internalformat,
+				w, h, 0, compressed_size(tex->internalformat, w, h), ptr));
+			GL_CHECK(entry->proc.pglPixelStorei(GL_UNPACK_ALIGNMENT, FBHDA_ROW_ALIGN));
 		}
 	}
-	
+
 	ctx->state.tmu[tmu].update = TRUE;
 }
 
@@ -621,8 +632,22 @@ void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int
 	
 	if(w == 0) w = 1;
 	if(h == 0) h = 1;
-	
+
 	mesa3d_entry_t *entry = ctx->entry;
+
+	surface_id sid = tex->data_sid[side][level];
+	if(sid == 0)
+	{
+		ERR("sid == 0");
+		return;
+	}
+
+	void *vidmem = SurfaceGetVidMem(sid);
+	if(vidmem == NULL)
+	{
+		ERR("vidmem == NULL");
+		return;
+	}
 
 	// TODO: cube map!
 
@@ -632,15 +657,14 @@ void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int
 
 	TOPIC("CHROMA", "MesaBufferUploadTextureChroma - level=%d", level);
 
-	void *data = chroma_convert(ctx, w, h, tex->bpp, tex->type, (void*)tex->data_ptr[side][level], chroma_lw, chroma_hi);
+	void *data = chroma_convert(ctx, w, h, tex->bpp, tex->type, vidmem, chroma_lw, chroma_hi);
 	TOPIC("TEX", "downloaded chroma bpp: %d, success: %X", tex->bpp, data);
 	
 	if(data)
 	{
 		if(tex->cube)
 		{
-			GL_CHECK(entry->proc.pglTexImage2D(Mesa2GLSide[side], level, GL_RGBA,
-				w, h, 0, GL_BGRA, GL_UNSIGNED_BYTE, data));
+			// ...
 		}
 		else
 		{

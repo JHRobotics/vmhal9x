@@ -209,7 +209,7 @@ DWORD __stdcall DestroySurface(LPDDHAL_DESTROYSURFACEDATA lpd)
 
 	TOPIC("GARBAGE", "destroy surface vram=%X", lpd->lpDDSurface->lpGbl->fpVidMem);
 
-	SurfaceDelete(lpd->lpDDSurface);
+	SurfaceDelete(lpd->lpDDSurface->dwReserved1);
 	
 	return DDHAL_DRIVER_NOTHANDLED;
 }
@@ -300,16 +300,17 @@ DWORD __stdcall Lock32(LPDDHAL_LOCKDATA pld)
 		TOPIC("READBACK", "LOCK %X (non primary)", pld->lpDDSurface->lpGbl->fpVidMem);
 	}
 	
-	if(SurfaceIsEmpty(pld->lpDDSurface))
+	surface_id sid = pld->lpDDSurface->dwReserved1;
+	if(sid)
 	{
-		memset((void*)pld->lpDDSurface->lpGbl->fpVidMem, 0,
-			pld->lpDDSurface->lpGbl->dwBlockSizeX * pld->lpDDSurface->lpGbl->dwBlockSizeY);
-		SurfaceClearEmpty(pld->lpDDSurface);
-		TOPIC("CLEAR", "clear in lock 0x%X", pld->lpDDSurface->lpGbl->fpVidMem);
+		if(SurfaceIsEmpty(sid))
+		{
+			SurfaceClearData(sid);
+			TOPIC("CLEAR", "clear in lock 0x%X", pld->lpDDSurface->lpGbl->fpVidMem);
+		}
+		SurfaceFromMesa(pld->lpDDSurface, FALSE);
 	}
-	
-	SurfaceFromMesa(pld->lpDDSurface, FALSE);
-	
+
 	return DDHAL_DRIVER_NOTHANDLED; /* let the lock processed */
 }
 

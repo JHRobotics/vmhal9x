@@ -61,9 +61,8 @@ typedef struct mesa3d_texture
 	GLint   internalformat;
 	GLenum  format;
 	GLenum  type;
-	FLATPTR data_ptr[MESA3D_CUBE_SIDES][MESA3D_MAX_MIPS];
 	BOOL    data_dirty[MESA3D_CUBE_SIDES][MESA3D_MAX_MIPS];
-	LPDDRAWI_DDRAWSURFACE_LCL data_surf[MESA3D_CUBE_SIDES][MESA3D_MAX_MIPS];
+	surface_id data_sid[MESA3D_CUBE_SIDES][MESA3D_MAX_MIPS];
 	BOOL dirty;
 	struct mesa3d_ctx *ctx;
 	BOOL mipmap;
@@ -149,7 +148,7 @@ struct mesa3d_tmustate
 typedef struct mesa_surfaces_table
 {
 	LPDDRAWI_DIRECTDRAW_LCL lpDDLcl;
-	DDSURF **table;
+	surface_id *table;
 	DWORD table_size;
 } mesa_surfaces_table_t;
 
@@ -197,14 +196,8 @@ typedef struct mesa3d_ctx
 	GLint depth_bpp;
 	//DDRAWI_DDRAWSURFACE_LCL flips[MESA3D_MAX_FLIPS];
 	//int flips_cnt;
-	DDSURF backbuffer;
-	void *backbuffer_vidmem;
-	LPDDRAWI_DDRAWSURFACE_LCL backbuffer_lcl;
-
-	DDSURF depth;
-	void *depth_vidmem;
-	LPDDRAWI_DDRAWSURFACE_LCL depth_lcl;
-
+	surface_id backbuffer;
+	surface_id depth;
 	LPDDRAWI_DIRECTDRAW_GBL dd;
 	BOOL depth_stencil;	
 	int tmu_count;
@@ -427,7 +420,7 @@ void Mesa3DFree(DWORD pid);
 #define GL_CHECK(_code) _code
 #endif
 
-mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DDSURF *dds,  DWORD dds_id, DDSURF *ddz, DWORD ddz_id);
+mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DWORD dds_sid, DWORD ddz_sid);
 void MesaDestroyCtx(mesa3d_ctx_t *ctx);
 void MesaDestroyAllCtx(mesa3d_entry_t *entry);
 void MesaInitCtx(mesa3d_ctx_t *ctx);
@@ -439,9 +432,9 @@ BOOL MesaSetCtx(mesa3d_ctx_t *ctx);
 void MesaSetTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *matrix);
 
 /* needs GL_BLOCK */
-mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, DDSURF *surf);
+mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, surface_id sid);
 void MesaReloadTexture(mesa3d_texture_t *tex, int tmu);
-void MesaDestroyTexture(mesa3d_texture_t *tex, BOOL ctx_cleanup, LPDDRAWI_DDRAWSURFACE_LCL surface_delete);
+void MesaDestroyTexture(mesa3d_texture_t *tex, BOOL ctx_cleanup, surface_id surface_delete);
 void MesaApplyTransform(mesa3d_ctx_t *ctx, DWORD changes);
 void MesaApplyViewport(mesa3d_ctx_t *ctx, GLint x, GLint y, GLint w, GLint h);
 void MesaApplyLighting(mesa3d_ctx_t *ctx);
@@ -458,7 +451,7 @@ void MesaDrawIndex(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE v
 
 void MesaRender(mesa3d_ctx_t *ctx);
 void MesaReadback(mesa3d_ctx_t *ctx, GLbitfield mask);
-BOOL MesaSetTarget(mesa3d_ctx_t *ctx, DDSURF *dds, DWORD dds_id, DDSURF *ddz, DWORD ddz_id, BOOL create);
+BOOL MesaSetTarget(mesa3d_ctx_t *ctx, surface_id dds_sid, surface_id ddz_sid, BOOL create);
 void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value);
 
 void MesaDrawRefreshState(mesa3d_ctx_t *ctx);
@@ -515,16 +508,16 @@ void MesaSceneEnd(mesa3d_ctx_t *ctx);
 
 /* DX7 surface tables */
 mesa_surfaces_table_t *MesaSurfacesTableGet(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, DWORD max_id);
-void MesaSurfacesTableRemoveSurface(mesa3d_entry_t *entry, DDSURF *surf);
+void MesaSurfacesTableRemoveSurface(mesa3d_entry_t *entry, surface_id sid);
 void MesaSurfacesTableRemoveDDLcl(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl);
-void MesaSurfacesTableInsertSurface(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, DWORD id, DDSURF *surf);
+void MesaSurfacesTableInsertHandle(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, DWORD handle, surface_id sid);
 
 BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, LPDDRAWI_DDRAWSURFACE_LCL surface);
 void SurfaceFree(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, LPDDRAWI_DDRAWSURFACE_LCL surface);
-mesa3d_texture_t *SurfaceGetTexture(LPDDRAWI_DDRAWSURFACE_LCL surf, void *ctx, int level, int side);
+mesa3d_texture_t *SurfaceGetTexture(surface_id sid, void *ctx, int level, int side);
 
 /* need GL block */
-mesa3d_texture_t *MesaTextureFromSurfaceId(mesa3d_ctx_t *ctx, DWORD surfaceId);
+mesa3d_texture_t *MesaTextureFromSurfaceHandle(mesa3d_ctx_t *ctx, DWORD surfaceHandle);
 void MesaApplyMaterial(mesa3d_ctx_t *ctx);
 
 /* need GL block + viewmodel matrix to matrix.view */

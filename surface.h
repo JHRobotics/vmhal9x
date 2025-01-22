@@ -37,13 +37,13 @@ typedef struct _DDSURF
 	LPDDRAWI_DDRAWSURFACE_LCL lpLcl;
 	DWORD dwFlags;
 	DWORD dwCaps;
-	DWORD dwAttachments;
-	LPDDRAWI_DDRAWSURFACE_GBL lpAttachmentsGbl[DDSURF_ATTACH_MAX];
-	LPDDRAWI_DDRAWSURFACE_LCL lpAttachmentsLcl[DDSURF_ATTACH_MAX];
+	DWORD attachments_cnt;
+	surface_id attachments[DDSURF_ATTACH_MAX];
 } DDSURF;
 
-void SurfaceCopyLCL(LPDDRAWI_DDRAWSURFACE_LCL surf, DDSURF *dest);
 LPDDRAWI_DDRAWSURFACE_LCL SurfaceDuplicate(LPDDRAWI_DDRAWSURFACE_LCL original);
-LPDDRAWI_DDRAWSURFACE_LCL SurfaceSubimage(DDSURF *surf, DWORD id);
+
+DDSURF *SurfaceGetSURF(surface_id sid);
+void *SurfaceGetVidMem(surface_id sid);
 
 #endif /* __SURFACE_H__INCLUDED__ */
