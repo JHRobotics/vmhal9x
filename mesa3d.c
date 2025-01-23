@@ -748,11 +748,14 @@ BOOL MesaSetTarget(mesa3d_ctx_t *ctx, surface_id dds_sid, surface_id ddz_sid, BO
 	int height = dds->lpGbl->wHeight;
 	int bpp = DDSurf_GetBPP(dds);
 	int bpp_depth = 0;
+	//dds->fpVidMem = dds->lpLcl->lpGbl->fpVidMem;
+	TOPIC("TARGET", "MesaSetTarget: target size(%d x %d x %d)", width, height, bpp);
 
 	if(ddz_sid)
 	{
 		DDSURF *ddz = SurfaceGetSURF(ddz_sid);
 		bpp_depth = DDSurf_GetBPP(ddz);
+		//ddz->fpVidMem = ddz->lpLcl->lpGbl->fpVidMem;
 	}
 
 	if(create || ctx->state.sw != width || ctx->state.sh != height/* || ctx->front_bpp != bpp*/)
@@ -1274,7 +1277,6 @@ void MesaReloadTexture(mesa3d_texture_t *tex, int tmu)
 			if(reload || tex->data_dirty[side][level])
 			{
 				DDSURF *primary = SurfaceGetSURF(tex->data_sid[0][0]);
-
 				if(tex->ctx->state.tmu[tmu].colorkey && (primary->dwFlags & DDRAWISURF_HASCKEYSRCBLT))
 				{
 					if(tex->compressed)
@@ -1525,6 +1527,7 @@ static void ApplyBlend(mesa3d_ctx_t *ctx)
 		GL_CHECK(entry->proc.pglDisable(GL_BLEND));
 		//entry->proc.pglBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	}
+	//GL_CHECK(entry->proc.pglDisable(GL_BLEND));
 }
 
 void MesaApplyMaterial(mesa3d_ctx_t *ctx)
@@ -2896,13 +2899,13 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 	  GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_RGB, color_arg1_op));
 	  GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC1_RGB, color_arg2_source));
 	  GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_RGB, color_arg2_op));
-	  
+
 	  if(color_fn == GL_INTERPOLATE)
 	  {
 	  	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC2_RGB, color_arg3_source));
 	  	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND2_RGB, color_arg3_op));
 	  }
-	  	  
+
 	  GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC0_ALPHA, alpha_arg1_source));
 	  GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_ALPHA, alpha_arg1_op));
 	  GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC1_ALPHA, alpha_arg2_source));
@@ -2910,8 +2913,8 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 	  
 	  if(alpha_fn == GL_INTERPOLATE)
 	  {
-	  	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC2_RGB, alpha_arg3_source));
-	  	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND2_RGB, alpha_arg3_op));
+	  	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC2_ALPHA, alpha_arg3_source));
+	  	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND2_ALPHA, alpha_arg3_op));
 	  }
 
 	  GL_CHECK(entry->proc.pglTexEnvf(GL_TEXTURE_ENV, GL_RGB_SCALE,   color_mult));
@@ -3345,6 +3348,15 @@ void MesaDrawIndex(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE v
 	}
 }
 
+static BOOL IsFullSurface(mesa3d_ctx_t *ctx, RECT *rect)
+{
+	return
+		rect->left == 0 &&
+		rect->top == 0 &&
+		rect->right == ctx->state.sw &&
+		rect->bottom == ctx->state.sh;
+}
+
 void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, DWORD stencil, int rects_cnt, RECT *rects)
 {
 	GLfloat cv[4];
@@ -3377,41 +3389,49 @@ void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, D
 		entry->proc.pglClearStencil(stencil);
 	}
 
-	if(flags & D3DCLEAR_TARGET)
+	if(rects_cnt == 0 || IsFullSurface(ctx, &rects[0])) // full surface
 	{
-		void *ptr = SurfaceGetVidMem(ctx->backbuffer);
-		if(ptr)
+		TOPIC("CLEAR", "full clear");
+		entry->proc.pglClear(mask);
+		entry->proc.pglFlush();
+	}
+	else
+	{
+		TOPIC("CLEAR", "partly clean");
+		if(flags & D3DCLEAR_TARGET)
 		{
-			MesaBufferUploadColor(ctx, ptr);
+			void *ptr = SurfaceGetVidMem(ctx->backbuffer);
+			if(ptr)
+			{
+				MesaBufferUploadColor(ctx, ptr);
+			}
+		}
+		
+		if(ctx->depth_bpp && (flags & (D3DCLEAR_ZBUFFER | D3DCLEAR_STENCIL)))
+		{
+			void *ptr = SurfaceGetVidMem(ctx->depth);
+			MesaBufferUploadDepth(ctx, ptr);
+		}
+	
+		TOPIC("READBACK", "Clear %X => %X, %f, %X", flags, color, depth, stencil);
+		for(i = 0; i < rects_cnt; i++)
+		{
+			entry->proc.pglEnable(GL_SCISSOR_TEST);
+			entry->proc.pglScissor(
+				rects[i].left, rects[i].top,
+				rects[i].right - rects[i].left,
+				rects[i].bottom - rects[i].top);
+	
+			entry->proc.pglClear(mask);
+			entry->proc.pglDisable(GL_SCISSOR_TEST);
 		}
 	}
-	
-	if(ctx->depth_bpp && (flags & (D3DCLEAR_ZBUFFER | D3DCLEAR_STENCIL)))
-	{
-		void *ptr = SurfaceGetVidMem(ctx->depth);
-		MesaBufferUploadDepth(ctx, ptr);
-	}
 
-	// FIXME: ^when is done full clear, is not needed to readback the surface! 
-
-	TOPIC("READBACK", "Clear %X => %X, %f, %X", flags, color, depth, stencil);
-	for(i = 0; i < rects_cnt; i++)
-	{
-		entry->proc.pglEnable(GL_SCISSOR_TEST);
-		entry->proc.pglScissor(
-			rects[i].left, rects[i].top,
-			rects[i].right - rects[i].left,
-			rects[i].bottom - rects[i].top);
-
-		entry->proc.pglClear(mask);
-		entry->proc.pglDisable(GL_SCISSOR_TEST);
-	}
-	
 	if(flags & D3DCLEAR_TARGET)
 	{
 		ctx->render.dirty = TRUE;
 	}
-	
+
 	if(flags & D3DCLEAR_ZBUFFER)
 	{
 		if(ctx->state.depth.enabled)
@@ -3423,7 +3443,7 @@ void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, D
 
 		ctx->render.zdirty = TRUE;
 	}
-	
+
 	if(flags & D3DCLEAR_STENCIL)
 	{
 		if(ctx->state.stencil.enabled)
@@ -3475,7 +3495,10 @@ void MesaSceneEnd(mesa3d_ctx_t *ctx)
 			FBHDA_access_begin(0);
 
 		TOPIC("TARGET", "MesaBufferDownloadColor(ctx, 0x%X)", ptr);
-		MesaBufferDownloadColor(ctx, ptr);
+		if(ctx->render.dirty)
+		{
+			MesaBufferDownloadColor(ctx, ptr);
+		}
 		
 		if(ctx->state.textarget)
 		{
@@ -3487,7 +3510,9 @@ void MesaSceneEnd(mesa3d_ctx_t *ctx)
 		if(is_visible)
 			FBHDA_access_end(0);
 	}
-	
+
+	ctx->entry->proc.pglFinish();
+
 	if(mesa_dump_key() == MESA_KEY_DUMP)
 	{
 		mesa_dump(ctx);

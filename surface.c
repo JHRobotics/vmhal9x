@@ -169,7 +169,7 @@ static surface_info_t *SurfaceCreateInfo(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL re
 	{
 		info->magic = SURFACE_TABLE_MAGIC;
 		info->first = NULL;
-		info->flags = SURF_FLAG_EMPTY;
+		info->flags = 0;
 		
 		SurfaceCopyLCL(surf, &info->surf, recursion);
 	}
@@ -177,7 +177,12 @@ static surface_info_t *SurfaceCreateInfo(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL re
 	if(info->surf.fpVidMem <= DDHAL_PLEASEALLOC_LINEARSIZE)
 	{
 		info->flags |= SURF_FLAG_NO_VIDMEM;
+		info->flags |= SURF_FLAG_EMPTY;
 		info->surf.fpVidMem = 0;
+	}
+	else
+	{
+		info->surf.fpVidMem = info->surf.lpGbl->fpVidMem;
 	}
 
 	DWORD id = SurfaceNextId();
@@ -239,7 +244,7 @@ DWORD SurfaceCreate(LPDDRAWI_DDRAWSURFACE_LCL surf)
 
 static surface_info_t *SurfaceGetInfo(surface_id sid)
 {
-	if(sid > 0 && sid < infos.next_id)
+	if(sid > 0 && sid < infos.tablesize)
 	{
 		surface_info_t *info = infos.table[sid];
 		if(info)
@@ -538,10 +543,11 @@ BOOL SurfaceDelete(surface_id sid)
 					if(item->pid == pid)
 					{
 						GL_BLOCK_BEGIN(item->texture.tex->ctx)
+							TOPIC("GARBAGE", "Destroy texture %d", item->texture.tex->id);
 							MesaDestroyTexture(item->texture.tex, FALSE, sid);
 						GL_BLOCK_END
 					}
-#if 0
+#if 1
 					else
 					{
 						TOPIC("GARBAGE", "wrong pid=%X", item->pid);

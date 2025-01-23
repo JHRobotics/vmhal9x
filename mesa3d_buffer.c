@@ -680,48 +680,64 @@ void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int
 BOOL MesaBufferFBOSetup(mesa3d_ctx_t *ctx, int width, int height)
 {
 	mesa3d_entry_t *entry = ctx->entry;
+	BOOL need_create = TRUE;
+	int i;
 	
 	if(ctx->fbo.width == width && ctx->fbo.height == height)
 	{
-		// nop
-	}
-	else if(ctx->fbo_swap.width == width && ctx->fbo_swap.height == height)
-	{
-		mesa_fbo_t tmp;
-		memcpy(&tmp,           &ctx->fbo,      sizeof(mesa_fbo_t));
-		memcpy(&ctx->fbo,      &ctx->fbo_swap, sizeof(mesa_fbo_t));
-		memcpy(&ctx->fbo_swap, &tmp,           sizeof(mesa_fbo_t));
-
-		FBOConvReset(entry, ctx, RESET_SWAP);
-		GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.plane_fb));
-		GL_CHECK(entry->proc.pglViewport(0, 0, width, height));
-		
-		TOPIC("FBSWAP", "fbo <-> fbo_swap");
+		need_create = FALSE;
 	}
 	else
 	{
-		GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, 0));
-
-		if(ctx->fbo_swap.plane_fb)
+		mesa_fbo_t tmp;
+		
+		for(i = 0; i < MESA_FBO_SWAPS; i++)
 		{
-			TOPIC("FRAMEBUFFER", "delete frambuffer: %d", ctx->fbo_swap.plane_fb);
-			GL_CHECK(entry->proc.pglDeleteFramebuffers(1, &ctx->fbo_swap.plane_fb));
+			if(ctx->fbo_swap[i].width == width && ctx->fbo_swap[i].height == height)
+			{
+				memcpy(&tmp,              &ctx->fbo,         sizeof(mesa_fbo_t));
+				memcpy(&ctx->fbo,         &ctx->fbo_swap[i], sizeof(mesa_fbo_t));
+				memcpy(&ctx->fbo_swap[i], &tmp,              sizeof(mesa_fbo_t));
+
+				FBOConvReset(entry, ctx, RESET_SWAP);
+				GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.plane_fb));
+				GL_CHECK(entry->proc.pglViewport(0, 0, width, height));
+				
+				TOPIC("FBSWAP", "fbo <-> fbo_swap");
+				need_create = FALSE;
+				break;
+			}
+		}
+	}
+	
+	if(need_create)
+	{
+		GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, 0));
+		
+		mesa_fbo_t *fbo_swap_top = &ctx->fbo_swap[ctx->fbo_swap_top];
+
+		if(fbo_swap_top->plane_fb)
+		{
+			TOPIC("FRAMEBUFFER", "delete frambuffer: %d", fbo_swap_top->plane_fb);
+			GL_CHECK(entry->proc.pglDeleteFramebuffers(1, &fbo_swap_top->plane_fb));
 			TOPIC("FBSWAP", "delete fbo_swap");
 		}
 
-		if(ctx->fbo_swap.plane_color_tex)
+		if(fbo_swap_top->plane_color_tex)
 		{
-			TOPIC("FRAMEBUFFER", "delete texture: %d", ctx->fbo_swap.plane_color_tex);
-			GL_CHECK(entry->proc.pglDeleteTextures(1, &ctx->fbo_swap.plane_color_tex));
+			TOPIC("FRAMEBUFFER", "delete texture: %d", fbo_swap_top->plane_color_tex);
+			GL_CHECK(entry->proc.pglDeleteTextures(1, &fbo_swap_top->plane_color_tex));
 		}
 
-		if(ctx->fbo_swap.plane_depth_tex)
+		if(fbo_swap_top->plane_depth_tex)
 		{
-			TOPIC("FRAMEBUFFER", "delete texture: %d", ctx->fbo_swap.plane_depth_tex);
-			GL_CHECK(entry->proc.pglDeleteTextures(1, &ctx->fbo_swap.plane_depth_tex));
+			TOPIC("FRAMEBUFFER", "delete texture: %d", fbo_swap_top->plane_depth_tex);
+			GL_CHECK(entry->proc.pglDeleteTextures(1, &fbo_swap_top->plane_depth_tex));
 		}
 
-		memcpy(&ctx->fbo_swap, &ctx->fbo, sizeof(mesa_fbo_t));
+		TOPIC("FBSWAP", "fbo -> fbo_swap[%d]", ctx->fbo_swap_top);
+		memcpy(fbo_swap_top, &ctx->fbo, sizeof(mesa_fbo_t));
+		ctx->fbo_swap_top = (ctx->fbo_swap_top + 1) % MESA_FBO_SWAPS;
 
 		GL_CHECK(entry->proc.pglGenFramebuffers(1, &ctx->fbo.plane_fb));
 		TOPIC("FRAMEBUFFER", "new frambuffer: %d", ctx->fbo.plane_fb);
@@ -759,7 +775,6 @@ BOOL MesaBufferFBOSetup(mesa3d_ctx_t *ctx, int width, int height)
 
 		GL_CHECK(entry->proc.pglViewport(0, 0, width, height));
 		
-		TOPIC("FBSWAP", "fbo -> fbo_swap");
 		TOPIC("FBSWAP", "new fbo");
 	}
 	

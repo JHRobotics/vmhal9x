@@ -51,6 +51,9 @@ typedef OSMESAproc (APIENTRYP OSMesaGetProcAddress_h)(const char *funcName);
 #define MESA_POSITIVEZ 4
 #define MESA_NEGATIVEZ 5
 
+/* SVGA3D don't like generate too much framebuffers, so we need to save them */
+#define MESA_FBO_SWAPS 8
+
 typedef struct mesa3d_texture
 {
 	int     id; // ctx->tex[_id_]
@@ -283,7 +286,8 @@ typedef struct mesa3d_ctx
 
 	/* fbo */
 	mesa_fbo_t fbo;
-	mesa_fbo_t fbo_swap;
+	mesa_fbo_t fbo_swap[MESA_FBO_SWAPS];
+	int fbo_swap_top;
 	int fbo_tmu; /* can be higher than tmu_count, if using extra TMU for FBO operations */
 
 	/* rendering state */
@@ -455,7 +459,6 @@ BOOL MesaSetTarget(mesa3d_ctx_t *ctx, surface_id dds_sid, surface_id ddz_sid, BO
 void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value);
 
 void MesaDrawRefreshState(mesa3d_ctx_t *ctx);
-void MesaDrawSetSurfaces(mesa3d_ctx_t *ctx);
 void MesaDraw3(mesa3d_ctx_t *ctx, DWORD op, void *prim, LPBYTE vertices);
 BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LPBYTE vertices, DWORD *error_offset, LPDWORD RStates);
 

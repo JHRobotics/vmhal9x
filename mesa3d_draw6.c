@@ -734,7 +734,6 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 					MesaApplyViewport(ctx, viewport->dwX, viewport->dwY, viewport->dwWidth, viewport->dwHeight);
 					prim += sizeof(D3DHAL_DP2VIEWPORTINFO);
 				}
-				// skipped
 				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_WINFO)
@@ -885,6 +884,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				for(i = 0; i < inst->wStateCount; i++)
 				{
 					prim += sizeof(D3DHAL_DP2EXT);
+					WARN("D3DDP2OP_EXT");
 				}
 				NEXT_INST(0);
 				break;
@@ -908,6 +908,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				for(i = 0; inst->wStateCount; i++)
 				{
 					// FIXME: do the blit...
+					WARN("D3DDP2OP_TEXBLT");
 					prim += sizeof(D3DHAL_DP2TEXBLT);
 				}
 				NEXT_INST(0);
@@ -1010,7 +1011,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 			// COMMAND(D3DDP2OP_RESERVED0)
 			// Used by the front-end only
 			default:
-				TRACE("Unknown command: 0x%X", inst->bCommand);
+				WARN("Unknown command: 0x%X", inst->bCommand);
 				
 				if(!entry->D3DParseUnknownCommand)
 				{

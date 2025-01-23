@@ -356,13 +356,47 @@ DWORD __stdcall Clear2_32(LPD3DHAL_CLEAR2DATA cd)
 	return DDHAL_DRIVER_HANDLED;
 }
 
+/**
+ *
+ * Function:    D3DGetDriverState
+ *
+ * Description: This callback is used by both the DirectDraw and Direct3D 
+ *              runtimes to obtain information from the driver about its 
+ *              current state.
+ *
+ * Parameters
+ *
+ *     lpgdsd   
+ *           pointer to GetDriverState data structure
+ *
+ *           dwFlags
+ *                   Flags to indicate the data required
+ *           dwhContext
+ *                   The ID of the context for which information 
+ *                   is being requested
+ *           lpdwStates
+ *                   Pointer to the state data to be filled in by the driver
+ *           dwLength
+ *                   Length of the state data buffer to be filled 
+ *                   in by the driver
+ *           ddRVal
+ *                   Return value
+ *
+ * Return Value
+ *
+ *      DDHAL_DRIVER_HANDLED
+ *      DDHAL_DRIVER_NOTHANDLED
+ */
 DWORD __stdcall GetDriverState32(LPDDHAL_GETDRIVERSTATEDATA pGDSData)
 {
 	TRACE_ENTRY
 	
-	pGDSData->ddRVal = DD_OK;
+	// Example:
+	// D3DDEVINFOID_TEXTUREMANAGER
+	// D3DDEVINFO_TEXTUREMANAGER
+	//pGDSData->ddRVal = DD_OK;
 	
-	return DDHAL_DRIVER_HANDLED;
+	return DDHAL_DRIVER_NOTHANDLED;
 }
 
 /*
@@ -469,47 +503,47 @@ DWORD __stdcall CreateSurfaceEx32(LPDDHAL_CREATESURFACEEXDATA lpcsxd)
 	if(surf->ddsCaps.dwCaps & DX7_SURFACE_NEST_TYPES)
 	{
 		SurfaceExInsert(entry, lpcsxd->lpDDLcl, surf);
+	
+		if(!((surf->ddsCaps.dwCaps & DDSCAPS_MIPMAP) || (surf->lpSurfMore->ddsCapsEx.dwCaps2 & DDSCAPS2_CUBEMAP)))
+		{
+			/* 
+			 * from DDK ME:
+			 * for some surfaces other than MIPMAP or CUBEMAP, such as
+			 * flipping chains, we make a slot for every surface, as
+			 * they are not as interleaved
+			 */
+			
+			LPATTACHLIST curr = surf->lpAttachList;
+			while(curr)
+			{
+				if(curr->lpAttached == surf)
+				{
+					break;
+				}
+				
+				if(curr->lpAttached)
+				{
+					TRACE("LOOP %d", curr->lpAttached->lpSurfMore->dwSurfaceHandle);
+					if(curr->lpAttached->ddsCaps.dwCaps & DX7_SURFACE_NEST_TYPES)
+					{
+						SurfaceExInsert(entry, lpcsxd->lpDDLcl, curr->lpAttached);
+					}
+					
+					curr = curr->lpAttached->lpAttachList;
+				}
+				else
+				{
+					curr = NULL;
+					//curr = curr->lpLink;
+				}
+				//curr = curr->lpLink;
+				
+			}
+		}
 	}
 	else
 	{
 		WARN("CreateSurfaceEx32: ignoring type 0x%X, id %d", surf->ddsCaps.dwCaps, surf->lpSurfMore->dwSurfaceHandle);
-	}
-	
-	if(!((surf->ddsCaps.dwCaps & DDSCAPS_MIPMAP) || (surf->lpSurfMore->ddsCapsEx.dwCaps2 & DDSCAPS2_CUBEMAP)))
-	{
-		/* 
-		 * from DDK ME:
-		 * for some surfaces other than MIPMAP or CUBEMAP, such as
-		 * flipping chains, we make a slot for every surface, as
-		 * they are not as interleaved
-		 */
-		
-		LPATTACHLIST curr = surf->lpAttachList;
-		while(curr)
-		{
-			if(curr->lpAttached == surf)
-			{
-				break;
-			}
-			
-			if(curr->lpAttached)
-			{
-				TRACE("LOOP %d", curr->lpAttached->lpSurfMore->dwSurfaceHandle);
-				if(curr->lpAttached->ddsCaps.dwCaps & DX7_SURFACE_NEST_TYPES)
-				{
-					SurfaceExInsert(entry, lpcsxd->lpDDLcl, curr->lpAttached);
-				}
-				
-				curr = curr->lpAttached->lpAttachList;
-			}
-			else
-			{
-				curr = NULL;
-				//curr = curr->lpLink;
-			}
-			//curr = curr->lpLink;
-			
-		}
 	}
 	
 	return DDHAL_DRIVER_HANDLED;

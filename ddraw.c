@@ -93,7 +93,8 @@ DWORD __stdcall CreateSurface(LPDDHAL_CREATESURFACEDATA pcsd)
   if(!hal) return DDHAL_DRIVER_NOTHANDLED;
 
 #ifdef D3DHAL
-	if(pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps & (DDSCAPS_TEXTURE | DDSCAPS_ZBUFFER | DDSCAPS_FLIP | DDSCAPS_FRONTBUFFER | DDSCAPS_BACKBUFFER))
+	if(pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps & (DDSCAPS_TEXTURE | DDSCAPS_ZBUFFER | DDSCAPS_FLIP |
+		DDSCAPS_FRONTBUFFER | DDSCAPS_BACKBUFFER | DDSCAPS_PRIMARYSURFACE | DDSCAPS_OFFSCREENPLAIN))
 	{
 		LPDDRAWI_DDRAWSURFACE_LCL *lplpSList = pcsd->lplpSList;
 		int i;
@@ -182,7 +183,8 @@ DWORD __stdcall CreateSurface(LPDDHAL_CREATESURFACEDATA pcsd)
 #endif
 	if(pcsd->lplpSList)
 	{
-		SurfaceCreate(pcsd->lplpSList[0]);
+		WARN("Cannot create: 0x%X", pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps);
+		//SurfaceCreate(pcsd->lplpSList[0]);
 	}
 
 	WARN("Alloc by HEL, type 0x%X", pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps);

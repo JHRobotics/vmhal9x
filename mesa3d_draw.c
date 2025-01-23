@@ -97,7 +97,7 @@ static void LoadColor1(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, DWORD color)
 		{
 			entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, &cv[0]);
 		}
-		
+
 		if(ctx->state.material.untracked & MESA_MAT_EMISSIVE_C1)
 		{
 			entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, &cv[0]);
@@ -130,7 +130,7 @@ static void LoadColor2(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, DWORD color)
 		{
 			entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, &cv[0]);
 		}
-		
+
 		if(ctx->state.material.untracked & MESA_MAT_EMISSIVE_C2)
 		{
 			entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, &cv[0]);
