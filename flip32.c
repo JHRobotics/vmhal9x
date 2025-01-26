@@ -33,8 +33,6 @@
 
 #include "vmhal9x.h"
 
-#include "mesa3d.h"
-
 #include "fill.h"
 
 #include "nocrt.h"

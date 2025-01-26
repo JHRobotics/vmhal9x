@@ -4,6 +4,7 @@
 #include <GL/gl.h>
 #include <GL/glext.h>
 #include <d3dtypes.h>
+#include "nuke.h"
 #include "surface.h"
 
 typedef void (*OSMESAproc)();
@@ -360,8 +361,8 @@ typedef struct mesa3d_entry
 #undef MESA_API_OS
 #undef MESA_API_DRV
 
-mesa3d_entry_t *Mesa3DGet(DWORD pid, BOOL create);
-void Mesa3DFree(DWORD pid);
+NUKED_LOCAL mesa3d_entry_t *Mesa3DGet(DWORD pid, BOOL create);
+NUKED_LOCAL void Mesa3DFree(DWORD pid);
 
 #define GL_BLOCK_BEGIN(_ctx_h) \
 	do{ \
@@ -424,115 +425,112 @@ void Mesa3DFree(DWORD pid);
 #define GL_CHECK(_code) _code
 #endif
 
-mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DWORD dds_sid, DWORD ddz_sid);
-void MesaDestroyCtx(mesa3d_ctx_t *ctx);
-void MesaDestroyAllCtx(mesa3d_entry_t *entry);
-void MesaInitCtx(mesa3d_ctx_t *ctx);
-void MesaLightDestroyAll(mesa3d_ctx_t *ctx);
+NUKED_LOCAL mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DWORD dds_sid, DWORD ddz_sid);
+NUKED_LOCAL void MesaDestroyCtx(mesa3d_ctx_t *ctx);
+NUKED_LOCAL void MesaDestroyAllCtx(mesa3d_entry_t *entry);
+NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx);
+NUKED_LOCAL void MesaLightDestroyAll(mesa3d_ctx_t *ctx);
 
-void MesaBlockLock(mesa3d_ctx_t *ctx);
-void MesaBlockUnlock(mesa3d_ctx_t *ctx);
-BOOL MesaSetCtx(mesa3d_ctx_t *ctx);
-void MesaSetTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *matrix);
+NUKED_LOCAL void MesaBlockLock(mesa3d_ctx_t *ctx);
+NUKED_LOCAL void MesaBlockUnlock(mesa3d_ctx_t *ctx);
+NUKED_LOCAL BOOL MesaSetCtx(mesa3d_ctx_t *ctx);
+NUKED_LOCAL void MesaSetTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *matrix);
 
 /* needs GL_BLOCK */
-mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, surface_id sid);
-void MesaReloadTexture(mesa3d_texture_t *tex, int tmu);
-void MesaDestroyTexture(mesa3d_texture_t *tex, BOOL ctx_cleanup, surface_id surface_delete);
-void MesaApplyTransform(mesa3d_ctx_t *ctx, DWORD changes);
-void MesaApplyViewport(mesa3d_ctx_t *ctx, GLint x, GLint y, GLint w, GLint h);
-void MesaApplyLighting(mesa3d_ctx_t *ctx);
+NUKED_LOCAL mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, surface_id sid);
+NUKED_LOCAL void MesaReloadTexture(mesa3d_texture_t *tex, int tmu);
+NUKED_LOCAL void MesaDestroyTexture(mesa3d_texture_t *tex, BOOL ctx_cleanup, surface_id surface_delete);
+NUKED_LOCAL void MesaApplyTransform(mesa3d_ctx_t *ctx, DWORD changes);
+NUKED_LOCAL void MesaApplyViewport(mesa3d_ctx_t *ctx, GLint x, GLint y, GLint w, GLint h);
+NUKED_LOCAL void MesaApplyLighting(mesa3d_ctx_t *ctx);
 
 #define MESA_TF_PROJECTION 1
 #define MESA_TF_VIEW       2
 #define MESA_TF_WORLD      4
 //#define MESA_TF_TEXTURE    8
-void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates);
-void MesaDraw(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype, LPVOID vertices, DWORD verticesCnt);
-void MesaDrawIndex(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype,
+NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates);
+NUKED_LOCAL void MesaDraw(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype, LPVOID vertices, DWORD verticesCnt);
+NUKED_LOCAL void MesaDrawIndex(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype,
 	LPVOID vertices, DWORD verticesCnt,
 	LPWORD indices, DWORD indicesCnt);
 
-void MesaRender(mesa3d_ctx_t *ctx);
-void MesaReadback(mesa3d_ctx_t *ctx, GLbitfield mask);
-BOOL MesaSetTarget(mesa3d_ctx_t *ctx, surface_id dds_sid, surface_id ddz_sid, BOOL create);
-void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value);
+NUKED_LOCAL BOOL MesaSetTarget(mesa3d_ctx_t *ctx, surface_id dds_sid, surface_id ddz_sid, BOOL create);
+NUKED_LOCAL void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value);
 
-void MesaDrawRefreshState(mesa3d_ctx_t *ctx);
-void MesaDraw3(mesa3d_ctx_t *ctx, DWORD op, void *prim, LPBYTE vertices);
-BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LPBYTE vertices, DWORD *error_offset, LPDWORD RStates);
+NUKED_LOCAL void MesaDrawRefreshState(mesa3d_ctx_t *ctx);
+NUKED_LOCAL void MesaDraw3(mesa3d_ctx_t *ctx, DWORD op, void *prim, LPBYTE vertices);
+NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LPBYTE vertices, DWORD *error_offset, LPDWORD RStates);
 
-void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, DWORD stencil, int rects_cnt, RECT *rects);
-DWORD DDSurf_GetBPP(DDSURF *surf);
+NUKED_LOCAL void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, DWORD stencil, int rects_cnt, RECT *rects);
+NUKED_LOCAL DWORD DDSurf_GetBPP(DDSURF *surf);
 
-void MesaStencilApply(mesa3d_ctx_t *ctx);
+NUKED_LOCAL void MesaStencilApply(mesa3d_ctx_t *ctx);
 
 /* buffer (needs GL_BLOCK) */
-void MesaBufferUploadColor(mesa3d_ctx_t *ctx, const void *src);
-void MesaBufferDownloadColor(mesa3d_ctx_t *ctx, void *dst);
-void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src);
-void MesaBufferDownloadDepth(mesa3d_ctx_t *ctx, void *dst);
-void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level, int side, int tmu);
-void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level, int side, int tmu, DWORD chroma_lw, DWORD chroma_hi);
-BOOL MesaBufferFBOSetup(mesa3d_ctx_t *ctx, int width, int height);
+NUKED_LOCAL void MesaBufferUploadColor(mesa3d_ctx_t *ctx, const void *src);
+NUKED_LOCAL void MesaBufferDownloadColor(mesa3d_ctx_t *ctx, void *dst);
+NUKED_LOCAL void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src);
+NUKED_LOCAL void MesaBufferDownloadDepth(mesa3d_ctx_t *ctx, void *dst);
+NUKED_LOCAL void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level, int side, int tmu);
+NUKED_LOCAL void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level, int side, int tmu, DWORD chroma_lw, DWORD chroma_hi);
+NUKED_LOCAL BOOL MesaBufferFBOSetup(mesa3d_ctx_t *ctx, int width, int height);
 
 /* calculation */
-BOOL MesaUnprojectf(GLfloat winx, GLfloat winy, GLfloat winz, GLfloat clipw,
+NUKED_LOCAL BOOL MesaUnprojectf(GLfloat winx, GLfloat winy, GLfloat winz, GLfloat clipw,
 	const GLfloat modelMatrix[16], 
 	const GLfloat projMatrix[16],
 	const GLint viewport[4],
 	GLfloat *objx, GLfloat *objy, GLfloat *objz, GLfloat *objw);
-void MesaIdentity(GLfloat matrix[16]);
-BOOL MesaIsIdentity(GLfloat matrix[16]);
-void MesaSpaceIdentitySet(mesa3d_ctx_t *ctx);
-void MesaSpaceIdentityReset(mesa3d_ctx_t *ctx);
-void MesaSpaceModelviewSet(mesa3d_ctx_t *ctx);
-void MesaSpaceModelviewReset(mesa3d_ctx_t *ctx);
+NUKED_LOCAL void MesaIdentity(GLfloat matrix[16]);
+NUKED_LOCAL BOOL MesaIsIdentity(GLfloat matrix[16]);
+NUKED_LOCAL void MesaSpaceIdentitySet(mesa3d_ctx_t *ctx);
+NUKED_LOCAL void MesaSpaceIdentityReset(mesa3d_ctx_t *ctx);
+NUKED_LOCAL void MesaSpaceModelviewSet(mesa3d_ctx_t *ctx);
+NUKED_LOCAL void MesaSpaceModelviewReset(mesa3d_ctx_t *ctx);
 //void MesaConvProjection(GLfloat m[16]);
 //void MesaConvView(GLfloat m[16]);
-void MesaVetexBlend(mesa3d_ctx_t *ctx, GLfloat coords[3], GLfloat *betas, int betas_cnt, GLfloat out[4]);
+NUKED_LOCAL void MesaVetexBlend(mesa3d_ctx_t *ctx, GLfloat coords[3], GLfloat *betas, int betas_cnt, GLfloat out[4]);
 
 /* vertex (needs GL_BLOCK + glBegin) */
-void MesaDrawVertex(mesa3d_ctx_t *ctx, LPD3DVERTEX vertex);
-void MesaDrawLVertex(mesa3d_ctx_t *ctx, LPD3DLVERTEX vertex);
-void MesaDrawTLVertex(mesa3d_ctx_t *ctx, LPD3DTLVERTEX vertex);
+NUKED_LOCAL void MesaDrawVertex(mesa3d_ctx_t *ctx, LPD3DVERTEX vertex);
+NUKED_LOCAL void MesaDrawLVertex(mesa3d_ctx_t *ctx, LPD3DLVERTEX vertex);
+NUKED_LOCAL void MesaDrawTLVertex(mesa3d_ctx_t *ctx, LPD3DTLVERTEX vertex);
 /* DX6 */
-void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD type, DWORD size);
-void MesaDrawFVF(mesa3d_ctx_t *ctx, void *vertex);
-void MesaDrawFVFIndex(mesa3d_ctx_t *ctx, void *vertices, int index);
-void MesaFVFRecalc(mesa3d_ctx_t *ctx);
+NUKED_LOCAL void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD type, DWORD size);
+NUKED_LOCAL void MesaDrawFVFIndex(mesa3d_ctx_t *ctx, void *vertices, int index);
+NUKED_LOCAL void MesaFVFRecalc(mesa3d_ctx_t *ctx);
 
 /* drawing sequence (needs GL_BLOCK) */
-void MesaDrawFVFs(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vertices, DWORD start, DWORD cnt);
+NUKED_LOCAL void MesaDrawFVFs(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vertices, DWORD start, DWORD cnt);
 
 /* scene capture, need GL block */
-void MesaSceneBegin(mesa3d_ctx_t *ctx);
-void MesaSceneEnd(mesa3d_ctx_t *ctx);
+NUKED_LOCAL void MesaSceneBegin(mesa3d_ctx_t *ctx);
+NUKED_LOCAL void MesaSceneEnd(mesa3d_ctx_t *ctx);
 
 /* DX7 surface tables */
-mesa_surfaces_table_t *MesaSurfacesTableGet(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, DWORD max_id);
-void MesaSurfacesTableRemoveSurface(mesa3d_entry_t *entry, surface_id sid);
-void MesaSurfacesTableRemoveDDLcl(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl);
-void MesaSurfacesTableInsertHandle(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, DWORD handle, surface_id sid);
+NUKED_LOCAL mesa_surfaces_table_t *MesaSurfacesTableGet(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, DWORD max_id);
+NUKED_LOCAL void MesaSurfacesTableRemoveSurface(mesa3d_entry_t *entry, surface_id sid);
+NUKED_LOCAL void MesaSurfacesTableRemoveDDLcl(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl);
+NUKED_LOCAL void MesaSurfacesTableInsertHandle(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, DWORD handle, surface_id sid);
 
-BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, LPDDRAWI_DDRAWSURFACE_LCL surface);
-void SurfaceFree(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, LPDDRAWI_DDRAWSURFACE_LCL surface);
-mesa3d_texture_t *SurfaceGetTexture(surface_id sid, void *ctx, int level, int side);
+NUKED_LOCAL BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, LPDDRAWI_DDRAWSURFACE_LCL surface);
+NUKED_LOCAL void SurfaceFree(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, LPDDRAWI_DDRAWSURFACE_LCL surface);
+NUKED_LOCAL mesa3d_texture_t *SurfaceGetTexture(surface_id sid, void *ctx, int level, int side);
 
 /* need GL block */
-mesa3d_texture_t *MesaTextureFromSurfaceHandle(mesa3d_ctx_t *ctx, DWORD surfaceHandle);
-void MesaApplyMaterial(mesa3d_ctx_t *ctx);
+NUKED_LOCAL mesa3d_texture_t *MesaTextureFromSurfaceHandle(mesa3d_ctx_t *ctx, DWORD surfaceHandle);
+NUKED_LOCAL void MesaApplyMaterial(mesa3d_ctx_t *ctx);
 
 /* need GL block + viewmodel matrix to matrix.view */
-void MesaTLRecalcModelview(mesa3d_ctx_t *ctx);
+NUKED_LOCAL void MesaTLRecalcModelview(mesa3d_ctx_t *ctx);
 
 /* chroma to alpha conversion */
-void *MesaChroma32(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
-void *MesaChroma24(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
-void *MesaChroma16(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
-void *MesaChroma15(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
-void *MesaChroma12(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
-void MesaChromaFree(mesa3d_ctx_t *ctx, void *ptr);
+NUKED_LOCAL void *MesaChroma32(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
+NUKED_LOCAL void *MesaChroma24(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
+NUKED_LOCAL void *MesaChroma16(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
+NUKED_LOCAL void *MesaChroma15(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
+NUKED_LOCAL void *MesaChroma12(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
+NUKED_LOCAL void MesaChromaFree(mesa3d_ctx_t *ctx, void *ptr);
 
 #define MESA_1OVER16       0.0625f
 #define MESA_1OVER255	     0.003921568627451f
@@ -560,13 +558,13 @@ void MesaChromaFree(mesa3d_ctx_t *ctx, void *ptr);
 #define MESA_KEY_DUMP 1
 #define MESA_KEY_DUMP_MORE 2
 
-int mesa_dump_key();
-void mesa_dump(mesa3d_ctx_t *ctx);
-void mesa_dump_inc();
+NUKED_LOCAL int mesa_dump_key();
+NUKED_LOCAL void mesa_dump(mesa3d_ctx_t *ctx);
+NUKED_LOCAL void mesa_dump_inc();
 
 /* memory */
-void *MesaTempAlloc(mesa3d_ctx_t *ctx, DWORD w, DWORD size);
-void MesaTempFree(mesa3d_ctx_t *ctx, void *ptr);
+NUKED_LOCAL void *MesaTempAlloc(mesa3d_ctx_t *ctx, DWORD w, DWORD size);
+NUKED_LOCAL void MesaTempFree(mesa3d_ctx_t *ctx, void *ptr);
 /* heaps */
 extern HANDLE hSharedHeap;
 extern HANDLE hSharedLargeHeap;

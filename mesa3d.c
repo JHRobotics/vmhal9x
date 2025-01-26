@@ -23,6 +23,7 @@
  * OTHER DEALINGS IN THE SOFTWARE.                                            *
  *                                                                            *
  ******************************************************************************/
+#ifndef NUKED_SKIP
 #include <windows.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -37,6 +38,7 @@
 #include "osmesa.h"
 
 #include "nocrt.h"
+#endif
 
 #ifndef D3DTSS_TCI_SPHEREMAP
 #define D3DTSS_TCI_SPHEREMAP 0x40000
@@ -161,7 +163,7 @@ static HWND MesaCreateWindow(int w, int h)
 	return CreateWindowA(FBO_WND_CLASS_NAME, "vmhal9x dummy", /*WS_OVERLAPPEDWINDOW|WS_VISIBLE*/0, 0,0, w,h, 0,0, NULL, 0);
 }
 
-mesa3d_entry_t *Mesa3DGet(DWORD pid, BOOL create)
+NUKED_LOCAL mesa3d_entry_t *Mesa3DGet(DWORD pid, BOOL create)
 {
 	TRACE_ENTRY
 	
@@ -206,7 +208,7 @@ mesa3d_entry_t *Mesa3DGet(DWORD pid, BOOL create)
 	return NULL;
 }
 
-void Mesa3DFree(DWORD pid)
+NUKED_LOCAL void Mesa3DFree(DWORD pid)
 {
 	mesa3d_entry_t *entry = mesa_entry_ht[pid % MESA_HT_MOD];
 	mesa3d_entry_t *prev = NULL;
@@ -503,7 +505,7 @@ static GLenum DXSencilToGL(D3DSTENCILOP op)
 }
 
 /* only needs for DX6+ */
-void MesaStencilApply(mesa3d_ctx_t *ctx)
+NUKED_LOCAL void MesaStencilApply(mesa3d_ctx_t *ctx)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 	if(ctx->depth_stencil && ctx->state.stencil.enabled)
@@ -560,7 +562,7 @@ static void MesaDepthReeval(mesa3d_ctx_t *ctx)
 	MesaStencilApply(ctx);
 }
 
-static BOOL MesaBackbufferIfFront(mesa3d_ctx_t *ctx)
+NUKED_INLINE BOOL MesaBackbufferIfFront(mesa3d_ctx_t *ctx)
 {
 	DWORD addr = (DWORD)SurfaceGetVidMem(ctx->backbuffer);
 	TRACE("MesaBackbufferIfFront addr=0x%X", addr);
@@ -579,7 +581,7 @@ static BOOL MesaBackbufferIfFront(mesa3d_ctx_t *ctx)
 }
 
 
-mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DWORD dds_sid, DWORD ddz_sid)
+NUKED_LOCAL mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DWORD dds_sid, DWORD ddz_sid)
 {
 	TRACE_ENTRY
 	int i;
@@ -738,7 +740,7 @@ mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DWORD dds_sid, DWORD ddz_sid)
 	return ctx;
 }
 
-BOOL MesaSetTarget(mesa3d_ctx_t *ctx, surface_id dds_sid, surface_id ddz_sid, BOOL create)
+NUKED_LOCAL BOOL MesaSetTarget(mesa3d_ctx_t *ctx, surface_id dds_sid, surface_id ddz_sid, BOOL create)
 {
 	TOPIC("TARGET", "MesaSetTarget(ctx, %d, %d, %d)", dds_sid, ddz_sid, create);
 
@@ -800,7 +802,7 @@ BOOL MesaSetTarget(mesa3d_ctx_t *ctx, surface_id dds_sid, surface_id ddz_sid, BO
 	return TRUE;
 }
 
-void MesaDestroyCtx(mesa3d_ctx_t *ctx)
+NUKED_LOCAL void MesaDestroyCtx(mesa3d_ctx_t *ctx)
 {
 	TRACE_ENTRY
 	int id = ctx->id;
@@ -861,7 +863,7 @@ void MesaDestroyCtx(mesa3d_ctx_t *ctx)
 	HeapFree(hSharedHeap, 0, ctx);
 }
 
-void MesaDestroyAllCtx(mesa3d_entry_t *entry)
+NUKED_LOCAL void MesaDestroyAllCtx(mesa3d_entry_t *entry)
 {
 	TRACE_ENTRY
 	int i;
@@ -874,7 +876,7 @@ void MesaDestroyAllCtx(mesa3d_entry_t *entry)
 	}
 }
 
-void MesaInitCtx(mesa3d_ctx_t *ctx)
+NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 	int i = 0;
@@ -1001,7 +1003,7 @@ void MesaInitCtx(mesa3d_ctx_t *ctx)
 	entry->proc.pglDepthFunc(GL_LESS);
 }
 
-BOOL MesaSetCtx(mesa3d_ctx_t *ctx)
+NUKED_LOCAL BOOL MesaSetCtx(mesa3d_ctx_t *ctx)
 {
 	TRACE_ENTRY
 	
@@ -1038,7 +1040,7 @@ BOOL MesaSetCtx(mesa3d_ctx_t *ctx)
 }
 
 /* convert functions (TODO: move to special file) */
-DWORD DDSurf_GetBPP(DDSURF *surf)
+NUKED_LOCAL DWORD DDSurf_GetBPP(DDSURF *surf)
 {
 	if(surf == NULL)
 	{
@@ -1095,7 +1097,7 @@ static char *glname(GLenum e)
 #undef STRCASE
 #endif
 
-static int GetCubeSide(DWORD dwCaps2)
+NUKED_INLINE int GetCubeSide(DWORD dwCaps2)
 {
 	if(dwCaps2 & DDSCAPS2_CUBEMAP_POSITIVEX)
 		return MESA_POSITIVEX;
@@ -1113,7 +1115,7 @@ static int GetCubeSide(DWORD dwCaps2)
 	return 0;
 }
 
-mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, surface_id sid)
+NUKED_LOCAL mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, surface_id sid)
 {
 	mesa3d_texture_t *tex = NULL;
 	DDSURF *surf = SurfaceGetSURF(sid);
@@ -1258,7 +1260,7 @@ mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, surface_id sid)
 	return tex;
 }
 
-void MesaReloadTexture(mesa3d_texture_t *tex, int tmu)
+NUKED_LOCAL void MesaReloadTexture(mesa3d_texture_t *tex, int tmu)
 {
 	BOOL reload = tex->dirty;
 	BOOL reload_done = FALSE;
@@ -1320,7 +1322,7 @@ void MesaReloadTexture(mesa3d_texture_t *tex, int tmu)
 	}
 }
 
-void MesaDestroyTexture(mesa3d_texture_t *tex, BOOL ctx_cleanup, surface_id surface_delete)
+NUKED_LOCAL void MesaDestroyTexture(mesa3d_texture_t *tex, BOOL ctx_cleanup, surface_id surface_delete)
 {
 	if(tex)
 	{
@@ -1362,7 +1364,7 @@ void MesaDestroyTexture(mesa3d_texture_t *tex, BOOL ctx_cleanup, surface_id surf
 	}
 }
 
-static GLenum GetBlendFactor(D3DBLEND dxfactor)
+NUKED_INLINE GLenum GetBlendFactor(D3DBLEND dxfactor)
 {
 	switch(dxfactor)
 	{
@@ -1395,7 +1397,7 @@ static GLenum GetBlendFactor(D3DBLEND dxfactor)
 	return 0;
 }
 
-static GLenum GetGLTexFilter(D3DTEXTUREFILTER dxfilter)
+NUKED_INLINE GLenum GetGLTexFilter(D3DTEXTUREFILTER dxfilter)
 {
 	switch(dxfilter)
 	{
@@ -1417,7 +1419,7 @@ static GLenum GetGLTexFilter(D3DTEXTUREFILTER dxfilter)
 	return GL_NEAREST;
 }
 
-static GLenum GetGLFogMode(D3DFOGMODE dxfog)
+NUKED_INLINE GLenum GetGLFogMode(D3DFOGMODE dxfog)
 {
 	switch(dxfog)
 	{
@@ -1431,7 +1433,7 @@ static GLenum GetGLFogMode(D3DFOGMODE dxfog)
 	return 0;
 }
 
-static GLenum GetGLCmpFunc(D3DCMPFUNC dxfn)
+NUKED_INLINE GLenum GetGLCmpFunc(D3DCMPFUNC dxfn)
 {
 	switch(dxfn)
 	{
@@ -1539,7 +1541,7 @@ static void ApplyBlend(mesa3d_ctx_t *ctx)
 	//GL_CHECK(entry->proc.pglDisable(GL_BLEND));
 }
 
-void MesaApplyMaterial(mesa3d_ctx_t *ctx)
+NUKED_LOCAL void MesaApplyMaterial(mesa3d_ctx_t *ctx)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 
@@ -1619,7 +1621,7 @@ static void MesaApplyColorMaterial(mesa3d_ctx_t *ctx)
 	MesaApplyMaterial(ctx);
 }
 
-void MesaApplyLighting(mesa3d_ctx_t *ctx)
+NUKED_LOCAL void MesaApplyLighting(mesa3d_ctx_t *ctx)
 {
 	/* JH: I spend lots of time debuging bad lighting situations,
 	   but there is simple formula: no normal set, no lighting
@@ -1639,7 +1641,7 @@ void MesaApplyLighting(mesa3d_ctx_t *ctx)
 
 #define RENDERSTATE(_c) case _c: TOPIC("RS", "%s:%02d=0x%X", #_c, tmu, TSS_DWORD);
 
-void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value)
+NUKED_LOCAL void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value)
 {
 	if(tmu >= ctx->tmu_count)
 	{
@@ -1902,7 +1904,7 @@ void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value)
 
 #define RENDERSTATE(_c) case _c: TOPIC("RS", "%s=0x%X", #_c, state->dwArg[0]);
 
-void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
+NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 {
 	D3DRENDERSTATETYPE type = state->drstRenderStateType;
 	TOPIC("READBACK", "state = %d", type);
@@ -2489,7 +2491,7 @@ void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates)
 
 #undef RENDERSTATE
 
-static GLenum DX2GLPrimitive(D3DPRIMITIVETYPE dx_type)
+NUKED_INLINE GLenum DX2GLPrimitive(D3DPRIMITIVETYPE dx_type)
 {
 	GLenum gl_type = -1;
 	
@@ -2521,7 +2523,7 @@ static GLenum DX2GLPrimitive(D3DPRIMITIVETYPE dx_type)
 	return gl_type;
 }
 
-static GLenum nonMipFilter(GLenum filter)
+NUKED_INLINE GLenum nonMipFilter(GLenum filter)
 {
 	switch(filter)
 	{
@@ -2534,7 +2536,7 @@ static GLenum nonMipFilter(GLenum filter)
 	return GL_NEAREST;
 }
 
-static void D3DTA2GL(DWORD dxarg, GLint *gl_src, GLint *gl_op)
+NUKED_INLINE void D3DTA2GL(DWORD dxarg, GLint *gl_src, GLint *gl_op)
 {
 	switch(dxarg & D3DTA_SELECTMASK)
 	{
@@ -3062,7 +3064,7 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 	}
 }
 
-static void setTexGen(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int num_coords)
+NUKED_INLINE void setTexGen(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int num_coords)
 {
 	switch(num_coords)
 	{
@@ -3101,7 +3103,7 @@ static void setTexGen(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int num_coords)
 	}
 }
 
-void MesaDrawRefreshState(mesa3d_ctx_t *ctx)
+NUKED_LOCAL void MesaDrawRefreshState(mesa3d_ctx_t *ctx)
 {
 	int i;
 	static const GLfloat s_plane[] = { 1.0f, 0.0f, 0.0f, 0.0f };
@@ -3213,7 +3215,7 @@ void MesaDrawRefreshState(mesa3d_ctx_t *ctx)
 	}
 }
 
-void MesaDraw(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype, LPVOID vertices, DWORD verticesCnt)
+NUKED_LOCAL void MesaDraw(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype, LPVOID vertices, DWORD verticesCnt)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 
@@ -3266,7 +3268,7 @@ void MesaDraw(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype,
 	}
 }
 
-void MesaDraw3(mesa3d_ctx_t *ctx, DWORD op, void *prim, LPBYTE vertices)
+NUKED_LOCAL void MesaDraw3(mesa3d_ctx_t *ctx, DWORD op, void *prim, LPBYTE vertices)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 	LPD3DTLVERTEX vertex = (LPD3DTLVERTEX)vertices;
@@ -3308,7 +3310,7 @@ void MesaDraw3(mesa3d_ctx_t *ctx, DWORD op, void *prim, LPBYTE vertices)
 	ctx->render.zdirty = TRUE;
 }
 
-void MesaDrawIndex(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype,
+NUKED_LOCAL void MesaDrawIndex(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype,
 	LPVOID vertices, DWORD verticesCnt,
 	LPWORD indices, DWORD indicesCnt)
 {
@@ -3356,7 +3358,7 @@ void MesaDrawIndex(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE v
 	}
 }
 
-static BOOL IsFullSurface(mesa3d_ctx_t *ctx, RECT *rect)
+NUKED_INLINE BOOL IsFullSurface(mesa3d_ctx_t *ctx, RECT *rect)
 {
 	return
 		rect->left == 0 &&
@@ -3365,7 +3367,7 @@ static BOOL IsFullSurface(mesa3d_ctx_t *ctx, RECT *rect)
 		rect->bottom == ctx->state.sh;
 }
 
-void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, DWORD stencil, int rects_cnt, RECT *rects)
+NUKED_LOCAL void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, DWORD stencil, int rects_cnt, RECT *rects)
 {
 	GLfloat cv[4];
 	int i;
@@ -3468,7 +3470,7 @@ void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, D
 	MesaDrawRefreshState(ctx);
 }
 
-void MesaBlockLock(mesa3d_ctx_t *ctx)
+NUKED_LOCAL void MesaBlockLock(mesa3d_ctx_t *ctx)
 {
 	LONG tmp;
 	do
@@ -3477,12 +3479,12 @@ void MesaBlockLock(mesa3d_ctx_t *ctx)
 	} while(tmp == 1);
 }
 
-void MesaBlockUnlock(mesa3d_ctx_t *ctx)
+NUKED_LOCAL void MesaBlockUnlock(mesa3d_ctx_t *ctx)
 {
 	InterlockedExchange(&ctx->thread_lock, 0);
 }
 
-void MesaSceneBegin(mesa3d_ctx_t *ctx)
+NUKED_LOCAL void MesaSceneBegin(mesa3d_ctx_t *ctx)
 {
 	if(!ctx->render.dirty)
 	{
@@ -3494,7 +3496,7 @@ void MesaSceneBegin(mesa3d_ctx_t *ctx)
 	}
 }
 
-void MesaSceneEnd(mesa3d_ctx_t *ctx)
+NUKED_LOCAL void MesaSceneEnd(mesa3d_ctx_t *ctx)
 {
 	BOOL is_visible = MesaBackbufferIfFront(ctx);
 	void *ptr = SurfaceGetVidMem(ctx->backbuffer);
@@ -3536,7 +3538,7 @@ void MesaSceneEnd(mesa3d_ctx_t *ctx)
 	(_dst)[12]=(_srcdx)->_41; (_dst)[13]=(_srcdx)->_42; (_dst)[14]=(_srcdx)->_43; (_dst)[15]=(_srcdx)->_44; \
 	}while(0)
 
-void MesaSetTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *matrix)
+NUKED_LOCAL void MesaSetTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *matrix)
 {
 	TOPIC("MATRIX", "MesaSetTransform(ctx, 0x%X, %p)", xtype, matrix);
 
@@ -3640,7 +3642,7 @@ void MesaSetTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *matrix)
 	}
 }
 
-mesa_surfaces_table_t *MesaSurfacesTableGet(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, DWORD max_id)
+NUKED_LOCAL mesa_surfaces_table_t *MesaSurfacesTableGet(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, DWORD max_id)
 {
 	mesa_surfaces_table_t *table = NULL;
 	int i;
@@ -3681,7 +3683,7 @@ mesa_surfaces_table_t *MesaSurfacesTableGet(mesa3d_entry_t *entry, LPDDRAWI_DIRE
 	return table;
 }
 
-void MesaSurfacesTableRemoveSurface(mesa3d_entry_t *entry, surface_id sid)
+NUKED_LOCAL void MesaSurfacesTableRemoveSurface(mesa3d_entry_t *entry, surface_id sid)
 {
 	int t, i;
 	for(t = 0; t < SURFACE_TABLES_PER_ENTRY; t++)
@@ -3696,7 +3698,7 @@ void MesaSurfacesTableRemoveSurface(mesa3d_entry_t *entry, surface_id sid)
 	}
 }
 
-void MesaSurfacesTableRemoveDDLcl(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl)
+NUKED_LOCAL void MesaSurfacesTableRemoveDDLcl(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl)
 {
 	int t;
 	for(t = 0; t < SURFACE_TABLES_PER_ENTRY; t++)
@@ -3712,7 +3714,7 @@ void MesaSurfacesTableRemoveDDLcl(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL
 	}
 }
 
-void MesaSurfacesTableInsertHandle(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, DWORD handle, surface_id sid)
+NUKED_LOCAL void MesaSurfacesTableInsertHandle(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, DWORD handle, surface_id sid)
 {
 	mesa_surfaces_table_t *table = MesaSurfacesTableGet(entry, lpDDLcl, handle);
 	if(table)
@@ -3721,7 +3723,7 @@ void MesaSurfacesTableInsertHandle(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LC
 	}
 }
 
-mesa3d_texture_t *MesaTextureFromSurfaceHandle(mesa3d_ctx_t *ctx, DWORD handle)
+NUKED_LOCAL mesa3d_texture_t *MesaTextureFromSurfaceHandle(mesa3d_ctx_t *ctx, DWORD handle)
 {
 	if(ctx->surfaces)
 	{
@@ -3740,7 +3742,7 @@ mesa3d_texture_t *MesaTextureFromSurfaceHandle(mesa3d_ctx_t *ctx, DWORD handle)
 	return NULL;
 }
 
-void *MesaTempAlloc(mesa3d_ctx_t *ctx, DWORD w, DWORD size)
+NUKED_LOCAL void *MesaTempAlloc(mesa3d_ctx_t *ctx, DWORD w, DWORD size)
 {
 	if(ctx->temp.width == 0)
 	{
@@ -3784,7 +3786,7 @@ void *MesaTempAlloc(mesa3d_ctx_t *ctx, DWORD w, DWORD size)
 	return ctx->temp.buf;
 }
 
-void MesaTempFree(mesa3d_ctx_t *ctx, void *ptr)
+NUKED_LOCAL void MesaTempFree(mesa3d_ctx_t *ctx, void *ptr)
 {
 	if(ptr != NULL)
 	{

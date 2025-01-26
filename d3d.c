@@ -23,6 +23,7 @@
  * OTHER DEALINGS IN THE SOFTWARE.                                            *
  *                                                                            *
  ******************************************************************************/
+#ifndef NUKED_SKIP
 #include <windows.h>
 #include <initguid.h> /* this is only one file using GUID */
 #include <ddraw.h>
@@ -37,6 +38,7 @@
 #include "mesa3d.h"
 
 #include "nocrt.h"
+#endif
 
 /* FROM ddrvmem.h */
 typedef DWORD HDDRVITEM, * LPHDDRVITEM;

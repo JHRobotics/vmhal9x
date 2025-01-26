@@ -23,8 +23,7 @@
  * OTHER DEALINGS IN THE SOFTWARE.                                            *
  *                                                                            *
  ******************************************************************************/
-#define MESA3D_DRAW_C
-
+#ifndef NUKED_SKIP
 #include <windows.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -38,6 +37,7 @@
 #include "osmesa.h"
 
 #include "nocrt.h"
+#endif
 
 #define SV_UNPROJECT(_v, _x, _y, _z, _rhw) \
 	_v[0] = (((((_x) - ctx->matrix.viewport[0]) / ctx->matrix.viewport[2]) * 2.0f) - 1.0f)/(_rhw); \
@@ -143,7 +143,7 @@ static void LoadColor2(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, DWORD color)
 	}
 }
 
-void MesaDrawTLVertex(mesa3d_ctx_t *ctx, LPD3DTLVERTEX vertex)
+NUKED_LOCAL void MesaDrawTLVertex(mesa3d_ctx_t *ctx, LPD3DTLVERTEX vertex)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 	
@@ -188,7 +188,7 @@ void MesaDrawTLVertex(mesa3d_ctx_t *ctx, LPD3DTLVERTEX vertex)
 
 }
 
-void MesaDrawLVertex(mesa3d_ctx_t *ctx, LPD3DLVERTEX vertex)
+NUKED_LOCAL void MesaDrawLVertex(mesa3d_ctx_t *ctx, LPD3DLVERTEX vertex)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 	
@@ -216,7 +216,7 @@ void MesaDrawLVertex(mesa3d_ctx_t *ctx, LPD3DLVERTEX vertex)
 	entry->proc.pglVertex3f(vertex->x, vertex->y, vertex->z);
 }
 
-void MesaDrawVertex(mesa3d_ctx_t *ctx, LPD3DVERTEX vertex)
+NUKED_LOCAL void MesaDrawVertex(mesa3d_ctx_t *ctx, LPD3DVERTEX vertex)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 	
@@ -228,7 +228,7 @@ void MesaDrawVertex(mesa3d_ctx_t *ctx, LPD3DVERTEX vertex)
 	entry->proc.pglVertex3f(vertex->x, vertex->y, vertex->z);
 }
 
-void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD type, DWORD size)
+NUKED_LOCAL void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD type, DWORD size)
 {
 	if(ctx->state.fvf.type == type)
 	{
@@ -244,7 +244,7 @@ void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD type, DWORD size)
 	);
 }
 	
-void MesaFVFRecalc(mesa3d_ctx_t *ctx)
+NUKED_LOCAL void MesaFVFRecalc(mesa3d_ctx_t *ctx)
 {
 	int offset = 0; // in DW
 	int i;
@@ -361,7 +361,7 @@ void MesaFVFRecalc(mesa3d_ctx_t *ctx)
 	ctx->state.fvf.stride = offset * sizeof(D3DVALUE);
 }
 
-inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, FVF_t *vertex)
+NUKED_INLINE void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, FVF_t *vertex)
 {
 	int i;
 	DWORD *dw = &vertex->dw[ctx->state.fvf.begin];
@@ -450,18 +450,13 @@ inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx
 	}
 }
 
-void MesaDrawFVF(mesa3d_ctx_t *ctx, void *vertex)
-{
-	MesaDrawFVF_internal(ctx->entry, ctx, vertex);
-}
-
-void MesaDrawFVFIndex(mesa3d_ctx_t *ctx, void *vertices, int index)
+NUKED_LOCAL void MesaDrawFVFIndex(mesa3d_ctx_t *ctx, void *vertices, int index)
 {
 	FVF_t *fvf = (FVF_t *)(((BYTE *)vertices) + (index * ctx->state.fvf.stride));
 	MesaDrawFVF_internal(ctx->entry, ctx, fvf);
 }
 
-void MesaDrawFVFs(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vertices, DWORD start, DWORD cnt)
+NUKED_LOCAL void MesaDrawFVFs(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vertices, DWORD start, DWORD cnt)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 	DWORD stride = ctx->state.fvf.stride;

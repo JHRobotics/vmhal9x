@@ -32,7 +32,6 @@
 #include "vmdahal32.h"
 
 #include "vmhal9x.h"
-#include "mesa3d.h"
 
 #include "rop3.h"
 #include "transblt.h"

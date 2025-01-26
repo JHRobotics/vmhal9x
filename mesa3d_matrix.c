@@ -23,6 +23,7 @@
  * OTHER DEALINGS IN THE SOFTWARE.                                            *
  *                                                                            *
  ******************************************************************************/
+#ifndef NUKED_SKIP
 #include <windows.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -36,6 +37,7 @@
 #include "osmesa.h"
 
 #include "nocrt.h"
+#endif
 
 /* when 1 invert projection matrix, 0 invert viewmodel matrix */
 #define DX_INVERT_PROJECTION 1
@@ -152,7 +154,7 @@ inline static void matmultf(const GLfloat a[16], const GLfloat b[16], GLfloat r[
 		r[i] = tmp[i];
 }
 
-BOOL MesaUnprojectf(GLfloat winx, GLfloat winy, GLfloat winz, GLfloat clipw,
+NUKED_LOCAL BOOL MesaUnprojectf(GLfloat winx, GLfloat winy, GLfloat winz, GLfloat clipw,
 	const GLfloat modelMatrix[16], 
 	const GLfloat projMatrix[16],
 	const GLint viewport[4],
@@ -201,7 +203,7 @@ BOOL MesaUnprojectf(GLfloat winx, GLfloat winy, GLfloat winz, GLfloat clipw,
 	return TRUE;
 }
 
-BOOL MesaIsIdentity(GLfloat matrix[16])
+NUKED_LOCAL BOOL MesaIsIdentity(GLfloat matrix[16])
 {
 	int i = 0;
 	for(i = 0; i < 16; i++)
@@ -221,7 +223,7 @@ BOOL MesaIsIdentity(GLfloat matrix[16])
 	return TRUE;
 }
 
-void MesaIdentity(GLfloat matrix[16])
+NUKED_LOCAL void MesaIdentity(GLfloat matrix[16])
 {
 	int i;
 	for(i = 0; i < 16; i++)
@@ -241,7 +243,7 @@ void printmtx(const char *name, GLfloat m[16])
 }
 #endif
 
-void MesaApplyViewport(mesa3d_ctx_t *ctx, GLint x, GLint y, GLint w, GLint h)
+NUKED_LOCAL void MesaApplyViewport(mesa3d_ctx_t *ctx, GLint x, GLint y, GLint w, GLint h)
 {
 	TRACE_ENTRY
 	
@@ -288,7 +290,7 @@ static const GLfloat initmatrix[16] =
 	0.0,  0.0,  0.0,  1.0
 };
 
-void MesaApplyTransform(mesa3d_ctx_t *ctx, DWORD changes)
+NUKED_LOCAL void MesaApplyTransform(mesa3d_ctx_t *ctx, DWORD changes)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 	
@@ -362,7 +364,7 @@ void MesaApplyTransform(mesa3d_ctx_t *ctx, DWORD changes)
 	}
 }
 
-void MesaSpaceIdentitySet(mesa3d_ctx_t *ctx)
+NUKED_LOCAL void MesaSpaceIdentitySet(mesa3d_ctx_t *ctx)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 	GL_CHECK(entry->proc.pglMatrixMode(GL_MODELVIEW));
@@ -375,7 +377,7 @@ void MesaSpaceIdentitySet(mesa3d_ctx_t *ctx)
 	ctx->matrix.identity_mode = TRUE;
 }
 
-void MesaSpaceIdentityReset(mesa3d_ctx_t *ctx)
+NUKED_LOCAL void MesaSpaceIdentityReset(mesa3d_ctx_t *ctx)
 {
 	if(ctx->matrix.identity_mode)
 	{
@@ -395,7 +397,7 @@ void MesaSpaceIdentityReset(mesa3d_ctx_t *ctx)
 	}
 }
 
-void MesaSpaceModelviewSet(mesa3d_ctx_t *ctx)
+NUKED_LOCAL void MesaSpaceModelviewSet(mesa3d_ctx_t *ctx)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 	GL_CHECK(entry->proc.pglMatrixMode(GL_MODELVIEW));
@@ -403,14 +405,14 @@ void MesaSpaceModelviewSet(mesa3d_ctx_t *ctx)
 	GL_CHECK(entry->proc.pglLoadMatrixf(&ctx->matrix.view[0]));
 }
 
-void MesaSpaceModelviewReset(mesa3d_ctx_t *ctx)
+NUKED_LOCAL void MesaSpaceModelviewReset(mesa3d_ctx_t *ctx)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 	GL_CHECK(entry->proc.pglMatrixMode(GL_MODELVIEW));
 	GL_CHECK(entry->proc.pglPopMatrix());
 }
 
-void MesaVetexBlend(mesa3d_ctx_t *ctx, GLfloat coords[3], GLfloat *betas, int betas_cnt, GLfloat out[4])
+NUKED_LOCAL void MesaVetexBlend(mesa3d_ctx_t *ctx, GLfloat coords[3], GLfloat *betas, int betas_cnt, GLfloat out[4])
 {
 	int i;
 	GLfloat in4[4] = {coords[0], coords[1], coords[2], 1.0f};

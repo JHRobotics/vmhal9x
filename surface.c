@@ -23,6 +23,7 @@
  * OTHER DEALINGS IN THE SOFTWARE.                                            *
  *                                                                            *
  ******************************************************************************/
+#ifndef NUKED_SKIP
 #include <windows.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -37,6 +38,7 @@
 #include "ddrawi_ddk.h"
 
 #include "nocrt.h"
+#endif
 
 static LONG sharedLock = 0;
 
@@ -589,7 +591,7 @@ BOOL SurfaceDelete(surface_id sid)
 	return TRUE;
 }
 
-void SurfaceFree(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, LPDDRAWI_DDRAWSURFACE_LCL surface)
+NUKED_LOCAL void SurfaceFree(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, LPDDRAWI_DDRAWSURFACE_LCL surface)
 {
 	DWORD handle = surface->lpSurfMore->dwSurfaceHandle;
 	
@@ -700,7 +702,7 @@ void SurfaceDeattachCtx(void *mesa_ctx)
 	}
 }
 
-mesa3d_texture_t *SurfaceGetTexture(surface_id sid, void *ctx, int level, int side)
+NUKED_LOCAL mesa3d_texture_t *SurfaceGetTexture(surface_id sid, void *ctx, int level, int side)
 {
 	TRACE_ENTRY
 
@@ -758,7 +760,7 @@ static void SurfaceLoopDuplicate(LPDDRAWI_DDRAWSURFACE_LCL base, LPDDRAWI_DDRAWS
 	}
 }
 
-BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, LPDDRAWI_DDRAWSURFACE_LCL surface)
+NUKED_LOCAL BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, LPDDRAWI_DDRAWSURFACE_LCL surface)
 {
 	TOPIC("CUBE", "dwSurfaceHandle=%d, vram=0x%X, dwCaps=0x%X",
 		surface->lpSurfMore->dwSurfaceHandle,

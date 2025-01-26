@@ -23,6 +23,7 @@
  * OTHER DEALINGS IN THE SOFTWARE.                                            *
  *                                                                            *
  ******************************************************************************/
+#ifndef NUKED_SKIP
 #include <windows.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -36,6 +37,7 @@
 #include "osmesa.h"
 
 #include "nocrt.h"
+#endif
 
 #define RESET_COLOR 1
 #define RESET_DEPTH 2
@@ -99,7 +101,7 @@ static void FBOConvReset(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, DWORD flags)
 	}
 }
 
-void MesaBufferUploadColor(mesa3d_ctx_t *ctx, const void *src)
+NUKED_LOCAL void MesaBufferUploadColor(mesa3d_ctx_t *ctx, const void *src)
 {
 	TRACE_ENTRY
 
@@ -178,7 +180,7 @@ void MesaBufferUploadColor(mesa3d_ctx_t *ctx, const void *src)
 	TOPIC("READBACK", "%X -> upload color!", src);
 }
 
-void MesaBufferDownloadColor(mesa3d_ctx_t *ctx, void *dst)
+NUKED_LOCAL void MesaBufferDownloadColor(mesa3d_ctx_t *ctx, void *dst)
 {
 	TRACE_ENTRY
 
@@ -227,7 +229,7 @@ void MesaBufferDownloadColor(mesa3d_ctx_t *ctx, void *dst)
 #define DS_CONVERT_GPU 1
 #define DS_CONVERT_CPU 2
 
-void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
+NUKED_LOCAL void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 {
 	TRACE_ENTRY
 	
@@ -376,7 +378,7 @@ void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 	TOPIC("READBACK", "%X -> upload depth!", src);
 }
 
-void MesaBufferDownloadDepth(mesa3d_ctx_t *ctx, void *dst)
+NUKED_LOCAL void MesaBufferDownloadDepth(mesa3d_ctx_t *ctx, void *dst)
 {
 	TRACE_ENTRY
 
@@ -456,7 +458,7 @@ static const int Mesa2GLSide[MESA3D_CUBE_SIDES] = {
 
 #include "mesa3d_flip.h"
 
-void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level, int side, int tmu)
+NUKED_LOCAL void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level, int side, int tmu)
 {
 	TRACE_ENTRY
 
@@ -620,7 +622,7 @@ static void *chroma_convert(mesa3d_ctx_t *ctx,
 	return data;
 }
 
-void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level, int side, int tmu, DWORD chroma_lw, DWORD chroma_hi)
+NUKED_LOCAL void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level, int side, int tmu, DWORD chroma_lw, DWORD chroma_hi)
 {
 	TRACE_ENTRY
 	
@@ -677,7 +679,7 @@ void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int
 	ctx->state.tmu[tmu].update = TRUE;
 }
 
-BOOL MesaBufferFBOSetup(mesa3d_ctx_t *ctx, int width, int height)
+NUKED_LOCAL BOOL MesaBufferFBOSetup(mesa3d_ctx_t *ctx, int width, int height)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 	BOOL need_create = TRUE;

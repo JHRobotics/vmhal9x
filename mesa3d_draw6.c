@@ -23,6 +23,7 @@
  * OTHER DEALINGS IN THE SOFTWARE.                                            *
  *                                                                            *
  ******************************************************************************/
+#ifndef NUKED_SKIP
 #include <windows.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -38,6 +39,7 @@
 #include "d3dhal_ddk.h"
 
 #include "nocrt.h"
+#endif
 
 static void LightApply(mesa3d_ctx_t *ctx, DWORD id)
 {
@@ -220,7 +222,7 @@ static void LightCreate(mesa3d_ctx_t *ctx, DWORD id)
 	}
 }
 
-void MesaLightDestroyAll(mesa3d_ctx_t *ctx)
+NUKED_LOCAL void MesaLightDestroyAll(mesa3d_ctx_t *ctx)
 {
 	TRACE_ENTRY
 
@@ -304,7 +306,7 @@ static void PlaneApply(mesa3d_ctx_t *ctx, DWORD id)
 		&ctx->state.clipping.plane[id][0]));
 }
 
-void MesaTLRecalcModelview(mesa3d_ctx_t *ctx)
+NUKED_LOCAL void MesaTLRecalcModelview(mesa3d_ctx_t *ctx)
 {
 	int i;
 
@@ -338,7 +340,7 @@ void MesaTLRecalcModelview(mesa3d_ctx_t *ctx)
 	ctx->render.dirty = TRUE; \
 	ctx->render.zdirty = TRUE
 
-BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LPBYTE vertices, DWORD *error_offset, LPDWORD RStates)
+NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LPBYTE vertices, DWORD *error_offset, LPDWORD RStates)
 {
 	TOPIC("READBACK", "MesaDraw6");
 	

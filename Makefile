@@ -50,10 +50,14 @@ LDFLAGS = -static -nostdlib -nodefaultlibs -L.
 
 ifdef RELEASE
   CFLAGS += -O3 -fomit-frame-pointer -DNDEBUG
-  
+
   ifdef LTO
     CFLAGS += -flto=auto -fno-fat-lto-objects -pipe -Werror=implicit-function-declaration
     LDFLAGS := $(CFLAGS) $(LDFLAGS)
+  endif
+
+  ifdef CODENUKED
+    CFLAGS += -DNUKEDCODE
   endif
 else
   CFLAGS += -O1 -DDDDEBUG=$(DDDEBUG)
@@ -81,7 +85,11 @@ VMHAL9X_OBJS = $(NOCRT_OBJS) vmhal9x.c.o ddraw.c.o 3d_accel.c.o flip32.c.o blt32
 VMDISP9X_OBJS = $(NOCRT_OBJS) vmdisp9x.c.o
 
 ifdef D3DHAL
-	VMHAL9X_OBJS += d3d.c.o mesa3d.c.o mesa3d_buffer.c.o mesa3d_draw.c.o mesa3d_chroma.c.o mesa3d_matrix.c.o mesa3d_draw6.c.o surface.c.o mesa3d_dump.c.o
+  ifdef CODENUKED
+    VMHAL9X_OBJS += mesa3d_nuked.c.o
+  else
+	  VMHAL9X_OBJS += d3d.c.o surface.c.o mesa3d.c.o mesa3d_buffer.c.o mesa3d_draw.c.o mesa3d_chroma.c.o mesa3d_matrix.c.o mesa3d_draw6.c.o mesa3d_dump.c.o
+	endif
 	CFLAGS += -DD3DHAL
 endif
 

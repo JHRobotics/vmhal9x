@@ -32,8 +32,6 @@
 #include "vmdahal32.h"
 #include "vmhal9x.h"
 
-#include "mesa3d.h"
-
 #include "nocrt.h"
 
 /* Display mode should by controled by system/HEL all time */

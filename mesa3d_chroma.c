@@ -23,6 +23,7 @@
  * OTHER DEALINGS IN THE SOFTWARE.                                            *
  *                                                                            *
  ******************************************************************************/
+#ifndef NUKED_SKIP
 #include <windows.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -36,8 +37,9 @@
 #include "osmesa.h"
 
 #include "nocrt.h"
+#endif
 
-void *MesaChroma32(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey)
+NUKED_FAST void *MesaChroma32(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey)
 {
 	const DWORD *ptr = buf;
 	DWORD pitch4 = SurfacePitch(w, 32)/4;
@@ -68,7 +70,7 @@ void *MesaChroma32(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD l
 	return mem;
 }
 
-void *MesaChroma24(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey)
+NUKED_FAST void *MesaChroma24(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey)
 {
 	const BYTE *ptr = buf;
 	DWORD pitch_src = SurfacePitch(w, 24);
@@ -100,7 +102,7 @@ void *MesaChroma24(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD l
 	return mem;
 }
 
-void *MesaChroma16(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey)
+NUKED_FAST void *MesaChroma16(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey)
 {
 	const WORD *ptr = buf;
 	DWORD pitch2 = SurfacePitch(w, 16)/2;
@@ -139,7 +141,7 @@ void *MesaChroma16(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD l
 	return mem;
 }
 
-void *MesaChroma15(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey)
+NUKED_FAST void *MesaChroma15(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey)
 {
 	const WORD *ptr = buf;
 	DWORD pitch2 = SurfacePitch(w, 16)/2;
@@ -177,7 +179,7 @@ void *MesaChroma15(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD l
 	return mem;
 }
 
-void *MesaChroma12(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey)
+NUKED_FAST void *MesaChroma12(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey)
 {
 	const WORD *ptr = buf;
 	DWORD pitch2 = SurfacePitch(w, 16)/2;
@@ -215,13 +217,13 @@ void *MesaChroma12(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD l
 	return mem;
 }
 
-void MesaChromaFree(mesa3d_ctx_t *ctx, void *ptr)
+NUKED_FAST void MesaChromaFree(mesa3d_ctx_t *ctx, void *ptr)
 {
 	MesaTempFree(ctx, ptr);
 }
 
 /* ported from Wine9x/surface.c */
-void *MesaChromaDXT1(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey)
+NUKED_FAST void *MesaChromaDXT1(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey)
 {
 	const BYTE *src = buf;
 	DWORD src_pitch = w*2; // w * 8
@@ -310,8 +312,7 @@ void *MesaChromaDXT1(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD
 	return mem;
 }
 
-
-void *MesaChromaDXT3(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey)
+NUKED_FAST void *MesaChromaDXT3(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey)
 {
 	const BYTE *src = buf;
 	DWORD src_pitch = w*4; // w * 8
