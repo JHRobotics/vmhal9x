@@ -53,7 +53,8 @@ VMHAL_enviroment_t VMHALenv = {
 	FALSE,
 	7, // DDI (maximum)
 	TRUE, // HW T&L
-	FALSE, // readback
+	TRUE, // readback
+	TRUE, // depthimport
 	2048, // tex w  (can be query by GL_MAX_TEXTURE_SIZE)
 	2048, // tex h
 	9, // tex units

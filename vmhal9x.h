@@ -174,6 +174,7 @@ typedef struct _VMHAL_enviroment
 	DWORD ddi;
 	BOOL  hw_tl;
 	BOOL  readback; // readback surface color/depth
+	BOOL  touchdepth;
 	DWORD texture_max_width;
 	DWORD texture_max_height;
 	DWORD texture_num_units;

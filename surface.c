@@ -452,8 +452,8 @@ void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 					ctx->render.dirty = FALSE;
 				GL_BLOCK_END
 			}
-			
-			if(citem->ctx->depth_bpp)
+
+			if(VMHALenv.touchdepth && citem->ctx->depth_bpp)
 			{
 				if(SurfaceGetVidMem(citem->ctx->depth) == vidmem)
 				{
@@ -509,15 +509,18 @@ void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 					ctx->render.dirty = FALSE;
 				GL_BLOCK_END
 			}
-			
-			if(citem->ctx->render.zdirty && citem->ctx->depth_bpp)
+
+			if(VMHALenv.touchdepth)
 			{
-				if(SurfaceGetVidMem(citem->ctx->depth) == vidmem && citem->ctx->render.zdirty)
+				if(citem->ctx->render.zdirty && citem->ctx->depth_bpp)
 				{
-					GL_BLOCK_BEGIN(citem->ctx)
-						MesaBufferDownloadDepth(ctx, vidmem);
-						ctx->render.zdirty = FALSE;
-					GL_BLOCK_END
+					if(SurfaceGetVidMem(citem->ctx->depth) == vidmem && citem->ctx->render.zdirty)
+					{
+						GL_BLOCK_BEGIN(citem->ctx)
+							MesaBufferDownloadDepth(ctx, vidmem);
+							ctx->render.zdirty = FALSE;
+						GL_BLOCK_END
+					}
 				}
 			}
 		}
