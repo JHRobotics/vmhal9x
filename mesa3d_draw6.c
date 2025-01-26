@@ -41,6 +41,8 @@
 
 static void LightApply(mesa3d_ctx_t *ctx, DWORD id)
 {
+	TRACE_ENTRY
+
 	if(id >= ctx->light.lights_size)
 		return;
 
@@ -106,6 +108,8 @@ static void LightApply(mesa3d_ctx_t *ctx, DWORD id)
 
 static void LightData(mesa3d_ctx_t *ctx, DWORD id, D3DLIGHT7 *dxlight)
 {
+	TRACE_ENTRY
+
 	if(id >= ctx->light.lights_size)
 		return;
 
@@ -190,6 +194,8 @@ static void LightData(mesa3d_ctx_t *ctx, DWORD id, D3DLIGHT7 *dxlight)
 
 static void LightCreate(mesa3d_ctx_t *ctx, DWORD id)
 {
+	TRACE_ENTRY
+
 	if(id >= ctx->light.lights_size)
 	{
 		DWORD new_size = (id + 8);
@@ -216,6 +222,8 @@ static void LightCreate(mesa3d_ctx_t *ctx, DWORD id)
 
 void MesaLightDestroyAll(mesa3d_ctx_t *ctx)
 {
+	TRACE_ENTRY
+
 	DWORD i;
 	if(ctx->light.lights)
 	{
@@ -235,6 +243,8 @@ void MesaLightDestroyAll(mesa3d_ctx_t *ctx)
 
 static void LightActive(mesa3d_ctx_t *ctx, DWORD id, BOOL activate)
 {
+	TRACE_ENTRY
+
 	int gl_id = -1;
 	int i = 0;
 
@@ -339,6 +349,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 	LPD3DHAL_DP2COMMAND inst = (LPD3DHAL_DP2COMMAND)cmdBufferStart;
 	DWORD start, count, base;
 	DWORD i;
+	WORD *pos;
 	
 	while((LPBYTE)inst < cmdBufferEnd)
 	{
@@ -508,13 +519,13 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				entry->proc.pglBegin(GL_TRIANGLES);
 				for(i = 0; i < inst->wPrimitiveCount; i++)
 				{
-					start = ((D3DHAL_DP2INDEXEDTRIANGLELIST*)prim)->wV1;
-					MesaDrawFVFIndex(ctx, vertices, start);
-
 					start = ((D3DHAL_DP2INDEXEDTRIANGLELIST*)prim)->wV2;
 					MesaDrawFVFIndex(ctx, vertices, start);
 
 					start = ((D3DHAL_DP2INDEXEDTRIANGLELIST*)prim)->wV3;
+					MesaDrawFVFIndex(ctx, vertices, start);
+
+					start = ((D3DHAL_DP2INDEXEDTRIANGLELIST*)prim)->wV1;
 					MesaDrawFVFIndex(ctx, vertices, start);
 
 					prim += sizeof(D3DHAL_DP2INDEXEDTRIANGLELIST);
@@ -543,16 +554,39 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				// immediately follows the command
 				base = ((D3DHAL_DP2STARTVERTEX*)prim)->wVStart;
 				prim += sizeof(D3DHAL_DP2STARTVERTEX);
+				pos = (WORD*)prim;
+				prim += sizeof(WORD) * (inst->wPrimitiveCount+2);
 
-				entry->proc.pglBegin(GL_TRIANGLE_STRIP);
-				for(i = 0; i < inst->wPrimitiveCount+2; i++)
+				if(inst->wPrimitiveCount == 2) // eg. 4 total
 				{
-					start = ((D3DHAL_DP2INDEXEDTRIANGLESTRIP*)prim)->wV[0];
-					MesaDrawFVFIndex(ctx, vertices, base+start);
-					
-					prim += sizeof(WORD);
+					entry->proc.pglBegin(GL_QUADS);
+					MesaDrawFVFIndex(ctx, vertices, base+pos[1]);
+					MesaDrawFVFIndex(ctx, vertices, base+pos[3]);
+					MesaDrawFVFIndex(ctx, vertices, base+pos[2]);
+					MesaDrawFVFIndex(ctx, vertices, base+pos[0]);
+					entry->proc.pglEnd();
 				}
-				entry->proc.pglEnd();
+				else
+				{
+					entry->proc.pglBegin(GL_TRIANGLES);
+					for(i = 0; i < inst->wPrimitiveCount; i++) // count = inst->wPrimitiveCount+2
+					{
+						if((i & 1) == 0)
+						{
+							MesaDrawFVFIndex(ctx, vertices, base+pos[i+1]);
+							MesaDrawFVFIndex(ctx, vertices, base+pos[i+2]);
+							MesaDrawFVFIndex(ctx, vertices, base+pos[i+0]);
+						}
+						else
+						{
+							MesaDrawFVFIndex(ctx, vertices, base+pos[i+2]);
+							MesaDrawFVFIndex(ctx, vertices, base+pos[i+1]);
+							MesaDrawFVFIndex(ctx, vertices, base+pos[i+0]);
+						}
+					}
+					entry->proc.pglEnd();
+				}
+
 				SET_DIRTY;
 				NEXT_INST(0);
 				break;
@@ -566,16 +600,18 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				// immediately follows the command
 				base = ((D3DHAL_DP2STARTVERTEX*)prim)->wVStart;
 				prim += sizeof(D3DHAL_DP2STARTVERTEX);
+				pos = (WORD*)prim;
+				prim += sizeof(WORD)*(inst->wPrimitiveCount+2);
 
-				entry->proc.pglBegin(GL_TRIANGLE_FAN);
-				for(i = 0; i < inst->wPrimitiveCount+2; i++)
+				entry->proc.pglBegin(GL_TRIANGLES);
+				for(i = 1; i <= inst->wPrimitiveCount; i++)
 				{
-					start = ((D3DHAL_DP2INDEXEDTRIANGLEFAN*)prim)->wV[0];
-					MesaDrawFVFIndex(ctx, vertices, base+start);
-
-					prim += sizeof(WORD);
+					MesaDrawFVFIndex(ctx, vertices, base+pos[i]);
+					MesaDrawFVFIndex(ctx, vertices, base+pos[i+1]);
+					MesaDrawFVFIndex(ctx, vertices, base+pos[0]);
 				}
 				entry->proc.pglEnd();
+
 				SET_DIRTY;
 				NEXT_INST(0);
 				break;
@@ -596,13 +632,13 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				entry->proc.pglBegin(GL_TRIANGLES);
 				for(i = 0; i < inst->wPrimitiveCount; i++)
 				{
-					start = base + ((D3DHAL_DP2INDEXEDTRIANGLELIST2*)prim)->wV1;
-					MesaDrawFVFIndex(ctx, vertices, start);
-
 					start = base + ((D3DHAL_DP2INDEXEDTRIANGLELIST2*)prim)->wV2;
 					MesaDrawFVFIndex(ctx, vertices, start);
 
 					start = base + ((D3DHAL_DP2INDEXEDTRIANGLELIST2*)prim)->wV3;
+					MesaDrawFVFIndex(ctx, vertices, start);
+
+					start = base + ((D3DHAL_DP2INDEXEDTRIANGLELIST2*)prim)->wV1;
 					MesaDrawFVFIndex(ctx, vertices, start);
 
 					prim += sizeof(D3DHAL_DP2INDEXEDTRIANGLELIST2);
@@ -751,6 +787,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 					GLfloat wmax = NOCRT_MAX(winfo->dvWNear, winfo->dvWFar);
 					
 					/* scale projection if Wmax is too large */
+#if 0
 					if(wmax > ctx->matrix.wmax)
 					{
 						GLfloat sz = GL_WRANGE_MAX/wmax;
@@ -762,6 +799,7 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 
 						ctx->matrix.wmax = wmax;
 					}
+#endif
 				}
 				NEXT_INST(0);
 				break;
@@ -799,9 +837,9 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 			COMMAND(D3DDP2OP_ZRANGE)
 				for(i = 0; i < inst->wStateCount; i++)
 				{
-					//D3DHAL_DP2ZRANGE *zrange = (D3DHAL_DP2ZRANGE*)prim;
+					D3DHAL_DP2ZRANGE *zrange = (D3DHAL_DP2ZRANGE*)prim;
 					prim += sizeof(D3DHAL_DP2ZRANGE);
-					//TOPIC("ZRANGE", "D3DDP2OP_ZRANGE = %f %f", zrange->dvMinZ, zrange->dvMaxZ);
+					TOPIC("DEPTH", "D3DDP2OP_ZRANGE = %f %f", zrange->dvMinZ, zrange->dvMaxZ);
 					// entry->glDepthRange(zrange->dvMinZ, zrange->dvMaxZ);
 					// ^JH: I only sees values 0.0 and 1.0, so nothing set when
 					// something sets here some junk
@@ -971,7 +1009,6 @@ BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LP
 				{
 					D3DHAL_DP2CLEAR *pClear = (D3DHAL_DP2CLEAR*)prim;
 					prim += sizeof(D3DHAL_DP2CLEAR) - sizeof(RECT);
-					
 					MesaClear(ctx, pClear->dwFlags, pClear->dwFillColor, pClear->dvFillDepth, pClear->dwFillStencil,
 						inst->wStateCount,
 						(RECT*)prim

@@ -177,7 +177,7 @@ static surface_info_t *SurfaceCreateInfo(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL re
 	if(info->surf.fpVidMem <= DDHAL_PLEASEALLOC_LINEARSIZE)
 	{
 		info->flags |= SURF_FLAG_NO_VIDMEM;
-		info->flags |= SURF_FLAG_EMPTY;
+		//info->flags |= SURF_FLAG_EMPTY;
 		info->surf.fpVidMem = 0;
 	}
 	else
@@ -432,6 +432,9 @@ void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 	}
 
 	if(texonly)
+		return;
+	
+	if(!VMHALenv.readback)
 		return;
 
 	void *vidmem = (void*)surf->lpGbl->fpVidMem;

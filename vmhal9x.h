@@ -173,6 +173,7 @@ typedef struct _VMHAL_enviroment
 	BOOL dx7; // dx7 runtime latch
 	DWORD ddi;
 	BOOL  hw_tl;
+	BOOL  readback; // readback surface color/depth
 	DWORD texture_max_width;
 	DWORD texture_max_height;
 	DWORD texture_num_units;

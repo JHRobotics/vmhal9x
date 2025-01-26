@@ -61,6 +61,11 @@ static BOOL ValidateCtx(DWORD dwhContext)
 	if(dwhContext != 0)
 	{
 		mesa3d_ctx_t *ctx = MESA_HANDLE_TO_CTX(dwhContext);
+		if(ctx->entry->pid != GetCurrentProcessId())
+		{
+			return FALSE;
+		}
+		
 		VMDAHAL_t *dd = GetHAL(ctx->dd);
 		if(!dd->invalid)
 		{
@@ -113,6 +118,7 @@ DWORD __stdcall SetRenderTarget32(LPD3DHAL_SETRENDERTARGETDATA lpSetRenderData)
 		else
 		{
 			lpSetRenderData->ddrval = DDERR_INVALIDPARAMS;
+			WARN("SetRenderTarget32: DDERR_INVALIDPARAMS");
 		}
 	}
 
@@ -291,6 +297,7 @@ DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 		
 		pd->dwErrorOffset   = 0;
 		pd->ddrval          = DDERR_INVALIDPARAMS;
+		WARN("DrawPrimitives2_32: DDERR_INVALIDPARAMS");
 		return DDHAL_DRIVER_HANDLED;
 	}
 
@@ -629,6 +636,20 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 	
 	lpInput->ddRVal = DDERR_CURRENTLYNOTAVAIL;
 
+	TRACE("GUID: %08X-%04X-%04X-%02X%02X%02X%02X%02X%02X%02X%02X",
+			lpInput->guidInfo.Data1,
+			lpInput->guidInfo.Data2,
+			lpInput->guidInfo.Data3,
+			lpInput->guidInfo.Data4[0],
+			lpInput->guidInfo.Data4[1],
+			lpInput->guidInfo.Data4[2],
+			lpInput->guidInfo.Data4[3],
+			lpInput->guidInfo.Data4[4],
+			lpInput->guidInfo.Data4[5],
+			lpInput->guidInfo.Data4[6],
+			lpInput->guidInfo.Data4[7]
+		);
+
 	if(IsEqualIID(&lpInput->guidInfo, &GUID_D3DCallbacks2))
 	{
 		/* DX5 */
@@ -716,6 +737,7 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 		morecaps.DDMoreSurfaceCaps.dwSize = sizeof(morecaps);
 		
 		COPY_INFO(lpInput, morecaps, morecaps);
+		TRACE("GUID_DDMoreSurfaceCaps success");
 	}
 	else if(IsEqualIID(&lpInput->guidInfo, &GUID_D3DExtendedCaps))
 	{
@@ -748,17 +770,19 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 			| D3DTEXOPCAPS_BLENDDIFFUSEALPHA
 			| D3DTEXOPCAPS_BLENDTEXTUREALPHA
 			| D3DTEXOPCAPS_BLENDFACTORALPHA
-			| D3DTEXOPCAPS_BLENDCURRENTALPHA;
-			/* missing 
-			| D3DTEXOPCAPS_ADDSMOOTH
+			| D3DTEXOPCAPS_BLENDCURRENTALPHA
+			/* missing */
+			/*| D3DTEXOPCAPS_ADDSMOOTH
 			| D3DTEXOPCAPS_BLENDTEXTUREALPHAPM
 			| D3DTEXOPCAPS_PREMODULATE
 			| D3DTEXOPCAPS_MODULATEALPHA_ADDCOLOR
 			| D3DTEXOPCAPS_MODULATECOLOR_ADDALPHA
 			| D3DTEXOPCAPS_MODULATEINVALPHA_ADDCOLOR
 			| D3DTEXOPCAPS_MODULATEINVCOLOR_ADDALPHA
-			| D3DTEXOPCAPS_DOTPRODUCT3; */
-
+			| D3DTEXOPCAPS_DOTPRODUCT3
+			| D3DTEXOPCAPS_BUMPENVMAP
+			| D3DTEXOPCAPS_BUMPENVMAPLUMINANCE */
+			;
   	dxcaps.wMaxTextureBlendStages      = MESA_TMU_CNT();
     dxcaps.wMaxSimultaneousTextures    = MESA_TMU_CNT();
 
@@ -1166,6 +1190,7 @@ DWORD __stdcall TextureSwap32(LPD3DHAL_TEXTURESWAPDATA ptsd)
 	}
 	else
 	{
+		WARN("TextureSwap32: DDERR_INVALIDPARAMS");
 		ptsd->ddrval = DDERR_INVALIDPARAMS;
 	}
 
@@ -1186,6 +1211,7 @@ DWORD __stdcall TextureGetSurf32(LPD3DHAL_TEXTUREGETSURFDATA ptgd)
 	}
 	else
 	{
+		WARN("TextureGetSurf32: DDERR_INVALIDPARAMS");
 		ptgd->ddrval = DDERR_INVALIDPARAMS;
 	}
 

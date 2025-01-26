@@ -39,11 +39,11 @@
 
 #include "nocrt.h"
 
-#define SV_UNPROJECT(_v, _x, _y, _z, _w) \
-	_v[3] = 2.0f/(_w); \
-	_v[0] = ((((_x) - ctx->matrix.vpnorm[0]) * ctx->matrix.vpnorm[2]) - 1.0f)*_v[3]; \
-	_v[1] = ((((_y) - ctx->matrix.vpnorm[1]) * ctx->matrix.vpnorm[3]) - 1.0f)*_v[3]; \
-	_v[2] = (_z)*_v[3]
+#define SV_UNPROJECT(_v, _x, _y, _z, _rhw) \
+	_v[0] = (((((_x) - ctx->matrix.viewport[0]) / ctx->matrix.viewport[2]) * 2.0f) - 1.0f)/(_rhw); \
+	_v[1] = (((((_y) - ctx->matrix.viewport[1]) / ctx->matrix.viewport[3]) * 2.0f) - 1.0f)/(_rhw); \
+	_v[2] = ((_z)*ctx->matrix.zscale[10])/(_rhw); \
+	_v[3] = 1.0f/(_rhw);
 
 #define SV_UNPROJECT_NTP(_v, _x, _y, _z) \
 	_v[3] = 1.0f; \
@@ -142,7 +142,6 @@ static void LoadColor2(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, DWORD color)
 		}
 	}
 }
-
 
 void MesaDrawTLVertex(mesa3d_ctx_t *ctx, LPD3DTLVERTEX vertex)
 {
@@ -362,12 +361,12 @@ void MesaFVFRecalc(mesa3d_ctx_t *ctx)
 	ctx->state.fvf.stride = offset * sizeof(D3DVALUE);
 }
 
-//static const GLfloat normal_def[3] = {0.0, 0.0, 1.0};
-
 inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, FVF_t *vertex)
 {
 	int i;
-	
+	DWORD *dw = &vertex->dw[ctx->state.fvf.begin];
+	GLfloat *fv = &vertex->fv[ctx->state.fvf.begin];
+
 	for(i = 0; i < ctx->tmu_count; i++)
 	{
 		if(ctx->state.tmu[i].image)
@@ -380,19 +379,19 @@ inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx
 				{
 					case 1:
 						entry->proc.pglMultiTexCoord1fv(GL_TEXTURE0 + i,
-							&vertex->fv[ctx->state.fvf.pos_tmu[coordindex]]);
+							&fv[ctx->state.fvf.pos_tmu[coordindex]]);
 						break;
 					case 2:
 						entry->proc.pglMultiTexCoord2fv(GL_TEXTURE0 + i,
-							&vertex->fv[ctx->state.fvf.pos_tmu[coordindex]]);
+							&fv[ctx->state.fvf.pos_tmu[coordindex]]);
 						break;
 					case 3:
 						entry->proc.pglMultiTexCoord3fv(GL_TEXTURE0 + i,
-							&vertex->fv[ctx->state.fvf.pos_tmu[coordindex]]);
+							&fv[ctx->state.fvf.pos_tmu[coordindex]]);
 						break;
 					case 4:
 						entry->proc.pglMultiTexCoord4fv(GL_TEXTURE0 + i,
-							&vertex->fv[ctx->state.fvf.pos_tmu[coordindex]]);
+							&fv[ctx->state.fvf.pos_tmu[coordindex]]);
 						break;
 				} // switch(coordnum)
 			}
@@ -401,12 +400,12 @@ inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx
 
 	if(ctx->state.fvf.pos_diffuse)
 	{
-		LoadColor1(entry, ctx, vertex->dw[ctx->state.fvf.pos_diffuse]);
+		LoadColor1(entry, ctx, dw[ctx->state.fvf.pos_diffuse]);
 	}
 
 	if(ctx->state.fvf.pos_specular)
 	{
-		LoadColor2(entry, ctx, vertex->dw[ctx->state.fvf.pos_specular]);
+		LoadColor2(entry, ctx, dw[ctx->state.fvf.pos_specular]);
 	}
 	else
 	{
@@ -417,12 +416,7 @@ inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx
 	if((ctx->state.fvf.type & D3DFVF_POSITION_MASK) == D3DFVF_XYZRHW)
 	{
 		GLfloat v[4];
-		SV_UNPROJECT(v,
-			vertex->fv[ctx->state.fvf.begin+FVF_X],
-			vertex->fv[ctx->state.fvf.begin+FVF_Y],
-			vertex->fv[ctx->state.fvf.begin+FVF_Z],
-			vertex->fv[ctx->state.fvf.begin+FVF_RHW]);
-
+		SV_UNPROJECT(v, fv[FVF_X], fv[FVF_Y], fv[FVF_Z], fv[FVF_RHW]);
 		entry->proc.pglVertex4fv(&v[0]);
 	}
 	else
@@ -431,10 +425,10 @@ inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx
 		{
 			if(ctx->state.fvf.pos_normal)
 			{
-				entry->proc.pglNormal3fv(&vertex->fv[ctx->state.fvf.pos_normal]);
+				entry->proc.pglNormal3fv(&fv[ctx->state.fvf.pos_normal]);
 			}
 
-			entry->proc.pglVertex3fv(&vertex->fv[ctx->state.fvf.begin+FVF_X]);
+			entry->proc.pglVertex3fv(&fv[FVF_X]);
 		}
 		else
 		{
@@ -442,14 +436,14 @@ inline static void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx
 			if(ctx->state.fvf.pos_normal)
 			{
 				MesaVetexBlend(ctx,
-					&vertex->fv[ctx->state.fvf.pos_normal],
-					&vertex->fv[ctx->state.fvf.begin+FVF_BETA1], 
+					&fv[ctx->state.fvf.pos_normal],
+					&fv[FVF_BETA1], 
 					ctx->state.fvf.betas, coords);
 				entry->proc.pglNormal3fv(&coords[0]);
 			}
 			MesaVetexBlend(ctx,
-				&vertex->fv[ctx->state.fvf.begin+FVF_X],
-				&vertex->fv[ctx->state.fvf.begin+FVF_BETA1], 
+				&fv[FVF_X],
+				&fv[FVF_BETA1], 
 				ctx->state.fvf.betas, coords);
 			entry->proc.pglVertex3fv(&coords[0]);
 		}
@@ -470,17 +464,86 @@ void MesaDrawFVFIndex(mesa3d_ctx_t *ctx, void *vertices, int index)
 void MesaDrawFVFs(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vertices, DWORD start, DWORD cnt)
 {
 	mesa3d_entry_t *entry = ctx->entry;
-	BYTE *vb = ((BYTE *)vertices) + (start * ctx->state.fvf.stride);
+	DWORD stride = ctx->state.fvf.stride;
+	BYTE *vb = ((BYTE *)vertices) + (start * stride);
 	
-	if(gl_ptype != -1)
+	TOPIC("GL", "glBegin(%d)", gl_ptype);
+	switch(gl_ptype)
 	{
-		TOPIC("GL", "glBegin(%d)", gl_ptype);
-		entry->proc.pglBegin(gl_ptype);
-		while(cnt--)
-		{
-			MesaDrawFVF_internal(entry, ctx, (FVF_t *)vb);
+		case GL_POINTS:
+		case GL_LINES:
+		case GL_LINE_STRIP:
+			if(cnt >= 2)
+			{
+				entry->proc.pglBegin(gl_ptype);
+				while(cnt--)
+				{
+					MesaDrawFVF_internal(entry, ctx, (FVF_t *)vb);
+					vb += stride;
+				}
+				GL_CHECK(entry->proc.pglEnd());
+			}
+			break;
+		case GL_TRIANGLES:
+			entry->proc.pglBegin(GL_TRIANGLES);
+			while(cnt >= 3)
+			{
+				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + 1*stride));
+				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + 2*stride));
+				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb));
+				vb += 3*stride;
+				cnt -= 3;
+			}
+			GL_CHECK(entry->proc.pglEnd());
+			break;
+		case GL_TRIANGLE_STRIP:
+			if(cnt == 4)
+			{
+				entry->proc.pglBegin(GL_QUADS);
+				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + 1*stride));
+				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + 3*stride));
+				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + 2*stride));
+				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + 0*stride));
+				GL_CHECK(entry->proc.pglEnd());
+			}
+			else
+			{
+				DWORD i = 0;
+				entry->proc.pglBegin(GL_TRIANGLES);
+				while(cnt >= 3)
+				{
+					if((i & 1) == 0)
+					{
+						MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + 1*stride));
+						MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + 2*stride));
+						MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + 0*stride));
+					}
+					else
+					{
+						MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + 2*stride));
+						MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + 1*stride));
+						MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + 0*stride));
+					}
+					vb += stride;
+					i++;
+					cnt--;
+				}
+				GL_CHECK(entry->proc.pglEnd());
+			}
+			break;
+		case GL_TRIANGLE_FAN:
+			entry->proc.pglBegin(GL_TRIANGLES);
+			FVF_t *first = (FVF_t *)(vb);
 			vb += ctx->state.fvf.stride;
-		}
-		GL_CHECK(entry->proc.pglEnd());
+			while(cnt >= 3)
+			{
+				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb));
+				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + stride));
+				MesaDrawFVF_internal(entry, ctx, first);
+				vb += stride;
+				cnt -= 1;
+			}
+			GL_CHECK(entry->proc.pglEnd());
+			break;
 	}
 }
