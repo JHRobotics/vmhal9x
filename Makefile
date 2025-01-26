@@ -45,7 +45,7 @@ endif
 DLLFLAGS = -o $@ -shared -Wl,--dll,--out-implib,lib$(@:dll=a),--exclude-all-symbols,--exclude-libs=pthread,--disable-dynamicbase,--disable-nxcompat,--subsystem,windows,--image-base,$(BASE_$@)$(TUNE_LD)
 
 LIBS = -luser32 -lkernel32 -lgcc -lgdi32 -ladvapi32 -lddraw
-CFLAGS = -std=$(CSTD) -Wall -ffreestanding -fno-exceptions -ffast-math -nostdlib -DNOCRT -DNOCRT_FILE -DNOCRT_FLOAT -DNOCRT_MEM -Inocrt $(TUNE) -DVMHAL9X_BUILD=$(VERSION_BUILD)
+CFLAGS = -std=$(CSTD) -Wall -ffreestanding -fno-exceptions -ffast-math -nostdlib -DNOCRT -DNOCRT_FILE -DNOCRT_FLOAT -DNOCRT_MEM -DNOCRT_CALC -Inocrt $(TUNE) -DVMHAL9X_BUILD=$(VERSION_BUILD)
 LDFLAGS = -static -nostdlib -nodefaultlibs -L.
 
 ifdef RELEASE
@@ -76,12 +76,12 @@ endif
 BASE_vmhal9x.dll := 0xB00B0000
 BASE_vmdisp9x.dll := 0x03250000
 
-NOCRT_OBJS = nocrt/nocrt.c.o nocrt/nocrt_math.c.o nocrt/nocrt_file_win.c.o nocrt/nocrt_mem_win.c.o nocrt/nocrt_dll.c.o
+NOCRT_OBJS = nocrt/nocrt.c.o nocrt/nocrt_math.c.o nocrt/nocrt_math_calc.c.o nocrt/nocrt_file_win.c.o nocrt/nocrt_mem_win.c.o nocrt/nocrt_dll.c.o
 VMHAL9X_OBJS = $(NOCRT_OBJS) vmhal9x.c.o ddraw.c.o 3d_accel.c.o flip32.c.o blt32.c.o rop3.c.o transblt.c.o debug.c.o dump.c.o fill.c.o vmhal9x.res
 VMDISP9X_OBJS = $(NOCRT_OBJS) vmdisp9x.c.o
 
 ifdef D3DHAL
-	VMHAL9X_OBJS += d3d.c.o mesa3d.c.o mesa3d_buffer.c.o mesa3d_draw.c.o mesa3d_chroma.c.o mesa3d_matrix.c.o mesa3d_draw6.c.o surface.c.o cmath.c.o mesa3d_dump.c.o
+	VMHAL9X_OBJS += d3d.c.o mesa3d.c.o mesa3d_buffer.c.o mesa3d_draw.c.o mesa3d_chroma.c.o mesa3d_matrix.c.o mesa3d_draw6.c.o surface.c.o mesa3d_dump.c.o
 	CFLAGS += -DD3DHAL
 endif
 
