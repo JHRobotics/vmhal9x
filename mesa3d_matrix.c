@@ -296,6 +296,12 @@ NUKED_LOCAL void MesaApplyTransform(mesa3d_ctx_t *ctx, DWORD changes)
 	
 	TOPIC("MATRIX", "new matrix, changes=0x%X", changes);
 
+	if(ctx->matrix.identity_mode)
+	{
+		ctx->matrix.outdated_stack |= changes;
+		return;
+	}
+
 	if(changes & MESA_TF_PROJECTION)
 	{
 #if DX_INVERT_PROJECTION
@@ -304,12 +310,6 @@ NUKED_LOCAL void MesaApplyTransform(mesa3d_ctx_t *ctx, DWORD changes)
 #else
 		matmultf(ctx->matrix.proj, ctx->matrix.zscale, ctx->matrix.projfix);
 #endif
-	}
-
-	if(ctx->matrix.identity_mode)
-	{
-		ctx->matrix.outdated_stack |= changes;
-		return;
 	}
 
 	if(changes & (MESA_TF_PROJECTION))
@@ -336,7 +336,7 @@ NUKED_LOCAL void MesaApplyTransform(mesa3d_ctx_t *ctx, DWORD changes)
 		if(ctx->matrix.weight == 0)
 		{
 			entry->proc.pglMultMatrixf(&ctx->matrix.world[0][0]);
-		}		
+		}
 #if 0
 		else
 		{

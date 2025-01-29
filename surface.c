@@ -64,8 +64,6 @@ void SurfaceCtxUnlock()
 #define SURF_FLAG_COPY 2
 #define SURF_FLAG_NO_VIDMEM 4
 
-#define MAX_SURFACES 65535
-
 typedef struct surface_attachment
 {
 	struct surface_attachment *next;

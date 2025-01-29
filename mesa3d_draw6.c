@@ -350,7 +350,7 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 
 	LPD3DHAL_DP2COMMAND inst = (LPD3DHAL_DP2COMMAND)cmdBufferStart;
 	DWORD start, count, base;
-	DWORD i;
+	int i;
 	WORD *pos;
 	
 	while((LPBYTE)inst < cmdBufferEnd)
@@ -521,10 +521,10 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				entry->proc.pglBegin(GL_TRIANGLES);
 				for(i = 0; i < inst->wPrimitiveCount; i++)
 				{
-					start = ((D3DHAL_DP2INDEXEDTRIANGLELIST*)prim)->wV2;
+					start = ((D3DHAL_DP2INDEXEDTRIANGLELIST*)prim)->wV3;
 					MesaDrawFVFIndex(ctx, vertices, start);
 
-					start = ((D3DHAL_DP2INDEXEDTRIANGLELIST*)prim)->wV3;
+					start = ((D3DHAL_DP2INDEXEDTRIANGLELIST*)prim)->wV2;
 					MesaDrawFVFIndex(ctx, vertices, start);
 
 					start = ((D3DHAL_DP2INDEXEDTRIANGLELIST*)prim)->wV1;
@@ -557,38 +557,37 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				base = ((D3DHAL_DP2STARTVERTEX*)prim)->wVStart;
 				prim += sizeof(D3DHAL_DP2STARTVERTEX);
 				pos = (WORD*)prim;
-				prim += sizeof(WORD) * (inst->wPrimitiveCount+2);
-
-				if(inst->wPrimitiveCount == 2) // eg. 4 total
+				count = inst->wPrimitiveCount+2;
+				prim += sizeof(WORD) * count;
+#if 1
+				if(count == 4)
 				{
 					entry->proc.pglBegin(GL_QUADS);
-					MesaDrawFVFIndex(ctx, vertices, base+pos[1]);
 					MesaDrawFVFIndex(ctx, vertices, base+pos[3]);
-					MesaDrawFVFIndex(ctx, vertices, base+pos[2]);
+					MesaDrawFVFIndex(ctx, vertices, base+pos[1]);
 					MesaDrawFVFIndex(ctx, vertices, base+pos[0]);
+					MesaDrawFVFIndex(ctx, vertices, base+pos[2]);
 					entry->proc.pglEnd();
 				}
 				else
+#endif
 				{
 					entry->proc.pglBegin(GL_TRIANGLES);
-					for(i = 0; i < inst->wPrimitiveCount; i++) // count = inst->wPrimitiveCount+2
-					{
-						if((i & 1) == 0)
-						{
-							MesaDrawFVFIndex(ctx, vertices, base+pos[i+1]);
-							MesaDrawFVFIndex(ctx, vertices, base+pos[i+2]);
-							MesaDrawFVFIndex(ctx, vertices, base+pos[i+0]);
-						}
-						else
-						{
-							MesaDrawFVFIndex(ctx, vertices, base+pos[i+2]);
-							MesaDrawFVFIndex(ctx, vertices, base+pos[i+1]);
-							MesaDrawFVFIndex(ctx, vertices, base+pos[i+0]);
-						}
-					}
+					MesaDrawFVFIndex(ctx, vertices, base+pos[count-1]);
+					MesaDrawFVFIndex(ctx, vertices, base+pos[count-3]);
+					MesaDrawFVFIndex(ctx, vertices, base+pos[count-2]);
 					entry->proc.pglEnd();
+					
+					if(count >= 4)
+					{
+						entry->proc.pglBegin(GL_TRIANGLE_STRIP);
+						for(i = count-2; i >= 0; i--)
+						{
+							MesaDrawFVFIndex(ctx, vertices, base+pos[i]);
+						}
+						entry->proc.pglEnd();
+					}
 				}
-
 				SET_DIRTY;
 				NEXT_INST(0);
 				break;
@@ -605,12 +604,11 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				pos = (WORD*)prim;
 				prim += sizeof(WORD)*(inst->wPrimitiveCount+2);
 
-				entry->proc.pglBegin(GL_TRIANGLES);
-				for(i = 1; i <= inst->wPrimitiveCount; i++)
+				entry->proc.pglBegin(GL_TRIANGLE_FAN);
+				MesaDrawFVFIndex(ctx, vertices, base+pos[0]);
+				for(i = inst->wPrimitiveCount; i >= 1; i--)
 				{
 					MesaDrawFVFIndex(ctx, vertices, base+pos[i]);
-					MesaDrawFVFIndex(ctx, vertices, base+pos[i+1]);
-					MesaDrawFVFIndex(ctx, vertices, base+pos[0]);
 				}
 				entry->proc.pglEnd();
 
@@ -634,10 +632,10 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				entry->proc.pglBegin(GL_TRIANGLES);
 				for(i = 0; i < inst->wPrimitiveCount; i++)
 				{
-					start = base + ((D3DHAL_DP2INDEXEDTRIANGLELIST2*)prim)->wV2;
+					start = base + ((D3DHAL_DP2INDEXEDTRIANGLELIST2*)prim)->wV3;
 					MesaDrawFVFIndex(ctx, vertices, start);
 
-					start = base + ((D3DHAL_DP2INDEXEDTRIANGLELIST2*)prim)->wV3;
+					start = base + ((D3DHAL_DP2INDEXEDTRIANGLELIST2*)prim)->wV2;
 					MesaDrawFVFIndex(ctx, vertices, start);
 
 					start = base + ((D3DHAL_DP2INDEXEDTRIANGLELIST2*)prim)->wV1;
@@ -695,7 +693,7 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 
     		MesaDrawFVFs(ctx, GL_TRIANGLE_FAN, prim, 0, count);
 				prim += ctx->state.fvf.stride * count;
-				PRIM_ALIGN;
+				//PRIM_ALIGN;
 				SET_DIRTY;
         NEXT_INST(0);
 				break;
@@ -715,7 +713,7 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 
 				MesaDrawFVFs(ctx, GL_LINES, prim, 0, count);
 				prim += ctx->state.fvf.stride * count;
-				PRIM_ALIGN;
+				//PRIM_ALIGN;
 				SET_DIRTY;
 				NEXT_INST(0);
 				break;
@@ -724,7 +722,7 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				// The rendering state to change is specified by one or more 
 				// D3DHAL_DP2RENDERSTATE structures following D3DHAL_DP2COMMAND.
 
-				for(i = inst->wStateCount; i > 0; i--)
+				for(i = 0; i < inst->wStateCount; i++)
 				{
 					MesaSetRenderState(ctx, (LPD3DSTATE)prim, RStates);
 					prim += sizeof(D3DHAL_DP2RENDERSTATE);
@@ -982,27 +980,30 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 			COMMAND(D3DDP2OP_SETRENDERTARGET)
 				// Map a new rendering target surface and depth buffer in
 				// the current context.  This replaces the old D3dSetRenderTarget
-				// callback. 
-				if(entry->runtime_ver >= 7)
+				// callback.
+				for(i = 0; i < inst->wStateCount; i++)
 				{
-					D3DHAL_DP2SETRENDERTARGET *pSRTData = (D3DHAL_DP2SETRENDERTARGET*)prim;
-					
-					TOPIC("TARGET", "hRenderTarget=%d, hZBuffer=%d", pSRTData->hRenderTarget, pSRTData->hZBuffer);
-					
-					surface_id dds_sid = ctx->surfaces->table[pSRTData->hRenderTarget];
-					surface_id ddz_sid = ctx->surfaces->table[pSRTData->hZBuffer];
-
-					if(dds_sid)
+					if(entry->runtime_ver >= 7)
 					{
-						MesaSetTarget(ctx, dds_sid, ddz_sid, FALSE);
+						D3DHAL_DP2SETRENDERTARGET *pSRTData = (D3DHAL_DP2SETRENDERTARGET*)prim;
+						
+						TOPIC("TARGET", "hRenderTarget=%d, hZBuffer=%d", pSRTData->hRenderTarget, pSRTData->hZBuffer);
+						
+						surface_id dds_sid = ctx->surfaces->table[pSRTData->hRenderTarget];
+						surface_id ddz_sid = ctx->surfaces->table[pSRTData->hZBuffer];
+	
+						if(dds_sid)
+						{
+							MesaSetTarget(ctx, dds_sid, ddz_sid, FALSE);
+						}
+						else
+						{
+							WARN("render target (%d) is NULL", pSRTData->hRenderTarget);
+						}
 					}
-					else
-					{
-						WARN("render target (%d) is NULL", pSRTData->hRenderTarget);
-					}
+					prim += sizeof(D3DHAL_DP2SETRENDERTARGET);
 				}
-				
-				NEXT_INST(sizeof(D3DHAL_DP2SETRENDERTARGET));
+				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_CLEAR)
 				// Perform hardware-assisted clearing on the rendering target,
@@ -1025,6 +1026,7 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				{
 					prim += sizeof(D3DHAL_DP2SETTEXLOD);
 				}
+				WARN("D3DDP2OP_SETTEXLOD");
 				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_SETCLIPPLANE)

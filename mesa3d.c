@@ -56,6 +56,8 @@ static const GLfloat black[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 #define OS_FORMAT  OSMESA_RGBA
 #define OS_TYPE    GL_UNSIGNED_BYTE
 
+#define OPENGL_BLOCK_LOCK
+
 static char *MesaLibName()
 {
 	FBHDA_t *hda = FBHDA_setup();
@@ -562,10 +564,10 @@ static void MesaDepthReeval(mesa3d_ctx_t *ctx)
 	MesaStencilApply(ctx);
 }
 
-NUKED_INLINE BOOL MesaBackbufferIfFront(mesa3d_ctx_t *ctx)
+NUKED_INLINE BOOL MesaBackbufferIsFront(mesa3d_ctx_t *ctx)
 {
 	DWORD addr = (DWORD)SurfaceGetVidMem(ctx->backbuffer);
-	TRACE("MesaBackbufferIfFront addr=0x%X", addr);
+	TRACE("MesaBackbufferIsFront addr=0x%X", addr);
 	
 	FBHDA_t *hda = FBHDA_setup();
 	DWORD visible_addr = ((DWORD)hda->vram_pm32) + hda->surface;
@@ -909,7 +911,7 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 
 	ctx->matrix.wmax = GL_WRANGE_MAX;
 	MesaIdentity(ctx->matrix.zscale);
-	//ctx->matrix.zscale[10] = 0.9;
+//	ctx->matrix.zscale[10] = 0.8;
 
 	MesaIdentity(ctx->matrix.world[0]);
 	MesaIdentity(ctx->matrix.world[1]);
@@ -926,7 +928,9 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 	GL_CHECK(entry->proc.pglDisable(GL_LIGHTING));
 	//GL_CHECK(entry->proc.pglLightModeli(GL_LIGHT_MODEL_TWO_SIDE, GL_TRUE));
 	GL_CHECK(entry->proc.pglLightModeli(GL_LIGHT_MODEL_COLOR_CONTROL, GL_SEPARATE_SPECULAR_COLOR));
-	GL_CHECK(entry->proc.pglEnable(GL_DEPTH_CLAMP_NV));
+	
+	// extends clamp over z-depth range
+	//GL_CHECK(entry->proc.pglEnable(GL_DEPTH_CLAMP_NV));
 
 	// needs ARB_vertex_blend
 	//GL_CHECK(entry->proc.pglEnable(GL_WEIGHT_SUM_UNITY_ARB));
@@ -986,7 +990,7 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 	ctx->state.alpha.ref = 0.0f;
 
 //	entry->proc.pglEnable(GL_CULL_FACE);
-//	entry->proc.pglCullFace(GL_FRONT_AND_BACK);
+//	entry->proc.pglCullFace(GL_FRONT);
 	
 	ctx->state.stencil.sfail     = GL_KEEP;
 	ctx->state.stencil.dpfail    = GL_KEEP;
@@ -1119,144 +1123,156 @@ NUKED_LOCAL mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, surface_id si
 {
 	mesa3d_texture_t *tex = NULL;
 	DDSURF *surf = SurfaceGetSURF(sid);
-	int i;
 
 	if(surf == NULL)
 		return NULL;
 
 	TOPIC("GL", "new texture");
+	// NOTE: id=sid in ctx->tex[id]
 
-	for(i = 0; i < MESA3D_MAX_TEXS; i++)
+	if(sid >= MESA3D_MAX_TEXS)
 	{
-		if(ctx->tex[i] == NULL)
+		ERR("sid exceed limit (%d, limit %d)", sid, MAX_SURFACES);
+		return NULL;
+	}
+
+	mesa3d_entry_t *entry = ctx->entry;
+
+	if(ctx->tex[sid] != NULL)
+	{
+		tex = ctx->tex[sid];
+		if(tex->gltex)
 		{
-			mesa3d_entry_t *entry = ctx->entry;
-			TOPIC("RELOAD", "New texture - position: %d", i);
+			GL_CHECK(entry->proc.pglDeleteTextures(1, &tex->gltex));
+		}
+		memset(tex, 0, sizeof(mesa3d_texture_t));
+	}
+	else
+	{
+		tex = HeapAlloc(hSharedHeap, HEAP_ZERO_MEMORY, sizeof(mesa3d_texture_t));
+		ctx->tex[sid] = tex;
+	}
 
-			tex = HeapAlloc(hSharedHeap, HEAP_ZERO_MEMORY, sizeof(mesa3d_texture_t));
-			if(tex)
+	if(tex)
+	{
+		int cube_levels[MESA3D_CUBE_SIDES] = {0, 0, 0, 0, 0, 0};
+		int cube_index = 0;
+		BOOL is_cube =
+			(surf->lpLcl->lpSurfMore->ddsCapsEx.dwCaps2 & DDSCAPS2_CUBEMAP) == 0 ? FALSE : TRUE;
+
+		if(is_cube)
+		{
+			cube_index = GetCubeSide(surf->lpLcl->lpSurfMore->ddsCapsEx.dwCaps2);
+		}
+
+		tex->id               = sid;
+		tex->ctx              = ctx;
+		tex->sides            = 1;
+		tex->cube             = is_cube;
+		tex->data_sid[cube_index][0]   = sid;
+		tex->data_dirty[cube_index][0] = TRUE;
+		if(is_cube)
+		{
+			cube_levels[cube_index]++;
+			tex->sides = MESA3D_CUBE_SIDES;
+		}
+
+		if(DDSurfaceToGL(surf, &tex->bpp, &tex->internalformat, &tex->format, &tex->type, &tex->compressed))
+		{
+			tex->width  = surf->lpGbl->wWidth;
+			tex->height = surf->lpGbl->wHeight;
+
+			GL_CHECK(entry->proc.pglGenTextures(1, &tex->gltex));
+			TOPIC("FRAMEBUFFER", "new texture: %d", tex->gltex);
+
+			if((surf->lpLcl->dwFlags & DDRAWISURF_HASCKEYSRCBLT) && ctx->state.tmu[0].colorkey)
 			{
-				int cube_levels[MESA3D_CUBE_SIDES] = {0, 0, 0, 0, 0, 0};
-				int cube_index = 0;
-				BOOL is_cube =
-					(surf->lpLcl->lpSurfMore->ddsCapsEx.dwCaps2 & DDSCAPS2_CUBEMAP) == 0 ? FALSE : TRUE;
-
-				if(is_cube)
+				if(!tex->compressed)
 				{
-					cube_index = GetCubeSide(surf->lpLcl->lpSurfMore->ddsCapsEx.dwCaps2);
-				}
-
-				tex->id               = i;
-				tex->ctx              = ctx;
-				tex->sides            = 1;
-				tex->cube             = is_cube;
-				tex->data_sid[cube_index][0]   = sid;
-				tex->data_dirty[cube_index][0] = TRUE;
-				if(is_cube)
-				{
-					cube_levels[cube_index]++;
-					tex->sides = MESA3D_CUBE_SIDES;
-				}
-
-				if(DDSurfaceToGL(surf, &tex->bpp, &tex->internalformat, &tex->format, &tex->type, &tex->compressed))
-				{
-					tex->width  = surf->lpGbl->wWidth;
-					tex->height = surf->lpGbl->wHeight;
-
-					GL_CHECK(entry->proc.pglGenTextures(1, &tex->gltex));
-					TOPIC("FRAMEBUFFER", "new texture: %d", tex->gltex);
-
-					if((surf->lpLcl->dwFlags & DDRAWISURF_HASCKEYSRCBLT) && ctx->state.tmu[0].colorkey)
-					{
-						if(!tex->compressed)
-						{
-							tex->colorkey = TRUE;
-						}
-					}
-
-					if(SurfaceIsEmpty(sid))
-						SurfaceClearData(sid);
-
-					SurfaceAttachTexture(sid, tex, 0, 0);
-					if(is_cube)
-					{
-						int i;
-						for(i = 0; i < surf->attachments_cnt; i++)
-						{
-							surface_id subsid = surf->attachments[i];
-							DDSURF *subsurf = SurfaceGetSURF(subsid);
-
-							cube_index = GetCubeSide(subsurf->lpLcl->lpSurfMore->ddsCapsEx.dwCaps2);
-
-							int cube_pos = cube_levels[cube_index];
-							tex->data_dirty[cube_index][cube_pos] = TRUE;
-							tex->data_sid[cube_index][cube_pos]   = subsid;
-
-							if(SurfaceIsEmpty(subsid))
-								SurfaceClearData(subsid);
-
-							SurfaceAttachTexture(subsid, tex, cube_pos, cube_index);
-
-							TOPIC("CUBE", "added size[%d][%d], dwCaps2=0x%X", cube_index, cube_pos,
-								surf->lpLcl->lpSurfMore->ddsCapsEx.dwCaps2
-							);
-
-							cube_levels[cube_index]++;
-						}
-
-						if(cube_levels[MESA_POSITIVEX] > 1)
-						{
-							tex->mipmap_level = cube_levels[MESA_POSITIVEX]-1;
-							tex->mipmap = TRUE;
-						}
-						else
-						{
-							tex->mipmap_level = 0;
-							tex->mipmap = FALSE;
-						}
-						tex->cube = TRUE;
-					}
-					else if(surf->dwCaps & DDSCAPS_MIPMAP) /* mipmaps */
-					{
-						int level;
-						for(level = 0; level < surf->attachments_cnt; level++)
-						{
-							surface_id subsid = surf->attachments[level];
-
-							tex->data_dirty[0][level+1] = TRUE;
-							tex->data_sid[0][level+1] = subsid;
-
-							if(SurfaceIsEmpty(subsid))
-								SurfaceClearData(subsid);
-
-							SurfaceAttachTexture(subsid, tex, level+1, 0);
-						}
-						tex->mipmap_level = surf->attachments_cnt;
-						tex->mipmap = (tex->mipmap_level > 0) ? TRUE : FALSE;
-						TOPIC("MIPMAP", "Created %d with mipmap, at level: %d", tex->gltex, tex->mipmap_level);
-					} // mipmaps
-					else
-					{
-						tex->mipmap_level = 0;
-						tex->mipmap = FALSE;
-						TOPIC("RELOAD", "Created %d without mipmap", tex->gltex);
-					}
-
-					//ctx->state.reload_tex_par = TRUE;
-					tex->dirty = TRUE;
-					ctx->tex[i] = tex;
-				}
-				else
-				{
-					TOPIC("RELOAD", "Failed to identify image type!");
-					tex = NULL;
+					tex->colorkey = TRUE;
 				}
 			}
 
-			break;
-		}
-	}
+			if(SurfaceIsEmpty(sid))
+				SurfaceClearData(sid);
 
+			SurfaceAttachTexture(sid, tex, 0, 0);
+			if(is_cube)
+			{
+				int i;
+				for(i = 0; i < surf->attachments_cnt; i++)
+				{
+					surface_id subsid = surf->attachments[i];
+					DDSURF *subsurf = SurfaceGetSURF(subsid);
+
+					cube_index = GetCubeSide(subsurf->lpLcl->lpSurfMore->ddsCapsEx.dwCaps2);
+
+					int cube_pos = cube_levels[cube_index];
+					tex->data_dirty[cube_index][cube_pos] = TRUE;
+					tex->data_sid[cube_index][cube_pos]   = subsid;
+
+					if(SurfaceIsEmpty(subsid))
+							SurfaceClearData(subsid);
+
+					SurfaceAttachTexture(subsid, tex, cube_pos, cube_index);
+
+					TOPIC("CUBE", "added size[%d][%d], dwCaps2=0x%X", cube_index, cube_pos,
+						surf->lpLcl->lpSurfMore->ddsCapsEx.dwCaps2
+					);
+
+					cube_levels[cube_index]++;
+				}
+
+				if(cube_levels[MESA_POSITIVEX] > 1)
+				{
+					tex->mipmap_level = cube_levels[MESA_POSITIVEX]-1;
+					tex->mipmap = TRUE;
+				}
+				else
+				{
+					tex->mipmap_level = 0;
+					tex->mipmap = FALSE;
+				}
+				tex->cube = TRUE;
+			}
+			else if(surf->dwCaps & DDSCAPS_MIPMAP) /* mipmaps */
+			{
+				int level;
+				for(level = 0; level < surf->attachments_cnt; level++)
+				{
+					surface_id subsid = surf->attachments[level];
+
+					tex->data_dirty[0][level+1] = TRUE;
+					tex->data_sid[0][level+1] = subsid;
+
+					if(SurfaceIsEmpty(subsid))
+						SurfaceClearData(subsid);
+
+					SurfaceAttachTexture(subsid, tex, level+1, 0);
+				}
+				tex->mipmap_level = surf->attachments_cnt;
+				tex->mipmap = (tex->mipmap_level > 0) ? TRUE : FALSE;
+				TOPIC("MIPMAP", "Created %d with mipmap, at level: %d", tex->gltex, tex->mipmap_level);
+			} // mipmaps
+			else
+			{
+				tex->mipmap_level = 0;
+				tex->mipmap = FALSE;
+				TOPIC("RELOAD", "Created %d without mipmap", tex->gltex);
+			}
+
+			//ctx->state.reload_tex_par = TRUE;
+			tex->dirty = TRUE;
+		}
+		else
+		{
+			TOPIC("RELOAD", "Failed to identify image type!");
+			HeapFree(hSharedHeap, 0, tex);
+			ctx->tex[sid] = NULL;
+			tex = NULL;
+		}
+	} // tex
+	
 	return tex;
 }
 
@@ -1356,10 +1372,10 @@ NUKED_LOCAL void MesaDestroyTexture(mesa3d_texture_t *tex, BOOL ctx_cleanup, sur
 			}
 		}
 
-		if(!ctx_cleanup)
-		{
+		//if(!ctx_cleanup)
+		//{
 			tex->ctx->tex[tex->id] = NULL;
-		}
+		//}
 		HeapFree(hSharedHeap, 0, tex);
 	}
 }
@@ -1875,19 +1891,19 @@ NUKED_LOCAL void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, vo
 #define IS_OVERRIDE(type)       ((DWORD)(type) > D3DSTATE_OVERRIDE_BIAS)
 #define GET_OVERRIDE(type)      ((DWORD)(type) - D3DSTATE_OVERRIDE_BIAS)
 
-#define SET_OVERRIDE(_type) if((_type) < 128){ \
+#define SET_OVERRIDE(_type) if((_type) < 256){ \
 		DWORD wi = (_type) / 32; \
 		DWORD bi = (_type) % 32; \
 		ctx->state.overrides[wi] |= 1 << bi;}
 
-#define CLEAN_OVERRIDE(_type) if((_type) < 128){ \
+#define CLEAN_OVERRIDE(_type) if((_type) < 256){ \
 		DWORD wi = (_type) / 32; \
 		DWORD bi = (_type) % 32; \
 		ctx->state.overrides[wi] &= ~(1 << bi);}
 
 #define RETURN_IF_OVERRIDE(_t) do{ \
 		DWORD dt = (DWORD)(_t); \
-		if(dt < 128){ \
+		if(dt < 256){ \
 			DWORD wi = dt / 32; \
 			DWORD bi = dt % 32; \
 			if(ctx->state.overrides[wi] & (1 << bi)){return;} \
@@ -1914,10 +1930,12 @@ NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD
 		DWORD override = GET_OVERRIDE(type);
 		if(state->dwArg[0])
 		{
+			TOPIC("OVERRIDE", "override = %d SET", override);
 			SET_OVERRIDE(override);
 		}
 		else
 		{
+			TOPIC("OVERRIDE", "override = %d CLEAN", override);
 			CLEAN_OVERRIDE(override);
 		}
 		
@@ -2141,11 +2159,11 @@ NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD
 					break;
 				case D3DCULL_CW:
 					GL_CHECK(entry->proc.pglEnable(GL_CULL_FACE));
-					GL_CHECK(entry->proc.pglCullFace(GL_FRONT));
+					GL_CHECK(entry->proc.pglCullFace(GL_BACK));
 					break;
 				case D3DCULL_CCW:
 					GL_CHECK(entry->proc.pglEnable(GL_CULL_FACE));
-					GL_CHECK(entry->proc.pglCullFace(GL_BACK));
+					GL_CHECK(entry->proc.pglCullFace(GL_FRONT));
 					break;
 			}
 			break;
@@ -3472,16 +3490,20 @@ NUKED_LOCAL void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVA
 
 NUKED_LOCAL void MesaBlockLock(mesa3d_ctx_t *ctx)
 {
+#ifdef OPENGL_BLOCK_LOCK
 	LONG tmp;
 	do
 	{
 		tmp = InterlockedExchange(&ctx->thread_lock, 1);
 	} while(tmp == 1);
+#endif
 }
 
 NUKED_LOCAL void MesaBlockUnlock(mesa3d_ctx_t *ctx)
 {
+#ifdef OPENGL_BLOCK_LOCK
 	InterlockedExchange(&ctx->thread_lock, 0);
+#endif
 }
 
 NUKED_LOCAL void MesaSceneBegin(mesa3d_ctx_t *ctx)
@@ -3498,7 +3520,7 @@ NUKED_LOCAL void MesaSceneBegin(mesa3d_ctx_t *ctx)
 
 NUKED_LOCAL void MesaSceneEnd(mesa3d_ctx_t *ctx)
 {
-	BOOL is_visible = MesaBackbufferIfFront(ctx);
+	BOOL is_visible = MesaBackbufferIsFront(ctx);
 	void *ptr = SurfaceGetVidMem(ctx->backbuffer);
 	if(ptr)
 	{

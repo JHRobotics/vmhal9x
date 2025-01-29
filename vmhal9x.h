@@ -144,6 +144,8 @@ void SurfaceCtxUnlock();
 
 typedef DWORD surface_id;
 
+#define MAX_SURFACES 65535
+
 DWORD SurfaceCreate(LPDDRAWI_DDRAWSURFACE_LCL surf);
 BOOL SurfaceDelete(surface_id sid);
 void SurfaceAttachTexture(surface_id sid, void *mesa_tex, int level, int side);

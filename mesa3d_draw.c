@@ -74,8 +74,6 @@ typedef struct _FVF
 	};
 } FVF_t;
 
-//static const GLfloat white[4] = {1.0f, 1.0f, 1.0f, 1.0f};
-
 static void LoadColor1(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, DWORD color)
 {
 	GLfloat cv[4];
@@ -460,85 +458,76 @@ NUKED_LOCAL void MesaDrawFVFs(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vertices
 {
 	mesa3d_entry_t *entry = ctx->entry;
 	DWORD stride = ctx->state.fvf.stride;
-	BYTE *vb = ((BYTE *)vertices) + (start * stride);
+	BYTE *vb = ((BYTE *)vertices) + ((start + cnt - 1) * stride);
 	
 	TOPIC("GL", "glBegin(%d)", gl_ptype);
 	switch(gl_ptype)
 	{
-		case GL_POINTS:
-		case GL_LINES:
-		case GL_LINE_STRIP:
-			if(cnt >= 2)
+		case GL_TRIANGLE_FAN:
+		{
+			entry->proc.pglBegin(GL_TRIANGLE_FAN);
+			BYTE *first = ((BYTE *)vertices) + (start * stride);
+			MesaDrawFVF_internal(entry, ctx, (FVF_t *)first);
+			while(cnt > 1)
 			{
-				entry->proc.pglBegin(gl_ptype);
-				while(cnt--)
-				{
-					MesaDrawFVF_internal(entry, ctx, (FVF_t *)vb);
-					vb += stride;
-				}
-				GL_CHECK(entry->proc.pglEnd());
-			}
-			break;
-		case GL_TRIANGLES:
-			entry->proc.pglBegin(GL_TRIANGLES);
-			while(cnt >= 3)
-			{
-				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + 1*stride));
-				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + 2*stride));
-				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb));
-				vb += 3*stride;
-				cnt -= 3;
+				MesaDrawFVF_internal(entry, ctx, (FVF_t *)vb);
+				vb -= stride;
+				cnt--;
 			}
 			GL_CHECK(entry->proc.pglEnd());
 			break;
+		}
 		case GL_TRIANGLE_STRIP:
-			if(cnt == 4)
+		{
+#if 1
+			if(cnt == 4) /* special case - quad */
 			{
 				entry->proc.pglBegin(GL_QUADS);
-				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + 1*stride));
-				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + 3*stride));
-				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + 2*stride));
-				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + 0*stride));
+				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb - 0*stride));
+				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb - 2*stride));
+				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb - 3*stride));
+				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb - 1*stride));
 				GL_CHECK(entry->proc.pglEnd());
 			}
 			else
+#endif
 			{
-				DWORD i = 0;
+				// Every even segment has inverted order, so we draw first (or last) one
+				// as seperate triangle and all other can be draw as strip in right order
+				// D - B - C
 				entry->proc.pglBegin(GL_TRIANGLES);
-				while(cnt >= 3)
-				{
-					if((i & 1) == 0)
-					{
-						MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + 1*stride));
-						MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + 2*stride));
-						MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + 0*stride));
-					}
-					else
-					{
-						MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + 2*stride));
-						MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + 1*stride));
-						MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + 0*stride));
-					}
-					vb += stride;
-					i++;
-					cnt--;
-				}
+				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb - 0*stride));
+				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb - 2*stride));
+				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb - 1*stride));
 				GL_CHECK(entry->proc.pglEnd());
+				vb -= stride;
+				cnt--;
+				
+				if(cnt >= 3)
+				{
+					entry->proc.pglBegin(GL_TRIANGLE_STRIP);
+					while(cnt > 0)
+					{
+						MesaDrawFVF_internal(entry, ctx, (FVF_t *)vb);
+						vb -= stride;
+						cnt--;
+					}
+					GL_CHECK(entry->proc.pglEnd());
+				}
 			}
 			break;
-		case GL_TRIANGLE_FAN:
-			entry->proc.pglBegin(GL_TRIANGLES);
-			FVF_t *first = (FVF_t *)(vb);
-			vb += ctx->state.fvf.stride;
-			while(cnt >= 3)
+		}
+		default:
+		{
+			entry->proc.pglBegin(gl_ptype);
+			while(cnt > 0)
 			{
-				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb));
-				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + stride));
-				MesaDrawFVF_internal(entry, ctx, first);
-				vb += stride;
-				cnt -= 1;
+				MesaDrawFVF_internal(entry, ctx, (FVF_t *)vb);
+				vb -= stride;
+				cnt--;
 			}
 			GL_CHECK(entry->proc.pglEnd());
 			break;
+		}
 	}
 }

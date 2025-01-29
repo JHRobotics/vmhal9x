@@ -26,7 +26,7 @@ typedef OSMESAproc (APIENTRYP OSMesaGetProcAddress_h)(const char *funcName);
 #undef MESA_API_OS
 #undef MESA_API_DRV
 
-#define MESA3D_MAX_TEXS 65536
+#define MESA3D_MAX_TEXS MAX_SURFACES
 #define MESA3D_MAX_CTXS 128
 #define MESA3D_MAX_MIPS 16
 #define MESA3D_CUBE_SIDES 6
@@ -217,7 +217,7 @@ typedef struct mesa3d_ctx
 		BOOL blend;
 		GLenum blend_sfactor;
 		GLenum blend_dfactor;
-		DWORD overrides[4]; // 128 bit set
+		DWORD overrides[8]; // 256 bit set
 		DWORD stipple[32];
 		GLfloat tfactor[4]; // TEXTUREFACTOR eq. GL_CONSTANT
 		BOOL texperspective;
