@@ -127,6 +127,12 @@ DWORD __stdcall CreateSurface(LPDDHAL_CREATESURFACEDATA pcsd)
 				DWORD dx = (lpSurf->lpGbl->wWidth  + 3) >> 2;
 				DWORD dy = (lpSurf->lpGbl->wHeight + 3) >> 2;
 
+				lpSurf->lpGbl->lPitch = dx * blksize; // for FOURCC needs to be fill
+				if(i == 0)
+				{
+					pcsd->lpDDSurfaceDesc->lPitch = dx * blksize;
+				}
+				
 				lpSurf->lpGbl->dwBlockSizeX = dx * dy *  blksize;
 				lpSurf->lpGbl->dwBlockSizeY = 1;
 				lpSurf->lpGbl->fpVidMem     = DDHAL_PLEASEALLOC_BLOCKSIZE;
@@ -211,6 +217,9 @@ DWORD __stdcall DestroySurface(LPDDHAL_DESTROYSURFACEDATA lpd)
 
 	SurfaceDelete(lpd->lpDDSurface->dwReserved1);
 	
+	
+	TOPIC("GARBAGE", "SurfaceDelete() success");
+	lpd->ddRVal = DD_OK;
 	return DDHAL_DRIVER_NOTHANDLED;
 }
 
@@ -334,13 +343,9 @@ DWORD __stdcall Unlock32(LPDDHAL_UNLOCKDATA pld)
 DWORD __stdcall SetExclusiveMode32(LPDDHAL_SETEXCLUSIVEMODEDATA psem)
 {
 	TRACE_ENTRY
-	
-#ifdef DEBUG
-	SetExceptionHandler();
-#endif
 
 	//VMDAHAL_t *ddhal = GetHAL(psem->lpDD);
-	
+
 	if(psem->dwEnterExcl)
 	{
 		TRACE("exclusive mode: ON");

@@ -231,7 +231,10 @@ DWORD __stdcall DrawPrimitives32(LPD3DHAL_DRAWPRIMITIVESDATA lpDrawData)
 		for(j = drawPrimitiveCounts->wNumStateChanges; j > 0; j--)
 		{
 			state = (LPD3DSTATE)lpData;
-			MesaSetRenderState(ctx, state, NULL);
+			D3DHAL_DP2RENDERSTATE rstate;
+			rstate.RenderState = state->drstRenderStateType;
+			rstate.dwState = state->dwArg[0];
+			MesaSetRenderState(ctx, &rstate, NULL);
 			lpData += sizeof(D3DSTATE);
 		}
 		
@@ -287,6 +290,10 @@ DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 	
 	TRACE("context id=%X", pd->dwhContext);
 
+#ifdef DEBUG
+	SetExceptionHandler();
+#endif
+
 	VALIDATE(pd)
 
 	LPBYTE insStart;
@@ -302,6 +309,15 @@ DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 		WARN("DrawPrimitives2_32: DDERR_INVALIDPARAMS");
 		return DDHAL_DRIVER_HANDLED;
 	}
+	
+	if(pd->dwFlags & (D3DHALDP2_REQVERTEXBUFSIZE | D3DHALDP2_REQCOMMANDBUFSIZE))
+	{
+		WARN("vertex buffer flags: pd->dwFlags=0x%X", pd->dwFlags);
+		/*
+		pd->dwErrorOffset   = 0;
+		pd->ddrval          = DDERR_INVALIDPARAMS;
+		return DDHAL_DRIVER_HANDLED;*/
+	}
 
 	if(pd->lpVertices)
 	{
@@ -315,11 +331,12 @@ DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 		}
   }
   
-	LPDWORD RStates;
+  TRACE("DrawPrimitives2_32: dwFlags=0x%X, dwVertexType=0x%X",
+  	pd->dwFlags, pd->dwVertexType);
+  
+	LPDWORD RStates = NULL;
 	if(pd->dwFlags & D3DHALDP2_EXECUTEBUFFER)
 		RStates = pd->lpdwRStates;
-	else
-		RStates = NULL;
 
 	LPBYTE cmdBufferStart    = insStart + pd->dwCommandOffset;
 	LPBYTE cmdBufferEnd      = cmdBufferStart + pd->dwCommandLength;
@@ -345,6 +362,19 @@ DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 		pd->ddrval = D3DERR_COMMAND_UNPARSED;
 	}
 	TRACE("MesaDraw6(...) = %d", rc);
+	
+	if(pd->dwFlags & D3DHALDP2_REQVERTEXBUFSIZE)
+	{
+		TRACE("want resize vertex buffer to %d bytes", pd->dwReqVertexBufSize);
+		pd->dwFlags &= ~(D3DHALDP2_SWAPVERTEXBUFFER | D3DHALDP2_REQVERTEXBUFSIZE);
+		pd->dwReqVertexBufSize = 1*1024*1024;
+	}
+	
+	if(pd->dwFlags & D3DHALDP2_REQCOMMANDBUFSIZE)
+	{
+		TRACE("want command vertex buffer to %d bytes", pd->dwReqCommandBufSize);
+		pd->dwFlags &= ~(D3DHALDP2_SWAPCOMMANDBUFFER | D3DHALDP2_REQCOMMANDBUFSIZE);
+	}
 	
 	return DDHAL_DRIVER_HANDLED;
 }
@@ -480,32 +510,36 @@ DWORD __stdcall GetDriverState32(LPDDHAL_GETDRIVERSTATEDATA pGDSData)
 DWORD __stdcall CreateSurfaceEx32(LPDDHAL_CREATESURFACEEXDATA lpcsxd)
 {
 	TRACE_ENTRY
-	
+
 	lpcsxd->ddRVal = DD_OK;
-	
+
 	if(lpcsxd->lpDDSLcl == NULL || lpcsxd->lpDDLcl == NULL)
 	{
 		return DDHAL_DRIVER_HANDLED;
 	}
-	
+
 	mesa3d_entry_t *entry = Mesa3DGet(GetCurrentProcessId(), TRUE);
-	
+
 	if(entry == NULL)
 	{
 		return DDHAL_DRIVER_HANDLED;
 	}
-	
-	TRACE("CreateSurfaceEx32 lpDDLcl=%X", lpcsxd->lpDDLcl);
-	
+
 	LPDDRAWI_DDRAWSURFACE_LCL surf = lpcsxd->lpDDSLcl;
-	
+
+	TRACE("CreateSurfaceEx32 lpDDLcl=0x%X vidmem=0x%X", lpcsxd->lpDDLcl, surf->lpGbl->fpVidMem);
+
 	/* this is from 3dlabs driver... */
-	if((surf->lpGbl->fpVidMem == 0) &&
-		(surf->ddsCaps.dwCaps & DDSCAPS_SYSTEMMEMORY))
+	if(surf->lpGbl->fpVidMem == 0)
 	{
-		// this is a system memory destroy notification
-		// so go ahead free the slot for this surface if we have it
-		SurfaceFree(entry, lpcsxd->lpDDLcl, surf);
+		if(surf->ddsCaps.dwCaps & DDSCAPS_SYSTEMMEMORY)
+		{
+			// this is a system memory destroy notification
+			// so go ahead free the slot for this surface if we have it
+			SurfaceFree(entry, lpcsxd->lpDDLcl, surf);
+		}
+
+		// wait for DestroySurface to remove vram surface
 		return DDHAL_DRIVER_HANDLED;
 	}
 	
@@ -552,7 +586,14 @@ DWORD __stdcall CreateSurfaceEx32(LPDDHAL_CREATESURFACEEXDATA lpcsxd)
 	}
 	else
 	{
-		WARN("CreateSurfaceEx32: ignoring type 0x%X, id %d", surf->ddsCaps.dwCaps, surf->lpSurfMore->dwSurfaceHandle);
+		if(surf->ddsCaps.dwCaps & DDSCAPS_RESERVED2)
+		{
+			TOPIC("EXEBUF", "surface 0x%X, vram=0x%X", surf->lpSurfMore->dwSurfaceHandle, surf->lpGbl->fpVidMem);
+		}
+		else
+		{
+			WARN("CreateSurfaceEx32: ignoring type 0x%X, id %d", surf->ddsCaps.dwCaps, surf->lpSurfMore->dwSurfaceHandle);
+		}
 	}
 	
 	return DDHAL_DRIVER_HANDLED;
@@ -635,7 +676,11 @@ DWORD __stdcall DestroyDDLocal32(LPDDHAL_DESTROYDDLOCALDATA lpdddd)
 DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 {
 	TRACE_ENTRY
-	
+
+#ifdef DEBUG
+	SetExceptionHandler();
+#endif
+
 	lpInput->ddRVal = DDERR_CURRENTLYNOTAVAIL;
 
 	TRACE("GUID: %08X-%04X-%04X-%02X%02X%02X%02X%02X%02X%02X%02X",
@@ -725,20 +770,36 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 	}
 	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_DDMoreSurfaceCaps))
 	{
-#pragma pack(push)
-#pragma pack(1)
-		struct
+		DDMORESURFACECAPS DDMoreSurfaceCaps;
+		DDSCAPSEX emptycaps[2];
+		DWORD i;
+		BYTE *ptr = lpInput->lpvData;
+
+		memset(&DDMoreSurfaceCaps, 0, sizeof(DDMORESURFACECAPS));
+		memset(&emptycaps[0], 0, sizeof(DDSCAPSEX)*2);
+
+		if(lpInput->dwExpectedSize < sizeof(DDMORESURFACECAPS))
 		{
-			DDMORESURFACECAPS  DDMoreSurfaceCaps;
-			DDSCAPSEX          ddsCapsEx;
-			DDSCAPSEX          ddsCapsExAlt;
-		} morecaps;
-#pragma pack(pop)
-		
-		memset(&morecaps, 0, sizeof(morecaps));
-		morecaps.DDMoreSurfaceCaps.dwSize = sizeof(morecaps);
-		
-		COPY_INFO(lpInput, morecaps, morecaps);
+			return DDHAL_DRIVER_HANDLED;
+		}
+
+		DWORD extra_heaps = (lpInput->dwExpectedSize - sizeof(DDMORESURFACECAPS)) / (sizeof(DDSCAPSEX)*2);
+		DDMoreSurfaceCaps.dwSize = sizeof(DDMORESURFACECAPS) + extra_heaps * sizeof(DDSCAPSEX) * 2;
+
+		memcpy(ptr, &DDMoreSurfaceCaps, sizeof(DDMORESURFACECAPS));
+		ptr += sizeof(DDMORESURFACECAPS);
+		for(i = 0; i < extra_heaps; i++)
+		{
+			memcpy(ptr, &emptycaps[0], sizeof(DDSCAPSEX)*2);
+			ptr += sizeof(DDSCAPSEX)*2;
+		}
+
+		lpInput->dwActualSize = DDMoreSurfaceCaps.dwSize;
+		lpInput->ddRVal = DD_OK;
+
+		TRACE("lpInput->dwExpectedSize=%d, lpInput->dwActualSize = %d",
+			lpInput->dwExpectedSize, lpInput->dwActualSize);
+
 		TRACE("GUID_DDMoreSurfaceCaps success");
 	}
 	else if(IsEqualIID(&lpInput->guidInfo, &GUID_D3DExtendedCaps))
@@ -834,6 +895,12 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 			dxcaps.dwMaxAnisotropy = VMHALenv.max_anisotropy;
 		}
 
+		TRACE("lpInput->dwExpectedSize=%d, D3DHAL_D3DEXTENDEDCAPS5=%d, D3DHAL_D3DEXTENDEDCAPS6=%d, D3DHAL_D3DEXTENDEDCAPS7=%d",
+			lpInput->dwExpectedSize,
+			sizeof(D3DHAL_D3DEXTENDEDCAPS5),
+			sizeof(D3DHAL_D3DEXTENDEDCAPS6),
+			sizeof(D3DHAL_D3DEXTENDEDCAPS7));
+
 		if(VMHALenv.ddi <= 5)
 		{
 			dxcaps.dwSize = sizeof(D3DHAL_D3DEXTENDEDCAPS5);
@@ -923,6 +990,69 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 			TRACE("GUID_D3DParseUnknownCommandCallback loaded");
 		}
 	}
+	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_NonLocalVidMemCaps) && VMHALenv.ddi >= 6)
+	{
+		DDNONLOCALVIDMEMCAPS DDNonLocalVidMemCaps;
+		memset(&DDNonLocalVidMemCaps, 0, sizeof(DDNonLocalVidMemCaps));
+		DDNonLocalVidMemCaps.dwSize = sizeof(DDNONLOCALVIDMEMCAPS);
+
+		TRACE("lpInput->dwExpectedSize=%d", lpInput->dwExpectedSize);
+
+		lpInput->ddRVal = DD_OK;
+		COPY_INFO(lpInput, DDNonLocalVidMemCaps, DDNONLOCALVIDMEMCAPS);
+		TRACE("GUID_NonLocalVidMemCaps set");
+	}
+	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_VideoPortCallbacks))
+	{
+		DDHAL_DDVIDEOPORTCALLBACKS vpCB;
+		memset(&vpCB, 0, sizeof(DDHAL_DDVIDEOPORTCALLBACKS));
+		vpCB.dwSize = sizeof(DDHAL_DDVIDEOPORTCALLBACKS);
+
+		lpInput->ddRVal = DD_OK;
+		COPY_INFO(lpInput, vpCB, DDHAL_DDVIDEOPORTCALLBACKS);
+	}
+	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_ColorControlCallbacks))
+	{
+		DDHAL_DDCOLORCONTROLCALLBACKS ccCB;
+		memset(&ccCB, 0, sizeof(DDHAL_DDCOLORCONTROLCALLBACKS));
+		ccCB.dwSize = sizeof(DDHAL_DDCOLORCONTROLCALLBACKS);
+
+		lpInput->ddRVal = DD_OK;
+		COPY_INFO(lpInput, ccCB, DDHAL_DDCOLORCONTROLCALLBACKS);
+	}
+	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_VideoPortCaps))
+	{
+		DDVIDEOPORTCAPS VideoPortCaps;
+		memset(&VideoPortCaps, 0, sizeof(DDVIDEOPORTCAPS));
+		VideoPortCaps.dwSize = sizeof(DDVIDEOPORTCAPS);
+
+		if(lpInput->dwExpectedSize != sizeof(DDVIDEOPORTCAPS))
+			return DDHAL_DRIVER_HANDLED;
+
+		lpInput->ddRVal = DD_OK;
+		COPY_INFO(lpInput, VideoPortCaps, DDVIDEOPORTCAPS);
+	}
+	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_KernelCallbacks))
+	{
+		DDHAL_DDKERNELCALLBACKS kCB;
+		memset(&kCB, 0, sizeof(DDHAL_DDKERNELCALLBACKS));
+		kCB.dwSize = sizeof(DDHAL_DDKERNELCALLBACKS);
+
+		lpInput->ddRVal = DD_OK;
+		COPY_INFO(lpInput, kCB, DDHAL_DDKERNELCALLBACKS);
+	}
+	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_KernelCaps))
+	{
+		DDKERNELCAPS kcaps;
+		memset(&kcaps, 0, sizeof(DDKERNELCAPS));
+		kcaps.dwSize = sizeof(DDKERNELCAPS);
+
+		if(lpInput->dwExpectedSize != sizeof(DDKERNELCAPS))
+			return DDHAL_DRIVER_HANDLED;
+
+		lpInput->ddRVal = DD_OK;
+		COPY_INFO(lpInput, kcaps, DDHAL_DDKERNELCALLBACKS);
+	}
 	else
 	{
 		TRACE("Not handled GUID: %08X-%04X-%04X-%02X%02X%02X%02X%02X%02X%02X%02X",
@@ -939,6 +1069,10 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 			lpInput->guidInfo.Data4[7]
 		);
 	}
+	/* also can be set:
+		CLSID_DirectDraw
+		GUID_MotionCompCallbacks
+	 */
 	
 	return DDHAL_DRIVER_HANDLED;
 }
@@ -949,7 +1083,7 @@ DWORD __stdcall ContextCreate32(LPD3DHAL_CONTEXTCREATEDATA pccd)
 
 	pccd->ddrval = D3DHAL_OUTOFCONTEXTS; /* error state */
 
-	mesa3d_entry_t *entry = Mesa3DGet(GetCurrentProcessId(), TRUE);
+	mesa3d_entry_t *entry = Mesa3DGet(pccd->dwPID, TRUE);
 	if(entry)
 	{
 		mesa3d_ctx_t *ctx = NULL;
@@ -1075,7 +1209,10 @@ DWORD __stdcall RenderState32(LPD3DHAL_RENDERSTATEDATA prd)
 		
 		for(i = 0; i < prd->dwCount; i++)
 		{
-			MesaSetRenderState(ctx, lpState, NULL);
+			D3DHAL_DP2RENDERSTATE rstate;
+			rstate.RenderState = lpState->drstRenderStateType;
+			rstate.dwState = lpState->dwArg[0];
+			MesaSetRenderState(ctx, &rstate, NULL);
 			lpState++;
 		}
 	GL_BLOCK_END
@@ -1363,6 +1500,81 @@ DWORD __stdcall SceneCapture32(LPD3DHAL_SCENECAPTUREDATA scdata)
 	return DDHAL_DRIVER_HANDLED;
 }
 
+DWORD __stdcall CanCreateExecuteBuffer32(LPDDHAL_CANCREATESURFACEDATA csd)
+{
+	TRACE_ENTRY
+	TOPIC("EXEBUF", "CanCreateExecuteBuffer32");
+
+	/* asume we can create the buffer every time */
+
+	csd->ddRVal = DD_OK;
+	return DDHAL_DRIVER_HANDLED;
+}
+
+DWORD __stdcall CreateExecuteBuffer32(LPDDHAL_CREATESURFACEDATA csd)
+{
+	TRACE_ENTRY
+	TOPIC("EXEBUF", "CreateExecuteBuffer32");
+	
+	int i;
+	LPDDRAWI_DDRAWSURFACE_LCL *lplpSList = csd->lplpSList;
+
+	for(i = 0; i < (int)csd->dwSCnt; i++)
+	{
+		LPDDRAWI_DDRAWSURFACE_LCL surf = lplpSList[i];
+		TOPIC("EXEBUF", "CreateExecuteBuffer32 dwLinearSize = %d", surf->lpGbl->dwLinearSize);
+
+		if(surf->lpGbl->dwLinearSize < 1*1024*1024)
+		{
+			surf->lpGbl->dwLinearSize = 1*1024*1024;
+		}
+
+		surf->lpGbl->fpVidMem = (DWORD)HeapAlloc(hSharedLargeHeap, HEAP_ZERO_MEMORY, surf->lpGbl->dwLinearSize);
+		if(surf->lpGbl->fpVidMem == 0)
+		{
+			csd->ddRVal = DDERR_OUTOFVIDEOMEMORY;
+			return DDHAL_DRIVER_HANDLED;
+		}
+	}
+
+	csd->ddRVal = DD_OK;
+	return DDHAL_DRIVER_HANDLED;
+}
+
+DWORD __stdcall DestroyExecuteBuffer32(LPDDHAL_DESTROYSURFACEDATA dsd)
+{
+	TRACE_ENTRY
+	TOPIC("EXEBUF", "DestroyExecuteBuffer32");
+
+	if(dsd->lpDDSurface->lpGbl->fpVidMem != 0)
+	{
+		HeapFree(hSharedLargeHeap, 0, (void*)dsd->lpDDSurface->lpGbl->fpVidMem);
+		dsd->lpDDSurface->lpGbl->fpVidMem = 0;
+	}
+
+	dsd->ddRVal = DD_OK;
+	return DDHAL_DRIVER_HANDLED;
+}
+
+DWORD __stdcall LockExecuteBuffer32(LPDDHAL_LOCKDATA lock)
+{
+	TRACE_ENTRY
+	TOPIC("EXEBUF", "LockExecuteBuffer32");
+	/* nop */
+
+	return DDHAL_DRIVER_NOTHANDLED; /* let the lock processed */
+}
+
+DWORD __stdcall UnlockExecuteBuffer32(LPDDHAL_UNLOCKDATA lock)
+{
+	TRACE_ENTRY
+	TOPIC("EXEBUF", "UnlockExecuteBuffer32");
+	/* nop */
+
+	return DDHAL_DRIVER_NOTHANDLED; /* let the unlock processed */
+}
+
+
 /* GLOBAL hal */
 static D3DHAL_GLOBALDRIVERDATA myGlobalD3DHal;
 
@@ -1425,11 +1637,21 @@ static D3DHAL_CALLBACKS myD3DHALCallbacks = {
 	0L,				// Reserved, must be zero
 };
 
+static DDHAL_DDEXEBUFCALLBACKS myD3DHALExeBufCallbacks = {
+	sizeof(DDHAL_DDEXEBUFCALLBACKS),
+	0, /* flags, auto sets in DRV */
+	CanCreateExecuteBuffer32, /* CanCreateExecuteBuffer */
+	CreateExecuteBuffer32,    /* CreateExecuteBuffer */
+	DestroyExecuteBuffer32,   /* DestroyExecuteBuffer */
+	LockExecuteBuffer32,      /* LockExecuteBuffer */
+	UnlockExecuteBuffer32     /* UnlockExecuteBuffer */
+};
+
 static D3DHAL_CALLBACKS myD3DHALCallbacks7;
 
 #include "d3d_caps.h"
 
-BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, VMDAHAL_D3DCAPS_t *lpHALFlags)
+BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, LPDDHAL_DDEXEBUFCALLBACKS lpHALExeBufCallbacks, VMDAHAL_D3DCAPS_t *lpHALFlags)
 {
 	memset(&myGlobalD3DHal, 0, sizeof(D3DHAL_GLOBALDRIVERDATA));
 	myGlobalD3DHal.dwSize = sizeof(D3DHAL_GLOBALDRIVERDATA);
@@ -1444,13 +1666,16 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, VM
 		myGlobalD3DHal.hwCaps = myCaps7;
 		if(VMHALenv.hw_tl)
 		{
+			/*
 			myGlobalD3DHal.hwCaps.dlcLightingCaps.dwCaps = D3DLIGHTCAPS_POINT | D3DLIGHTCAPS_SPOT | D3DLIGHTCAPS_DIRECTIONAL;
 			myGlobalD3DHal.hwCaps.dlcLightingCaps.dwLightingModel = D3DLIGHTINGMODEL_RGB;
 			myGlobalD3DHal.hwCaps.dlcLightingCaps.dwNumLights = 0;
+				^ this should be zero
+			*/
 		
 			myGlobalD3DHal.hwCaps.dwDevCaps |= 
 				D3DDEVCAPS_HWTRANSFORMANDLIGHT /* Device can support transformation and lighting in hardware and DRAWPRIMITIVES2EX must be also */
-				| D3DDEVCAPS_CANBLTSYSTONONLOCAL /* Device supports a Tex Blt from system memory to non-local vidmem */
+				/*| D3DDEVCAPS_CANBLTSYSTONONLOCAL*/ /* Device supports a Tex Blt from system memory to non-local vidmem */
 				| D3DDEVCAPS_HWRASTERIZATION; /* Device has HW acceleration for rasterization */
 		}
 	}
@@ -1472,17 +1697,16 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, VM
 	{
 		*lplpHALCallbacks = (DWORD)&myD3DHALCallbacks;
 	}
-	
+
+	memcpy(lpHALExeBufCallbacks, &myD3DHALExeBufCallbacks, sizeof(DDHAL_DDEXEBUFCALLBACKS));
+
 	lpHALFlags->ddscaps = DDSCAPS_3DDEVICE | DDSCAPS_TEXTURE | DDSCAPS_ZBUFFER | DDSCAPS_MIPMAP;
  	lpHALFlags->zcaps = DDBD_16 | DDBD_24 | DDBD_32;
  	lpHALFlags->caps2 = DDSCAPS2_CUBEMAP | DDCAPS2_WIDESURFACES;
- 	//lpHALFlags->caps2 = DDCAPS2_NO2DDURING3DSCENE;
+//	lpHALFlags->caps2 = DDCAPS2_NO2DDURING3DSCENE;
 
-/*
-	if(VMHALenv.ddi >= 6)
-	{
-		lpHALFlags->zcaps |= DDBD_24;
-	}*/
+	/* buffer allocation is done in driver only when this flag is set */
+	lpHALFlags->ddscaps |= DDSCAPS_EXECUTEBUFFER;
 
 	return TRUE;
 }

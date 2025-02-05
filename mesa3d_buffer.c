@@ -40,64 +40,28 @@
 #endif
 
 #define RESET_COLOR 1
-#define RESET_DEPTH 2
-#define RESET_SWAP  4
+//#define RESET_DEPTH 2
+//#define RESET_SWAP  4
 
 static void FBOConvReset(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, DWORD flags)
 {
-	if(flags & RESET_SWAP)
-		return;
-
 	if(flags & RESET_COLOR)
 	{
-		if(ctx->fbo.color_fb)
+		if(ctx->fbo.color16_fb)
 		{
-			TOPIC("FRAMEBUFFER", "delete frambuffer: %d", ctx->fbo.color_fb);
-			GL_CHECK(entry->proc.pglDeleteFramebuffers(1, &ctx->fbo.color_fb));
-			ctx->fbo.color_fb = 0;
+			TOPIC("FRAMEBUFFER", "delete frambuffer: %d", ctx->fbo.color16_fb);
+			GL_CHECK(entry->proc.pglDeleteFramebuffers(1, &ctx->fbo.color16_fb));
+			ctx->fbo.color16_fb = 0;
 		}
 
-		if(ctx->fbo.color_tex)
+		if(ctx->fbo.color16_tex)
 		{
-			TOPIC("FRAMEBUFFER", "delete texture: %d", ctx->fbo.color_tex);
-			GL_CHECK(entry->proc.pglDeleteTextures(1, &ctx->fbo.color_tex));
-			ctx->fbo.color_tex = 0;
+			TOPIC("FRAMEBUFFER", "delete texture: %d", ctx->fbo.color16_tex);
+			GL_CHECK(entry->proc.pglDeleteTextures(1, &ctx->fbo.color16_tex));
+			ctx->fbo.color16_tex = 0;
 		}
 		
-		ctx->fbo.color_format = 0;
-	}
-	
-	if(flags & RESET_DEPTH)
-	{
-		if(ctx->fbo.depth_fb)
-		{
-			TOPIC("FRAMEBUFFER", "delete frambuffer: %d", ctx->fbo.depth_fb);
-			GL_CHECK(entry->proc.pglDeleteFramebuffers(1, &ctx->fbo.depth_fb));
-			ctx->fbo.depth_fb = 0;
-		}
-
-		if(ctx->fbo.stencil_fb)
-		{
-			TOPIC("FRAMEBUFFER", "delete frambuffer: %d", ctx->fbo.stencil_fb);
-			GL_CHECK(entry->proc.pglDeleteFramebuffers(1, &ctx->fbo.stencil_fb));
-			ctx->fbo.stencil_fb = 0;
-		}
-
-		if(ctx->fbo.depth_tex)
-		{
-			TOPIC("FRAMEBUFFER", "delete texture: %d", ctx->fbo.depth_tex);
-			GL_CHECK(entry->proc.pglDeleteTextures(1, &ctx->fbo.depth_tex));
-			ctx->fbo.depth_tex = 0;
-		}
-		
-		if(ctx->fbo.stencil_tex)
-		{
-			TOPIC("FRAMEBUFFER", "delete texture: %d", ctx->fbo.stencil_tex);
-			GL_CHECK(entry->proc.pglDeleteTextures(1, &ctx->fbo.stencil_tex));
-			ctx->fbo.stencil_tex = 0;
-		}
-		
-		ctx->fbo.depth_type = 0;
+		ctx->fbo.color16_format = 0;
 	}
 }
 
@@ -108,6 +72,7 @@ NUKED_LOCAL void MesaBufferUploadColor(mesa3d_ctx_t *ctx, const void *src)
 	mesa3d_entry_t *entry = ctx->entry;
 	GLenum type;
 	GLint format;
+	BOOL create = FALSE;
 	
 	switch(ctx->front_bpp)
 	{
@@ -134,35 +99,43 @@ NUKED_LOCAL void MesaBufferUploadColor(mesa3d_ctx_t *ctx, const void *src)
 		GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
 		GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_CUBE_MAP));
 		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.plane_color_tex));
-		GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, ctx->state.sw, ctx->state.sh, 0, format, type, src));
+		//GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, ctx->state.sw, ctx->state.sh, 0, format, type, src));
+		GL_CHECK(entry->proc.pglTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, ctx->state.sw, ctx->state.sh, format, type, src));
 	}
 	else
 	{
-		if(ctx->fbo.color_format != format)
+		if(ctx->fbo.color16_format != format)
 		{
-			TOPIC("FRAMEBUFFER", "different color - %d vs %d", ctx->fbo.color_format, format);
+			TOPIC("FRAMEBUFFER", "different color - %d vs %d", ctx->fbo.color16_format, format);
 			FBOConvReset(entry, ctx, RESET_COLOR);
 			
-			GL_CHECK(entry->proc.pglGenTextures(1, &ctx->fbo.color_tex));
-			TOPIC("FRAMEBUFFER", "new texture: %d", ctx->fbo.color_tex);
-			if(ctx->fbo.color_fb == 0)
-			{
-				GL_CHECK(entry->proc.pglGenFramebuffers(1, &ctx->fbo.color_fb));
-				TOPIC("FRAMEBUFFER", "new frambuffer: %d", ctx->fbo.color_fb);
-			}
+			GL_CHECK(entry->proc.pglGenTextures(1, &ctx->fbo.color16_tex));
+			TOPIC("FRAMEBUFFER", "new texture: %d", ctx->fbo.color16_tex);
 			
-			ctx->fbo.color_format = format;
+			GL_CHECK(entry->proc.pglGenFramebuffers(1, &ctx->fbo.color16_fb));
+			TOPIC("FRAMEBUFFER", "new frambuffer: %d", ctx->fbo.color16_fb);
+			
+			ctx->fbo.color16_format = format;
+			create = TRUE;
 		}
 		
 		GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0+ctx->fbo_tmu));
 		GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
 		GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_CUBE_MAP));
-		GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.color_fb));
-		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.color_tex));
-		GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, ctx->state.sw, ctx->state.sh, 0, format, type, src));
-		GL_CHECK(entry->proc.pglFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->fbo.color_tex, 0));
+		GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.color16_fb));
+		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.color16_tex));
+		//GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, ctx->state.sw, ctx->state.sh, 0, format, type, src));
 		
-		GL_CHECK(entry->proc.pglBindFramebuffer(GL_READ_FRAMEBUFFER, ctx->fbo.color_fb));
+		if(create)
+		{
+			GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, ctx->fbo.width, ctx->fbo.height, 0, format, type, NULL));
+		}
+		
+		GL_CHECK(entry->proc.pglTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, ctx->state.sw, ctx->state.sh, format, type, src));
+		
+		GL_CHECK(entry->proc.pglFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->fbo.color16_tex, 0));
+		
+		GL_CHECK(entry->proc.pglBindFramebuffer(GL_READ_FRAMEBUFFER, ctx->fbo.color16_fb));
 		GL_CHECK(entry->proc.pglBindFramebuffer(GL_DRAW_FRAMEBUFFER, ctx->fbo.plane_fb));
 		GL_CHECK(entry->proc.pglBlitFramebuffer(
 			0, 0, ctx->state.sw, ctx->state.sh,
@@ -226,7 +199,7 @@ NUKED_LOCAL void MesaBufferDownloadColor(mesa3d_ctx_t *ctx, void *dst)
 #include "mesa3d_zconv.h"
 
 #define DS_NATIVE 0
-#define DS_CONVERT_GPU 1
+//#define DS_CONVERT_GPU 1
 #define DS_CONVERT_CPU 2
 
 NUKED_LOCAL void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
@@ -247,10 +220,6 @@ NUKED_LOCAL void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 		case 16:
 			type   = GL_UNSIGNED_SHORT;
 			format = GL_DEPTH_COMPONENT;
-			if(!ctx->state.depth.wbuffer)
-			{
-				convert_type = DS_CONVERT_GPU;
-			}
 			break;
 		case 24:
 			type = GL_UNSIGNED_INT_24_8;
@@ -261,9 +230,7 @@ NUKED_LOCAL void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 			format = GL_DEPTH_STENCIL;
 			if(!ctx->state.depth.wbuffer)
 			{
-				if(VMHALenv.zfloat)
-					convert_type = DS_CONVERT_GPU;
-				else
+				if(!VMHALenv.zfloat)
 					convert_type = DS_NATIVE;
 			}
 			break;
@@ -282,7 +249,7 @@ NUKED_LOCAL void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 		GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
 		GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_CUBE_MAP));
 		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.plane_depth_tex));
-		GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, ctx->state.sw, ctx->state.sh, 0, format, type, src));
+		GL_CHECK(entry->proc.pglTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, ctx->state.sw, ctx->state.sh, format, type, src));
 	}
 	else if(convert_type == DS_CONVERT_CPU) /* DX depth buffer can not be load to GL directly */
 	{
@@ -293,81 +260,13 @@ NUKED_LOCAL void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 			GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
 			GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_CUBE_MAP));
 			GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.plane_depth_tex));
-			GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0,
-				VMHALenv.zfloat ? GL_DEPTH32F_STENCIL8 : GL_DEPTH24_STENCIL8,
-				ctx->state.sw, ctx->state.sh, 0, GL_DEPTH_STENCIL,
+			GL_CHECK(entry->proc.pglTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+				ctx->state.sw, ctx->state.sh, GL_DEPTH_STENCIL,
 				VMHALenv.zfloat ? GL_FLOAT_32_UNSIGNED_INT_24_8_REV : GL_UNSIGNED_INT_24_8,
 				native_src));
 			
 			MesaTempFree(ctx, native_src);
 		}
-	}
-	else /* = DS_CONVERT_GPU, DX depth buffer is in GL compatible format */
-	{
-		if(ctx->fbo.depth_type != type)
-		{
-			TOPIC("FRAMEBUFFER", "different fb type %d vs %d, FBOConvReset()", ctx->fbo.depth_type, type);
-			FBOConvReset(entry, ctx, RESET_DEPTH);
-
-			GL_CHECK(entry->proc.pglGenTextures(1, &ctx->fbo.depth_tex));
-			TOPIC("FRAMEBUFFER", "new texture: %d", ctx->fbo.depth_tex);
-
-			if(ctx->fbo.depth_fb == 0)
-			{
-				GL_CHECK(entry->proc.pglGenFramebuffers(1, &ctx->fbo.depth_fb));
-				TOPIC("FRAMEBUFFER", "new frambuffer: %d",  ctx->fbo.depth_fb);
-			}
-
-			GL_CHECK(entry->proc.pglGenTextures(1, &ctx->fbo.stencil_tex));
-			TOPIC("FRAMEBUFFER", "new texture: %d", ctx->fbo.stencil_tex);
-
-			if(ctx->fbo.stencil_fb == 0)
-			{
-				GL_CHECK(entry->proc.pglGenFramebuffers(1, &ctx->fbo.stencil_fb));
-				TOPIC("FRAMEBUFFER", "new frambuffer: %d",  ctx->fbo.stencil_fb);
-			}
-
-			ctx->fbo.depth_type = type;
-		}
-		
-		GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0+ctx->fbo_tmu));
-		GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
-		GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_CUBE_MAP));
-	
-		// GL_FLOAT_32_UNSIGNED_INT_24_8_REV
-		// GL_DEPTH32F_STENCIL8
-	
-		GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.depth_fb));
-		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.depth_tex));
-		
-		TRACE("w: %d h: %d; format=%X type=%X src=%X", ctx->state.sw, ctx->state.sh, format, type, src);
-		
-		if(ctx->depth_bpp != 32)
-		{
-			GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, VMHALenv.zfloat ? GL_DEPTH_COMPONENT32F : GL_DEPTH_COMPONENT24, ctx->state.sw, ctx->state.sh, 0, format, type, src));
-			GL_CHECK(entry->proc.pglFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, ctx->fbo.depth_tex, 0));
-		}
-		else
-		{
-			GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, VMHALenv.zfloat ? GL_DEPTH32F_STENCIL8 : GL_DEPTH24_STENCIL8, ctx->state.sw, ctx->state.sh, 0, format, type, src));
-			GL_CHECK(entry->proc.pglFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, ctx->fbo.depth_tex, 0));
-		}
-	
-		GL_CHECK(entry->proc.pglBindFramebuffer(GL_READ_FRAMEBUFFER, ctx->fbo.depth_fb));
-		GL_CHECK(entry->proc.pglBindFramebuffer(GL_DRAW_FRAMEBUFFER, ctx->fbo.plane_fb));
-	
-	#ifdef TRACE_ON
-		GLenum test = entry->proc.pglCheckFramebufferStatus(GL_READ_FRAMEBUFFER);
-		TOPIC("GL", "(depth) glCheckFramebufferStatus = 0x%X", test);
-	#endif
-		
-		GL_CHECK(entry->proc.pglBlitFramebuffer(
-			0, 0, ctx->state.sw, ctx->state.sh,
-			0, 0, ctx->state.sw, ctx->state.sh,
-	  	GL_DEPTH_BUFFER_BIT, GL_NEAREST));
-
-		// default buffer binding
-		GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.plane_fb));
 	}
 		
 	if(ctx->fbo_tmu < ctx->tmu_count)
@@ -683,80 +582,53 @@ NUKED_LOCAL BOOL MesaBufferFBOSetup(mesa3d_ctx_t *ctx, int width, int height)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 	BOOL need_create = TRUE;
-	int i;
 	
-	if(ctx->fbo.width == width && ctx->fbo.height == height)
+	if(ctx->fbo.width >= width && ctx->fbo.height >= height)
 	{
 		need_create = FALSE;
-	}
-	else
-	{
-		mesa_fbo_t tmp;
-		
-		for(i = 0; i < MESA_FBO_SWAPS; i++)
-		{
-			if(ctx->fbo_swap[i].width == width && ctx->fbo_swap[i].height == height)
-			{
-				memcpy(&tmp,              &ctx->fbo,         sizeof(mesa_fbo_t));
-				memcpy(&ctx->fbo,         &ctx->fbo_swap[i], sizeof(mesa_fbo_t));
-				memcpy(&ctx->fbo_swap[i], &tmp,              sizeof(mesa_fbo_t));
-
-				FBOConvReset(entry, ctx, RESET_SWAP);
-				GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.plane_fb));
-				GL_CHECK(entry->proc.pglViewport(0, 0, width, height));
-				
-				TOPIC("FBSWAP", "fbo <-> fbo_swap");
-				need_create = FALSE;
-				break;
-			}
-		}
 	}
 	
 	if(need_create)
 	{
 		GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, 0));
 		
-		mesa_fbo_t *fbo_swap_top = &ctx->fbo_swap[ctx->fbo_swap_top];
+		mesa_fbo_t *fbo = &ctx->fbo;
 
-		if(fbo_swap_top->plane_fb)
+		if(fbo->plane_fb)
 		{
-			TOPIC("FRAMEBUFFER", "delete frambuffer: %d", fbo_swap_top->plane_fb);
-			GL_CHECK(entry->proc.pglDeleteFramebuffers(1, &fbo_swap_top->plane_fb));
+			TOPIC("FRAMEBUFFER", "delete frambuffer: %d", fbo->plane_fb);
+			GL_CHECK(entry->proc.pglDeleteFramebuffers(1, &fbo->plane_fb));
 			TOPIC("FBSWAP", "delete fbo_swap");
 		}
 
-		if(fbo_swap_top->plane_color_tex)
+		if(fbo->plane_color_tex)
 		{
-			TOPIC("FRAMEBUFFER", "delete texture: %d", fbo_swap_top->plane_color_tex);
-			GL_CHECK(entry->proc.pglDeleteTextures(1, &fbo_swap_top->plane_color_tex));
+			TOPIC("FRAMEBUFFER", "delete texture: %d", fbo->plane_color_tex);
+			GL_CHECK(entry->proc.pglDeleteTextures(1, &fbo->plane_color_tex));
 		}
 
-		if(fbo_swap_top->plane_depth_tex)
+		if(fbo->plane_depth_tex)
 		{
-			TOPIC("FRAMEBUFFER", "delete texture: %d", fbo_swap_top->plane_depth_tex);
-			GL_CHECK(entry->proc.pglDeleteTextures(1, &fbo_swap_top->plane_depth_tex));
+			TOPIC("FRAMEBUFFER", "delete texture: %d", fbo->plane_depth_tex);
+			GL_CHECK(entry->proc.pglDeleteTextures(1, &fbo->plane_depth_tex));
 		}
 
-		TOPIC("FBSWAP", "fbo -> fbo_swap[%d]", ctx->fbo_swap_top);
-		memcpy(fbo_swap_top, &ctx->fbo, sizeof(mesa_fbo_t));
-		ctx->fbo_swap_top = (ctx->fbo_swap_top + 1) % MESA_FBO_SWAPS;
-
-		GL_CHECK(entry->proc.pglGenFramebuffers(1, &ctx->fbo.plane_fb));
-		TOPIC("FRAMEBUFFER", "new frambuffer: %d", ctx->fbo.plane_fb);
-		GL_CHECK(entry->proc.pglGenTextures(1, &ctx->fbo.plane_color_tex));
-		TOPIC("FRAMEBUFFER", "new texture: %d", ctx->fbo.plane_color_tex);
-		GL_CHECK(entry->proc.pglGenTextures(1, &ctx->fbo.plane_depth_tex));
-		TOPIC("FRAMEBUFFER", "new texture: %d", ctx->fbo.plane_depth_tex);
+		GL_CHECK(entry->proc.pglGenFramebuffers(1, &fbo->plane_fb));
+		TOPIC("FRAMEBUFFER", "new frambuffer: %d", fbo->plane_fb);
+		GL_CHECK(entry->proc.pglGenTextures(1, &fbo->plane_color_tex));
+		TOPIC("FRAMEBUFFER", "new texture: %d", fbo->plane_color_tex);
+		GL_CHECK(entry->proc.pglGenTextures(1, &fbo->plane_depth_tex));
+		TOPIC("FRAMEBUFFER", "new texture: %d", fbo->plane_depth_tex);
 
 		GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0 + ctx->fbo_tmu));
-		GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.plane_fb));
+		GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, fbo->plane_fb));
 	
-		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.plane_color_tex));
+		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, fbo->plane_color_tex));
 		GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL));
 
 		GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
 		GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
-		GL_CHECK(entry->proc.pglFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->fbo.plane_color_tex, 0));
+		GL_CHECK(entry->proc.pglFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fbo->plane_color_tex, 0));
 		
 		GLenum depth_format = GL_DEPTH24_STENCIL8;
 		if(VMHALenv.zfloat)
@@ -764,16 +636,22 @@ NUKED_LOCAL BOOL MesaBufferFBOSetup(mesa3d_ctx_t *ctx, int width, int height)
 			depth_format = GL_DEPTH32F_STENCIL8;
 		}
 
-		GL_CHECK(entry->proc.pglBindRenderbuffer(GL_RENDERBUFFER, ctx->fbo.plane_depth_tex));
+		GL_CHECK(entry->proc.pglBindRenderbuffer(GL_RENDERBUFFER, fbo->plane_depth_tex));
 		GL_CHECK(entry->proc.pglRenderbufferStorage(GL_RENDERBUFFER, depth_format, width, height));
-		GL_CHECK(entry->proc.pglFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, ctx->fbo.plane_depth_tex));
+		GL_CHECK(entry->proc.pglFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, fbo->plane_depth_tex));
+		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, fbo->plane_depth_tex));
+		GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0,
+			VMHALenv.zfloat ? GL_DEPTH32F_STENCIL8 : GL_DEPTH24_STENCIL8,
+			width, height, 0, GL_DEPTH_STENCIL, 
+			VMHALenv.zfloat ? GL_FLOAT_32_UNSIGNED_INT_24_8_REV : GL_UNSIGNED_INT_24_8,			
+			NULL));
 
-		ctx->fbo.width = width;
-		ctx->fbo.height = height;
+		fbo->width = width;
+		fbo->height = height;
 
-		FBOConvReset(entry, ctx, RESET_COLOR|RESET_DEPTH);
+		FBOConvReset(entry, ctx, RESET_COLOR);
 		
-		GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.plane_fb));
+		GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, fbo->plane_fb));
 
 		GL_CHECK(entry->proc.pglViewport(0, 0, width, height));
 		

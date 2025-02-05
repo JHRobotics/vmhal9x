@@ -108,7 +108,7 @@ DWORD __stdcall SetColorKey32(LPDDHAL_SETCOLORKEYDATA lpSetColorKey);
 
 DWORD __stdcall DestroyDriver32(LPDDHAL_DESTROYDRIVERDATA pdstr);
 
-BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, VMDAHAL_D3DCAPS_t *lpHALFlags);
+BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, LPDDHAL_DDEXEBUFCALLBACKS lpHALExeBufCallbacks, VMDAHAL_D3DCAPS_t *lpHALFlags);
 
 /* FBHDA */
 BOOL FBHDA_load_ex(VMDAHAL_t *pHal);

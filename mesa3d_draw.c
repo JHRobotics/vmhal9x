@@ -479,41 +479,20 @@ NUKED_LOCAL void MesaDrawFVFs(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vertices
 		}
 		case GL_TRIANGLE_STRIP:
 		{
-#if 1
-			if(cnt == 4) /* special case - quad */
+			if(cnt >= 3)
 			{
-				entry->proc.pglBegin(GL_QUADS);
-				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb - 0*stride));
-				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb - 2*stride));
-				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb - 3*stride));
-				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb - 1*stride));
-				GL_CHECK(entry->proc.pglEnd());
-			}
-			else
-#endif
-			{
-				// Every even segment has inverted order, so we draw first (or last) one
-				// as seperate triangle and all other can be draw as strip in right order
-				// D - B - C
-				entry->proc.pglBegin(GL_TRIANGLES);
-				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb - 0*stride));
-				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb - 2*stride));
-				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb - 1*stride));
-				GL_CHECK(entry->proc.pglEnd());
-				vb -= stride;
-				cnt--;
-				
-				if(cnt >= 3)
+				MesaReverseCull(ctx);
+
+				entry->proc.pglBegin(GL_TRIANGLE_STRIP);
+				while(cnt > 0)
 				{
-					entry->proc.pglBegin(GL_TRIANGLE_STRIP);
-					while(cnt > 0)
-					{
-						MesaDrawFVF_internal(entry, ctx, (FVF_t *)vb);
-						vb -= stride;
-						cnt--;
-					}
-					GL_CHECK(entry->proc.pglEnd());
+					MesaDrawFVF_internal(entry, ctx, (FVF_t *)vb);
+					vb -= stride;
+					cnt--;
 				}
+				GL_CHECK(entry->proc.pglEnd());
+
+				MesaSetCull(ctx);
 			}
 			break;
 		}

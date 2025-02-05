@@ -93,7 +93,7 @@ static void FBHDA_call_unlock()
 
 static BOOL FBHDA_handle()
 {
-	TRACE_ENTRY
+	//TRACE_ENTRY
 	
 	HMODULE mod = GetModuleHandle(VMDISP9X_LIB);
 	BOOL need_load = TRUE;
@@ -105,8 +105,10 @@ static BOOL FBHDA_handle()
 		}
 		else
 		{
+			WARN("Library on wrong address GetModuleHandle(...)=0x%X, fbhda_lib.lib=0x%X",
+				mod, fbhda_lib.lib
+			);
 			fbhda_lib.lib = mod;
-			WARN("Library on wrong address");
 		}
 	}
 	else
@@ -126,7 +128,7 @@ static BOOL FBHDA_handle()
 			LoadAddress(FBHDA_swap);
 		}
 		
-		TRACE("FBHDA_handle() = TRUE");
+		//TRACE("FBHDA_handle() = TRUE");
 
 		return TRUE;
 	}
@@ -160,7 +162,7 @@ void FBHDA_free()
 
 FBHDA_t *FBHDA_setup()
 {
-	TRACE_ENTRY
+	//TRACE_ENTRY
 	
 	FBHDA_t *fbhda = NULL;
 	

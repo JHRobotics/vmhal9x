@@ -55,8 +55,8 @@ VMHAL_enviroment_t VMHALenv = {
 	TRUE, // HW T&L
 	TRUE, // readback
 	TRUE, // depthimport
-	2048, // tex w  (can be query by GL_MAX_TEXTURE_SIZE)
-	2048, // tex h
+	16384, // tex w  (can be query by GL_MAX_TEXTURE_SIZE)
+	16384, // tex h
 	9, // tex units
 	8, // lights (GL min. is 8)
 	6, // clip planes (GL min. is 6), GL_MAX_CLIP_PLANES
@@ -332,10 +332,12 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 	D3DHALCreateDriver(
 		&globalHal->d3dhal_global,
 		&globalHal->d3dhal_callbacks,
+		&globalHal->d3dhal_exebuffcallbacks,
 		&globalHal->d3dhal_flags);
 #else
 	globalHal->d3dhal_global = 0;
 	globalHal->d3dhal_callbacks = 0;
+	memset(&globalHal->d3dhal_exebuffcallbacks, 0, sizeof(DDHAL_DDEXEBUFCALLBACKS));
 	memset(&globalHal->d3dhal_flags, 0, sizeof(VMDAHAL_D3DCAPS_t));
 #endif
 

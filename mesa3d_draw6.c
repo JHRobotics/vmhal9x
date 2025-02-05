@@ -559,34 +559,19 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				pos = (WORD*)prim;
 				count = inst->wPrimitiveCount+2;
 				prim += sizeof(WORD) * count;
-#if 1
-				if(count == 4)
+
+				if(count >= 3)
 				{
-					entry->proc.pglBegin(GL_QUADS);
-					MesaDrawFVFIndex(ctx, vertices, base+pos[3]);
-					MesaDrawFVFIndex(ctx, vertices, base+pos[1]);
-					MesaDrawFVFIndex(ctx, vertices, base+pos[0]);
-					MesaDrawFVFIndex(ctx, vertices, base+pos[2]);
-					entry->proc.pglEnd();
-				}
-				else
-#endif
-				{
-					entry->proc.pglBegin(GL_TRIANGLES);
-					MesaDrawFVFIndex(ctx, vertices, base+pos[count-1]);
-					MesaDrawFVFIndex(ctx, vertices, base+pos[count-3]);
-					MesaDrawFVFIndex(ctx, vertices, base+pos[count-2]);
-					entry->proc.pglEnd();
-					
-					if(count >= 4)
+					MesaReverseCull(ctx);
+
+					entry->proc.pglBegin(GL_TRIANGLE_STRIP);
+					for(i = count-1; i >= 0; i--)
 					{
-						entry->proc.pglBegin(GL_TRIANGLE_STRIP);
-						for(i = count-2; i >= 0; i--)
-						{
-							MesaDrawFVFIndex(ctx, vertices, base+pos[i]);
-						}
-						entry->proc.pglEnd();
+						MesaDrawFVFIndex(ctx, vertices, base+pos[i]);
 					}
+					entry->proc.pglEnd();
+
+					MesaSetCull(ctx);
 				}
 				SET_DIRTY;
 				NEXT_INST(0);
@@ -606,7 +591,7 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 
 				entry->proc.pglBegin(GL_TRIANGLE_FAN);
 				MesaDrawFVFIndex(ctx, vertices, base+pos[0]);
-				for(i = inst->wPrimitiveCount; i >= 1; i--)
+				for(i = inst->wPrimitiveCount+1; i >= 1; i--)
 				{
 					MesaDrawFVFIndex(ctx, vertices, base+pos[i]);
 				}
@@ -724,7 +709,8 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 
 				for(i = 0; i < inst->wStateCount; i++)
 				{
-					MesaSetRenderState(ctx, (LPD3DSTATE)prim, RStates);
+					LPD3DHAL_DP2RENDERSTATE rs = (LPD3DHAL_DP2RENDERSTATE)prim;
+					MesaSetRenderState(ctx, rs, RStates);
 					prim += sizeof(D3DHAL_DP2RENDERSTATE);
 				}
 				

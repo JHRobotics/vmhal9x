@@ -110,9 +110,13 @@ void PrintCode(FILE *f, DWORD addr)
 	fprintf(f, "=== end of dump ===\r\n");
 }
 
+static LPTOP_LEVEL_EXCEPTION_FILTER prev_exception_handler = NULL;
+
 LONG WINAPI VmhalExceptionFilter(struct _EXCEPTION_POINTERS *ExceptionInfo)
 {
 	FILE *f;
+
+	ERR("EXCEPTION");
 
 	f = fopen("C:\\vmhal.dump", "ab");
 	if(f)
@@ -129,15 +133,24 @@ LONG WINAPI VmhalExceptionFilter(struct _EXCEPTION_POINTERS *ExceptionInfo)
 		
 		fclose(f);
 	}
-	
-	ERR("EXCEPTION");
-	
+
+	if(prev_exception_handler)
+	{
+		return prev_exception_handler(ExceptionInfo);
+	}
+
 	return EXCEPTION_EXECUTE_HANDLER;
 }
 
 void SetExceptionHandler()
 {
-	SetUnhandledExceptionFilter(VmhalExceptionFilter);
+	LPTOP_LEVEL_EXCEPTION_FILTER prev;
+	
+	prev = SetUnhandledExceptionFilter(VmhalExceptionFilter);
+	if(prev != NULL && prev != VmhalExceptionFilter)
+	{
+//		prev_exception_handler = prev;
+	}
 }
 
 #endif /* DEBUG */

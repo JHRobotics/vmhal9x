@@ -16,6 +16,8 @@ struct mesa3d_entry;
 
 typedef OSMESAproc (APIENTRYP OSMesaGetProcAddress_h)(const char *funcName);
 
+typedef struct _D3DHAL_DP2RENDERSTATE D3DHAL_DP2RENDERSTATE, *LPD3DHAL_DP2RENDERSTATE;
+
 #define MESA_API(_n, _t, _p) \
 	typedef _t (APIENTRYP _n ## _h)_p;
 #define MESA_API_OS  MESA_API
@@ -51,9 +53,6 @@ typedef OSMESAproc (APIENTRYP OSMesaGetProcAddress_h)(const char *funcName);
 #define MESA_NEGATIVEY 3
 #define MESA_POSITIVEZ 4
 #define MESA_NEGATIVEZ 5
-
-/* SVGA3D don't like generate too much framebuffers, so we need to save them */
-#define MESA_FBO_SWAPS 8
 
 typedef struct mesa3d_texture
 {
@@ -166,14 +165,9 @@ typedef struct mesa_fbo
 	GLuint plane_color_tex;
 	GLuint plane_depth_tex;
 	/* conversion and blit */
-	GLuint color_tex;
-	GLuint color_fb;
-	GLenum color_format;
-	GLuint depth_tex;
-	GLuint depth_fb;
-	GLuint stencil_tex;
-	GLuint stencil_fb;
-	GLenum depth_type;
+	GLuint color16_tex;
+	GLuint color16_fb;
+	GLenum color16_format;
 } mesa_fbo_t;
 
 #define SURFACE_TABLES_PER_ENTRY 8 /* in theory there should by only 1 */
@@ -211,6 +205,7 @@ typedef struct mesa3d_ctx
 		// screen coordinates
 		GLint sw;
 		GLint sh;
+		GLenum cull;
 		BOOL zvisible; // Z-visibility testing
 		BOOL specular; // specular enable (DX state)
 		BOOL specular_vertex; // use glSecondaryColor
@@ -287,8 +282,6 @@ typedef struct mesa3d_ctx
 
 	/* fbo */
 	mesa_fbo_t fbo;
-	mesa_fbo_t fbo_swap[MESA_FBO_SWAPS];
-	int fbo_swap_top;
 	int fbo_tmu; /* can be higher than tmu_count, if using extra TMU for FBO operations */
 
 	/* rendering state */
@@ -448,7 +441,7 @@ NUKED_LOCAL void MesaApplyLighting(mesa3d_ctx_t *ctx);
 #define MESA_TF_VIEW       2
 #define MESA_TF_WORLD      4
 //#define MESA_TF_TEXTURE    8
-NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DSTATE state, LPDWORD RStates);
+NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DHAL_DP2RENDERSTATE state, LPDWORD RStates);
 NUKED_LOCAL void MesaDraw(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype, LPVOID vertices, DWORD verticesCnt);
 NUKED_LOCAL void MesaDrawIndex(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype,
 	LPVOID vertices, DWORD verticesCnt,
@@ -520,6 +513,8 @@ NUKED_LOCAL mesa3d_texture_t *SurfaceGetTexture(surface_id sid, void *ctx, int l
 /* need GL block */
 NUKED_LOCAL mesa3d_texture_t *MesaTextureFromSurfaceHandle(mesa3d_ctx_t *ctx, DWORD surfaceHandle);
 NUKED_LOCAL void MesaApplyMaterial(mesa3d_ctx_t *ctx);
+NUKED_LOCAL void MesaSetCull(mesa3d_ctx_t *ctx);
+NUKED_LOCAL void MesaReverseCull(mesa3d_ctx_t *ctx);
 
 /* need GL block + viewmodel matrix to matrix.view */
 NUKED_LOCAL void MesaTLRecalcModelview(mesa3d_ctx_t *ctx);

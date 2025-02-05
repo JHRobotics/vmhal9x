@@ -1175,4 +1175,9 @@ typedef HRESULT (__stdcall *PFND3DPARSEUNKNOWNCOMMAND) (LPVOID lpvCommands, LPVO
  */
 #define D3DTSS_TEXTUREMAP 0
 
+/* exec bufer flags */
+#define D3DDEVCAPS_HWVERTEXBUFFER 0x02000000L /* Device supports Driver Allocated Vertex Buffers*/
+#define D3DDEVCAPS_HWINDEXBUFFER  0x04000000L /* Device supports Driver Allocated Index Buffers*/
+#define D3DDEVCAPS_SUBVOLUMELOCK  0x08000000L /* Device supports locking a part of volume texture*/
+
 #endif /* _D3DHAL_H */
