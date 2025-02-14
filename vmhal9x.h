@@ -157,6 +157,7 @@ void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly);
 BOOL SurfaceIsEmpty(surface_id sid);
 void SurfaceClearEmpty(surface_id sid);
 void SurfaceClearData(surface_id sid);
+DWORD SurfaceDataSize(LPDDRAWI_DDRAWSURFACE_LCL surf, DWORD *outPitch);
 LPDDRAWI_DDRAWSURFACE_LCL SurfaceGetLCL(surface_id sid);
 
 inline static DWORD SurfacePitch(DWORD width, DWORD bpp)
@@ -171,8 +172,10 @@ inline static DWORD SurfacePitch(DWORD width, DWORD bpp)
 typedef struct _VMHAL_enviroment
 {
 	BOOL scanned;
-	BOOL dx6; // dx6 runtime latch
-	BOOL dx7; // dx7 runtime latch
+	BOOL dx6; // latch for runtime >= dx6
+	BOOL dx7; // ... dx7
+	BOOL dx8; // ... dx8
+	BOOL dx9; // ... dx9
 	DWORD ddi;
 	BOOL  hw_tl;
 	BOOL  readback; // readback surface color/depth

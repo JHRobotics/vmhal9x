@@ -36,6 +36,7 @@
 #include "mesa3d.h"
 #include "surface.h"
 #include "ddrawi_ddk.h"
+#include "d3dhal_ddk.h"
 
 #include "nocrt.h"
 #endif
@@ -869,38 +870,79 @@ void SurfaceClearEmpty(surface_id sid)
 	}
 }
 
-static DWORD SurfaceDataSize(LPDDRAWI_DDRAWSURFACE_LCL surf)
+DWORD SurfaceDataSize(LPDDRAWI_DDRAWSURFACE_LCL surf, DWORD *outPitch)
 {
 	if(surf)
 	{
 		if(surf->lpGbl->ddpfSurface.dwFlags & DDPF_FOURCC)
 		{
 			DWORD blksize = 0;
-	
+			BOOL align = TRUE;
+			DWORD dx = surf->lpGbl->wWidth;
+			DWORD dy = surf->lpGbl->wHeight;
+			
 			switch(surf->lpGbl->ddpfSurface.dwFourCC)
 			{
 				case MAKEFOURCC('D', 'X', 'T', '1'):
 					blksize = 8;
+					dx = (surf->lpGbl->wWidth  + 3) >> 2;
+					dy = (surf->lpGbl->wHeight + 3) >> 2;
+					align = FALSE;
 					break;
 				case MAKEFOURCC('D', 'X', 'T', '2'):
 				case MAKEFOURCC('D', 'X', 'T', '3'):
 					blksize = 16;
+					dx = (surf->lpGbl->wWidth  + 3) >> 2;
+					dy = (surf->lpGbl->wHeight + 3) >> 2;
+					align = FALSE;
 					break;
 				case MAKEFOURCC('D', 'X', 'T', '4'):
 				case MAKEFOURCC('D', 'X', 'T', '5'):
 					blksize = 16;
+					dx = (surf->lpGbl->wWidth  + 3) >> 2;
+					dy = (surf->lpGbl->wHeight + 3) >> 2;
+					align = FALSE;
+					break;
+				case D3DFMT_R5G6B5:
+				case D3DFMT_A1R5G5B5:
+				case D3DFMT_X1R5G5B5:
+				case D3DFMT_A4R4G4B4:
+				case D3DFMT_D16_LOCKABLE:
+				case D3DFMT_D16:
+					blksize = 2;
+					break;
+				case D3DFMT_X8R8G8B8:
+				case D3DFMT_A8R8G8B8:
+				case D3DFMT_D32:
+				case D3DFMT_S8D24:
+					blksize = 4;
 					break;
 				default:
 					return 0;
 					break;
 			}
-	
-			DWORD dx = (surf->lpGbl->wWidth  + 3) >> 2;
-			DWORD dy = (surf->lpGbl->wHeight + 3) >> 2;
 			
+			if(align)
+			{
+				DWORD pitch = ((dx * blksize) + FBHDA_ROW_ALIGN - 1) & (~(FBHDA_ROW_ALIGN-1));
+				if(outPitch)
+				{
+					*outPitch = pitch;
+				}
+				return dy * pitch;
+			}
+			
+			if(outPitch)
+			{
+			 *outPitch = dx * blksize;
+			}
 			return dx * dy *  blksize;
 		}
 		
+		if(outPitch)
+		{
+			*outPitch = surf->lpGbl->lPitch;
+		}
 		return surf->lpGbl->wHeight * surf->lpGbl->lPitch;
 	}
 	
@@ -913,7 +955,7 @@ void SurfaceClearData(surface_id sid)
 	
 	if(info && info->surf.fpVidMem != 0)
 	{
-		DWORD s = SurfaceDataSize(info->surf.lpLcl);
+		DWORD s = SurfaceDataSize(info->surf.lpLcl, NULL);
 		if(s)
 		{
 			memset((void*)info->surf.fpVidMem, 0, s);
@@ -931,7 +973,7 @@ LPDDRAWI_DDRAWSURFACE_LCL SurfaceDuplicate(LPDDRAWI_DDRAWSURFACE_LCL original)
 		sizeof(DDRAWI_DDRAWSURFACE_MORE) +
 		sizeof(DDRAWI_DDRAWSURFACE_GBL);
 
-	DWORD datasize = SurfaceDataSize(original);
+	DWORD datasize = SurfaceDataSize(original, NULL);
 	size += datasize;
 
 	TOPIC("CUBE", "alloc, size=%d from this datasize=%d, original->lpGbl=0x%X",

@@ -170,6 +170,26 @@ typedef struct mesa_fbo
 	GLenum color16_format;
 } mesa_fbo_t;
 
+typedef struct mesa_rec_tmu
+{
+	DWORD set[1];
+	DWORD state[32];
+} mesa_rec_tmu_t;
+
+#define MESA_REC_MAX_STATE 255
+#define MESA_REC_MAX_TMU_STATE 32
+#define MESA_RECS_MAX 32
+
+typedef struct mesa_rec_state
+{
+	DWORD handle;
+//	DWORD statemask[8];
+	DWORD stateset[8]; // 8 x 32b
+//	DWORD tmumask[1];
+	DWORD state[256];
+	mesa_rec_tmu_t tmu[MESA_TMU_MAX];
+} mesa_rec_state_t;
+
 #define SURFACE_TABLES_PER_ENTRY 8 /* in theory there should by only 1 */
 
 typedef struct mesa3d_ctx
@@ -278,7 +298,11 @@ typedef struct mesa3d_ctx
 			GLdouble plane[MESA_CLIPS_MAX][4];
 		} clipping;
 		struct mesa3d_tmustate tmu[MESA_TMU_MAX];
+		BOOL recording;
+		mesa_rec_state_t *record;
+		D3DSTATEBLOCKTYPE record_type;
 	} state;
+	mesa_rec_state_t *records[MESA_RECS_MAX];
 
 	/* fbo */
 	mesa_fbo_t fbo;
@@ -453,6 +477,7 @@ NUKED_LOCAL void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, vo
 NUKED_LOCAL void MesaDrawRefreshState(mesa3d_ctx_t *ctx);
 NUKED_LOCAL void MesaDraw3(mesa3d_ctx_t *ctx, DWORD op, void *prim, LPBYTE vertices);
 NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LPBYTE vertices, DWORD *error_offset, LPDWORD RStates);
+NUKED_LOCAL BOOL MesaRecord6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LPBYTE vertices, DWORD *error_offset, LPDWORD RStates);
 
 NUKED_LOCAL void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, DWORD stencil, int rects_cnt, RECT *rects);
 NUKED_LOCAL DWORD DDSurf_GetBPP(DDSURF *surf);
@@ -519,6 +544,10 @@ NUKED_LOCAL void MesaReverseCull(mesa3d_ctx_t *ctx);
 /* need GL block + viewmodel matrix to matrix.view */
 NUKED_LOCAL void MesaTLRecalcModelview(mesa3d_ctx_t *ctx);
 
+/* mesa DX to GL constants */
+NUKED_FAST GLenum MesaConvPrimType(D3DPRIMITIVETYPE dx_type);
+NUKED_FAST DWORD MesaConvPrimVertex(D3DPRIMITIVETYPE dx_type, DWORD prim_count);
+
 /* chroma to alpha conversion */
 NUKED_LOCAL void *MesaChroma32(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
 NUKED_LOCAL void *MesaChroma24(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
@@ -526,6 +555,14 @@ NUKED_LOCAL void *MesaChroma16(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWOR
 NUKED_LOCAL void *MesaChroma15(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
 NUKED_LOCAL void *MesaChroma12(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
 NUKED_LOCAL void MesaChromaFree(mesa3d_ctx_t *ctx, void *ptr);
+
+/* state recording (needs GL block) */
+NUKED_LOCAL void MesaRecStart(mesa3d_ctx_t *ctx, DWORD handle, D3DSTATEBLOCKTYPE sbType);
+NUKED_LOCAL void MesaRecStop(mesa3d_ctx_t *ctx);
+NUKED_LOCAL void MesaRecApply(mesa3d_ctx_t *ctx, DWORD handle);
+NUKED_LOCAL void MesaRecDelete(mesa3d_ctx_t *ctx, DWORD handle);
+NUKED_LOCAL void MesaRecState(mesa3d_ctx_t *ctx, DWORD state, DWORD value);
+NUKED_LOCAL void MesaRecTMUState(mesa3d_ctx_t *ctx, DWORD tmu, DWORD state, DWORD value);
 
 #define MESA_1OVER16       0.0625f
 #define MESA_1OVER255	     0.003921568627451f

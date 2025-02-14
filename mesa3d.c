@@ -285,6 +285,80 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp, GLint *internalformat, GLen
 					*type = GL_UNSIGNED_BYTE;
 					return TRUE;
 					break;
+				/* DX8/DX9 */
+				case D3DFMT_R5G6B5:
+					*bpp = 16;
+					*internalformat = GL_RGB;
+					*format = GL_RGB;
+					*type = GL_UNSIGNED_SHORT_5_6_5;
+					*compressed = FALSE;
+					return TRUE;
+					break;
+				case D3DFMT_X8R8G8B8:
+					*bpp = 32;
+					*internalformat = GL_RGB;
+					*format = GL_BGRA;
+					*type = GL_UNSIGNED_INT_8_8_8_8_REV;
+					*compressed = FALSE;
+					return TRUE;
+					break;
+				case D3DFMT_A1R5G5B5:
+					*bpp = 16;
+					*internalformat = GL_RGBA;
+					*format = GL_BGRA;
+					*type = GL_UNSIGNED_SHORT_1_5_5_5_REV;
+					*compressed = FALSE;
+					return TRUE;
+					break;
+				case D3DFMT_X1R5G5B5:
+					*bpp = 16;
+					*internalformat = GL_RGB;
+					*format = GL_BGRA;
+					*type = GL_UNSIGNED_SHORT_1_5_5_5_REV;
+					*compressed = FALSE;
+					return TRUE;
+					break;
+				case D3DFMT_A4R4G4B4:
+					*bpp = 16;
+					*internalformat = GL_RGBA;
+					*format = GL_BGRA;
+					*type = GL_UNSIGNED_SHORT_4_4_4_4_REV;
+					*compressed = FALSE;
+					return TRUE;
+					break;
+				case D3DFMT_A8R8G8B8:
+					*bpp = 32;
+					*internalformat = GL_RGBA;
+					*format = GL_BGRA;
+					*type = GL_UNSIGNED_INT_8_8_8_8_REV;
+					*compressed = FALSE;
+					return TRUE;
+					break;
+				case D3DFMT_D16_LOCKABLE:
+				case D3DFMT_D16:
+					*internalformat = GL_DEPTH_COMPONENT;
+					*format = GL_DEPTH_COMPONENT;
+					*type = GL_UNSIGNED_SHORT;
+					*bpp = 16;
+					*compressed = FALSE;
+					return TRUE;
+					break;
+				case D3DFMT_D32:
+					*internalformat = GL_DEPTH_COMPONENT;
+					*format = GL_DEPTH_COMPONENT;
+					*type = GL_UNSIGNED_INT;
+					*bpp = 32;
+					*compressed = FALSE;
+					return TRUE;
+					break;
+				case D3DFMT_S8D24:
+					*internalformat = GL_DEPTH_STENCIL;
+					*format = GL_DEPTH_STENCIL;
+					*type = GL_UNSIGNED_INT_24_8;
+					*bpp = 32;
+					*compressed = FALSE;
+					return TRUE;
+					break;
 			}
 		}
 		else if(fmt.dwFlags & DDPF_ALPHA)
@@ -1910,12 +1984,17 @@ NUKED_LOCAL void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, vo
 		}\
 	}while(0)
 
-#define D3DRENDERSTATE_SCENECAPTURE 62
+#define D3DRENDERSTATE_EVICTMANAGEDTEXTURES   61
+#define D3DRENDERSTATE_SCENECAPTURE           62
+#define D3DRS_DELETERTPATCH                  169
+#define D3DRS_MAXVERTEXSHADERINST            196
+#define D3DRS_MAXPIXELSHADERINST             197
 /*
  * I may miss somewere something but this (undocumented) state
  * is send just before DD flip ...
  * Update (after more investigation): it is part of permedia2 sample driver,
  * but not part of the D3DRENDERSTATE enum and all later documentations/headers.
+ * Update II: part of DDK2k3 documentation
  */
 
 #define RENDERSTATE(_c) case _c: TOPIC("RS", "%s=0x%X", #_c, state->dwState);
@@ -2515,6 +2594,50 @@ NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DHAL_DP2RENDERSTATE s
 							break;
 					}
 					break;
+				RENDERSTATE(D3DRS_SOFTWAREVERTEXPROCESSING)
+					TRACE("D3DRS_SOFTWAREVERTEXPROCESSING=0x%X", state->dwState);
+					break;
+				RENDERSTATE(D3DRS_POINTSIZE)
+					break;
+				RENDERSTATE(D3DRS_POINTSIZE_MIN)
+					break;
+				RENDERSTATE(D3DRS_POINTSPRITEENABLE)
+					break;
+				RENDERSTATE(D3DRS_POINTSCALEENABLE)
+					break;
+				RENDERSTATE(D3DRS_POINTSCALE_A)
+					break;
+				RENDERSTATE(D3DRS_POINTSCALE_B)
+					break;
+				RENDERSTATE(D3DRS_POINTSCALE_C)
+					break;
+				RENDERSTATE(D3DRS_MULTISAMPLEANTIALIAS)
+					break;
+				RENDERSTATE(D3DRS_MULTISAMPLEMASK)
+					break;
+				RENDERSTATE(D3DRS_PATCHEDGESTYLE)
+					WARN("D3DRS_DEBUGMONITORTOKEN=0x%X", state->dwState);
+					break;
+				RENDERSTATE(D3DRS_PATCHSEGMENTS)
+					WARN("D3DRS_DEBUGMONITORTOKEN=0x%X", state->dwState);
+					break;
+				RENDERSTATE(D3DRS_DEBUGMONITORTOKEN)
+					TRACE("D3DRS_DEBUGMONITORTOKEN=0x%X", state->dwState);
+					break;
+				RENDERSTATE(D3DRS_POINTSIZE_MAX)
+					break;
+				RENDERSTATE(D3DRS_INDEXEDVERTEXBLENDENABLE)
+					break;
+				RENDERSTATE(D3DRS_COLORWRITEENABLE)
+					break;
+				RENDERSTATE(D3DRS_TWEENFACTOR)
+					break;
+				RENDERSTATE(D3DRS_BLENDOP)
+					break;
+				RENDERSTATE(D3DRS_POSITIONORDER)
+					break;
+				RENDERSTATE(D3DRS_NORMALORDER)
+					break;
 				default:
 					WARN("Unknown render state: %d (0x%X)", type, type);
 					break;
@@ -2526,7 +2649,7 @@ NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DHAL_DP2RENDERSTATE s
 
 #undef RENDERSTATE
 
-NUKED_INLINE GLenum DX2GLPrimitive(D3DPRIMITIVETYPE dx_type)
+NUKED_FAST GLenum MesaConvPrimType(D3DPRIMITIVETYPE dx_type)
 {
 	GLenum gl_type = -1;
 	
@@ -2556,6 +2679,23 @@ NUKED_INLINE GLenum DX2GLPrimitive(D3DPRIMITIVETYPE dx_type)
 	}
 
 	return gl_type;
+}
+
+NUKED_FAST DWORD MesaConvPrimVertex(D3DPRIMITIVETYPE dx_type, DWORD prim_count)
+{
+	switch(dx_type)
+	{
+		case D3DPT_POINTLIST:     return prim_count;
+		case D3DPT_LINELIST:      return prim_count*2;
+		case D3DPT_LINESTRIP:     return prim_count+1;
+		case D3DPT_TRIANGLELIST:  return prim_count*3;
+		case D3DPT_TRIANGLESTRIP: return prim_count+2;
+		case D3DPT_TRIANGLEFAN:   return prim_count+2;
+		default:
+			break;
+	}
+
+	return 0;
 }
 
 NUKED_INLINE GLenum nonMipFilter(GLenum filter)
@@ -3293,6 +3433,12 @@ NUKED_LOCAL void MesaDrawRefreshState(mesa3d_ctx_t *ctx)
 					setTexGen(entry, ctx, 2);
 					break;
 				case D3DTSS_TCI_PASSTHRU:
+				case D3DTSS_ADDRESSW:
+				case D3DTSS_COLORARG0:
+				case D3DTSS_ALPHAARG0:
+				case D3DTSS_RESULTARG:
+				case D3DTSS_CONSTANT:
+					break;
 				default:
 					TOPIC("MAPPING", "(%d)D3DTSS_TCI_PASSTHRU: %d", i, ctx->state.tmu[i].coordscalc);
 					setTexGen(entry, ctx, 0);
@@ -3310,7 +3456,7 @@ NUKED_LOCAL void MesaDraw(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTE
 
 //	MesaDrawSetSurfaces(ctx);
 
-	GLenum gl_ptype = DX2GLPrimitive(dx_ptype);
+	GLenum gl_ptype = MesaConvPrimType(dx_ptype);
 
 	if(gl_ptype != -1)
 	{
@@ -3408,7 +3554,7 @@ NUKED_LOCAL void MesaDrawIndex(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3D
 	
 //	MesaDrawSetSurfaces(ctx);
 
-	GLenum gl_ptype = DX2GLPrimitive(dx_ptype);
+	GLenum gl_ptype = MesaConvPrimType(dx_ptype);
 
 	if(gl_ptype != -1)
 	{

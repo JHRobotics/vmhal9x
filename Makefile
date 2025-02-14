@@ -87,9 +87,9 @@ VMDISP9X_OBJS = $(NOCRT_OBJS) vmdisp9x.c.o
 ifdef D3DHAL
   ifdef CODENUKED
     VMHAL9X_OBJS += mesa3d_nuked.c.o
-    DEPS += d3d.c surface.c mesa3d.c mesa3d_buffer.c mesa3d_draw.c mesa3d_chroma.c mesa3d_matrix.c mesa3d_draw6.c mesa3d_dump.c
+    DEPS += d3d.c surface.c mesa3d.c mesa3d_buffer.c mesa3d_draw.c mesa3d_chroma.c mesa3d_matrix.c mesa3d_draw6.c mesa3d_dump.c mesa3d_state.c
   else
-	  VMHAL9X_OBJS += d3d.c.o surface.c.o mesa3d.c.o mesa3d_buffer.c.o mesa3d_draw.c.o mesa3d_chroma.c.o mesa3d_matrix.c.o mesa3d_draw6.c.o mesa3d_dump.c.o
+	  VMHAL9X_OBJS += d3d.c.o surface.c.o mesa3d.c.o mesa3d_buffer.c.o mesa3d_draw.c.o mesa3d_chroma.c.o mesa3d_matrix.c.o mesa3d_draw6.c.o mesa3d_dump.c.o mesa3d_state.c.o
 	endif
 	CFLAGS += -DD3DHAL
 endif

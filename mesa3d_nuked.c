@@ -35,6 +35,7 @@
 #include "d3dhal_ddk.h"
 #include "ddrawi_ddk.h"
 #include "vmdahal32.h"
+#include <d3d8caps.h>
 #include "vmhal9x.h"
 #include "mesa3d.h"
 #include "osmesa.h"
@@ -50,5 +51,6 @@
 #include "mesa3d_chroma.c"
 #include "mesa3d_dump.c"
 #include "mesa3d_buffer.c"
+#include "mesa3d_state.c"
 #include "surface.c"
 #include "d3d.c"

@@ -39,6 +39,27 @@
 #define HEAP_SHARED      0x04000000
 #endif
 
+#ifndef DDHALINFO_ISPRIMARYDISPLAY
+#define DDHALINFO_ISPRIMARYDISPLAY 0x00000001l
+// indicates driver is primary display driver
+#endif
+
+#ifndef DDHALINFO_MODEXILLEGAL
+#define DDHALINFO_MODEXILLEGAL 0x00000002l
+// indicates this hardware does not support modex modes
+#endif
+
+#ifndef DDHALINFO_GETDRIVERINFOSET
+#define DDHALINFO_GETDRIVERINFOSET 0x00000004l
+// indicates that GetDriverInfo is set
+#endif
+
+#ifndef DDHALINFO_GETDRIVERINFO2
+#define DDHALINFO_GETDRIVERINFO2 0x00000008l
+// indicates driver support GetDriverInfo2 variant
+// of GetDriverInfo. New for DX 8.0
+#endif
+
 HANDLE hSharedHeap;
 HANDLE hSharedLargeHeap;
 static HINSTANCE dllHinst = NULL;
@@ -48,9 +69,11 @@ VMDAHAL_t *globalHal;
 BOOL halVSync = FALSE;
 
 VMHAL_enviroment_t VMHALenv = {
-	FALSE,
-	FALSE,
-	FALSE,
+	FALSE, /* scanned */
+	FALSE, /* runtime dx6 */
+	FALSE, /* runtime dx7 */
+	FALSE, /* runtime dx8 */
+	FALSE, /* runtime dx9 */
 	7, // DDI (maximum)
 	TRUE, // HW T&L
 	TRUE, // readback
@@ -264,6 +287,11 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 
 #ifdef D3DHAL
 	globalHal->cb32.GetDriverInfo = GetDriverInfo32;
+	globalHal->cb32.flags = DDHALINFO_ISPRIMARYDISPLAY; // TODO: set for drivers DDHALINFO_MODEXILLEGAL (vmware workstation)
+	if(VMHALenv.ddi >= 8)
+	{
+		globalHal->cb32.flags |= DDHALINFO_GETDRIVERINFO2;
+	}
 #endif
 	globalHal->cb32.DestroyDriver = DestroyDriver32;
 	

@@ -33,7 +33,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "vmdahal32.h"
-
+#include <d3d8caps.h>
 #include "vmhal9x.h"
 #include "mesa3d.h"
 
@@ -82,6 +82,8 @@ static BOOL ValidateCtx(DWORD dwhContext)
 		(_d3d)->ddrval = D3DHAL_CONTEXT_BAD; \
 		ERR("Invalid context");\
 		return DDHAL_DRIVER_HANDLED;}
+
+#include "d3d_caps.h"
 
 DWORD __stdcall SetRenderTarget32(LPD3DHAL_SETRENDERTARGETDATA lpSetRenderData)
 {
@@ -349,7 +351,14 @@ DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 			MesaSpaceIdentitySet(ctx);
 		}
 		MesaApplyLighting(ctx);
-		rc = MesaDraw6(ctx, cmdBufferStart, cmdBufferEnd, vertices, &pd->dwErrorOffset, RStates);
+		if(!ctx->state.recording)
+		{
+			rc = MesaDraw6(ctx, cmdBufferStart, cmdBufferEnd, vertices, &pd->dwErrorOffset, RStates);
+		}
+		else
+		{
+			rc = MesaRecord6(ctx, cmdBufferStart, cmdBufferEnd, vertices, &pd->dwErrorOffset, RStates);
+		}
 		MesaSpaceIdentityReset(ctx);
 	GL_BLOCK_END
 
@@ -362,7 +371,8 @@ DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 		pd->ddrval = D3DERR_COMMAND_UNPARSED;
 	}
 	TRACE("MesaDraw6(...) = %d", rc);
-	
+
+#if 0
 	if(pd->dwFlags & D3DHALDP2_REQVERTEXBUFSIZE)
 	{
 		TRACE("want resize vertex buffer to %d bytes", pd->dwReqVertexBufSize);
@@ -375,7 +385,8 @@ DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 		TRACE("want command vertex buffer to %d bytes", pd->dwReqCommandBufSize);
 		pd->dwFlags &= ~(D3DHALDP2_SWAPCOMMANDBUFFER | D3DHALDP2_REQCOMMANDBUFSIZE);
 	}
-	
+#endif
+
 	return DDHAL_DRIVER_HANDLED;
 }
 
@@ -653,6 +664,221 @@ DWORD __stdcall DestroyDDLocal32(LPDDHAL_DESTROYDDLOCALDATA lpdddd)
 	return DDHAL_DRIVER_HANDLED;
 }
 
+static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lpActualSize, void *lpvData)
+{
+	switch (pgdi2->dwType)
+	{
+		case D3DGDI2_TYPE_DXVERSION:
+		{
+			TRACE("D3DGDI2_TYPE_DXVERSION");
+			// This is a way for a driver on NT to find out the DX-Runtime 
+			// version. This information is provided to a new driver (i.e. 
+			// one that  exposes GETDRIVERINFO2) for DX7 applications and 
+			// DX8 applications. And you should get x0000800 for 
+			// dwDXVersion; or more accurately, you should get
+			// DD_RUNTIME_VERSION which is defined in ddrawi.h.
+			DD_DXVERSION *pdxv = (DD_DXVERSION*)pgdi2;
+			if(pdxv->dwDXVersion >= 0x700)
+			{
+				VMHALenv.dx6 = TRUE;
+				VMHALenv.dx7 = TRUE;
+			}
+
+			if(pdxv->dwDXVersion >= 0x800)
+				VMHALenv.dx8 = TRUE;
+
+			if(pdxv->dwDXVersion >= 0x900)
+				VMHALenv.dx9 = TRUE;
+
+			TRACE("pdxv->dwDXVersion=0x%X", pdxv->dwDXVersion);
+
+			*lpActualSize = sizeof(DD_DXVERSION);
+			*lpRVal = DD_OK;
+			break;
+		}
+		case D3DGDI2_TYPE_GETFORMATCOUNT:
+		{
+			TRACE("D3DGDI2_TYPE_GETFORMATCOUNT");
+			// Its a request for the number of texture formats
+			// we support. Get the extended data structure so
+			// we can fill in the format count field.
+			DD_GETFORMATCOUNTDATA *pgfcd = (DD_GETFORMATCOUNTDATA*)pgdi2;
+			pgfcd->dwFormatCount = MYTEXTUREFORMATSDX8_COUNT;
+			// Note : DX9 runtime passes in 0x900 in dwReserved
+			*lpActualSize = sizeof(DD_GETFORMATCOUNTDATA);
+			*lpRVal = DD_OK;
+			break;
+		}
+		case D3DGDI2_TYPE_GETFORMAT:
+		{
+			TRACE("D3DGDI2_TYPE_GETFORMAT");
+			// Its a request for a particular format we support.
+			// Get the extended data structure so we can fill in
+			// the format field.
+			DD_GETFORMATDATA *pgfd = (DD_GETFORMATDATA*)pgdi2;
+			if(pgfd->dwFormatIndex >= MYTEXTUREFORMATSDX8_COUNT)
+			{
+				*lpActualSize = 0;
+				*lpRVal       = DDERR_INVALIDPARAMS;
+				break;
+			}
+			memcpy(&pgfd->format, &myTextureFormatsDX8[pgfd->dwFormatIndex], sizeof(pgfd->format));
+			*lpActualSize = sizeof(DD_GETFORMATDATA);
+			*lpRVal = DD_OK;
+			break;
+		}
+		case D3DGDI2_TYPE_GETD3DCAPS8:
+		{
+			TRACE("D3DGDI2_TYPE_GETD3DCAPS8");
+			// The runtime is requesting the DX8 D3D caps 
+			D3DCAPS8 caps;
+			memset(&caps, 0, sizeof(D3DCAPS8));
+			caps.DeviceType = D3DDEVTYPE_HAL;
+			caps.AdapterOrdinal = 0;
+
+			caps.Caps = DDCAPS_GDI | /* HW is shared with GDI */
+				DDCAPS_BLT | /* BLT is supported */
+				DDCAPS_BLTDEPTHFILL | /* depth fill */
+				DDCAPS_BLTCOLORFILL | /* color fill */
+				DDCAPS_BLTSTRETCH   | /* stretching blt */
+				DDCAPS_COLORKEY     | /* transparentBlt */
+				DDCAPS_CANBLTSYSMEM | /* from to sysmem blt */
+				DDCAPS_3D           |
+			0;
+			caps.Caps2 = DDSCAPS2_CUBEMAP | DDCAPS2_WIDESURFACES | D3DCAPS2_CANRENDERWINDOWED; // D3DCAPS2_FULLSCREENGAMMA | D3DCAPS2_NO2DDURING3DSCENE
+			caps.Caps3 = 0;
+			/* JH: ^should we copy here DDCAPS_* flags or use only D3DCAPS_* flags?
+			 * permedia driver do first one, from DX8 SDK doc say's the second...
+			 */
+			
+			caps.PresentationIntervals = 0;
+			caps.CursorCaps = 0;//D3DCURSORCAPS_COLOR | D3DCURSORCAPS_LOWRES;
+			caps.DevCaps =
+				//D3DDEVCAPS_CANBLTSYSTONONLOCAL | // Device supports blits from system-memory textures to nonlocal video-memory textures. */
+				D3DDEVCAPS_CANRENDERAFTERFLIP | // Device can queue rendering commands after a page flip. Applications do not change their behavior if this flag is set; this capability simply means that the device is relatively fast.
+				D3DDEVCAPS_DRAWPRIMTLVERTEX  | //Device exports a DrawPrimitive-aware hardware abstraction layer (HAL). 
+				D3DDEVCAPS_EXECUTESYSTEMMEMORY | // Device can use execute buffers from system memory. 
+				D3DDEVCAPS_EXECUTEVIDEOMEMORY | // Device can use execute buffers from video memory. 
+				D3DDEVCAPS_HWRASTERIZATION | // Device has hardware acceleration for scene rasterization. 
+				D3DDEVCAPS_HWTRANSFORMANDLIGHT | // Device can support transformation and lighting in hardware. 
+				//D3DDEVCAPS_NPATCHES | // Device supports N patches. 
+				//D3DDEVCAPS_PUREDEVICE | // Device can support rasterization, transform, lighting, and shading in hardware. (no need for final version of runtime)
+				//D3DDEVCAPS_QUINTICRTPATCHES | // Device supports quintic béziers and B-splines. 
+				//D3DDEVCAPS_RTPATCHES | // Device supports rectangular and triangular patches. 
+				//D3DDEVCAPS_RTPATCHHANDLEZERO | // When this device capability is set, the hardware architecture does not require caching of any information, and uncached patches (handle zero) will be drawn as efficiently as cached ones. Note that setting D3DDEVCAPS_RTPATCHHANDLEZERO does not mean that a patch with handle zero can be drawn. A handle-zero patch can always be drawn whether this cap is set or not. 
+				//D3DDEVCAPS_SEPARATETEXTUREMEMORIES | // Device is texturing from separate memory pools. 
+				//D3DDEVCAPS_TEXTURENONLOCALVIDMEM | // Device can retrieve textures from non-local video memory. 
+				D3DDEVCAPS_TEXTURESYSTEMMEMORY | // Device can retrieve textures from system memory. 
+				D3DDEVCAPS_TEXTUREVIDEOMEMORY | // Device can retrieve textures from device memory. 
+				D3DDEVCAPS_TLVERTEXSYSTEMMEMORY | // Device can use buffers from system memory for transformed and lit vertices. 
+				D3DDEVCAPS_TLVERTEXVIDEOMEMORY | // Device can use buffers from video memory for transformed and lit vertices. 
+			0;
+			caps.PrimitiveMiscCaps =
+				D3DPMISCCAPS_BLENDOP | // Device supports the alpha-blending operations defined in the D3DBLENDOP enumerated type. 
+				D3DPMISCCAPS_CLIPPLANESCALEDPOINTS | // Device correctly clips scaled points of size greater than 1.0 to user-defined clipping planes. 
+				//D3DPMISCCAPS_CLIPTLVERTS | // Device clips post-transformed vertex primitives. 
+				//D3DPMISCCAPS_COLORWRITEENABLE | // Device supports per-channel writes for the render target color buffer through the D3DRS_COLORWRITEENABLE state. 
+				D3DPMISCCAPS_CULLCCW | // The driver supports counterclockwise culling through the D3DRS_CULLMODE state. (This applies only to triangle primitives.) This flag corresponds to the D3DCULL_CCW member of the D3DCULL enumerated type. 
+				D3DPMISCCAPS_CULLCW | // The driver supports clockwise triangle culling through the D3DRS_CULLMODE state. (This applies only to triangle primitives.) This flag corresponds to the D3DCULL_CW member of the D3DCULL enumerated type. 
+				D3DPMISCCAPS_CULLNONE | // The driver does not perform triangle culling. This corresponds to the D3DCULL_NONE member of the D3DCULL enumerated type. 
+				D3DPMISCCAPS_LINEPATTERNREP | // The driver can handle values other than 1 in the wRepeatFactor member of the D3DLINEPATTERN structure. (This applies only to line-drawing primitives.) 
+				D3DPMISCCAPS_MASKZ | // Device can enable and disable modification of the depth buffer on pixel operations. 
+				//D3DPMISCCAPS_TSSARGTEMP | // Device supports D3DTA_TEMP for temporary register. 
+			0;
+			caps.RasterCaps =
+				D3DPRASTERCAPS_ANISOTROPY | // Device supports anisotropic filtering. 
+				D3DPRASTERCAPS_ANTIALIASEDGES | // Device can anti-alias lines forming the convex outline of objects. For more information, see D3DRS_EDGEANTIALIAS. 
+				D3DPRASTERCAPS_COLORPERSPECTIVE | // Device iterates colors perspective correct. 
+				D3DPRASTERCAPS_DITHER | // Device can dither to improve color resolution. 
+				D3DPRASTERCAPS_FOGRANGE | // Device supports range-based fog. In range-based fog, the distance of an object from the viewer is used to compute fog effects, not the depth of the object (that is, the z-coordinate) in the scene. 
+				D3DPRASTERCAPS_FOGTABLE | // Device calculates the fog value by referring to a lookup table containing fog values that are indexed to the depth of a given pixel. 
+				D3DPRASTERCAPS_FOGVERTEX | // Device calculates the fog value during the lighting operation, and interpolates the fog value during rasterization. 
+				D3DPRASTERCAPS_MIPMAPLODBIAS | // Device supports level-of-detail (LOD) bias adjustments. These bias adjustments enable an application to make a mipmap appear crisper or less sharp than it normally would. For more information about LOD bias in mipmaps, see D3DTSS_MIPMAPLODBIAS.
+				D3DPRASTERCAPS_PAT | // The driver can perform patterned drawing lines or fills with D3DRS_LINEPATTERN for the primitive being queried. 
+				// D3DPRASTERCAPS_STRETCHBLTMULTISAMPLE | // Device provides limited multisample support through a stretch-blt implementation. When this capability is set, D3DRS_MULTISAMPLEANTIALIAS cannot be turned on and off in the middle of a scene. Multisample masking cannot be performed if this flag is set. 
+				D3DPRASTERCAPS_WBUFFER | // Device supports depth buffering using w. 
+				D3DPRASTERCAPS_WFOG | // Device supports w-based fog. W-based fog is used when a perspective projection matrix is specified, but affine projections still use z-based fog. The system considers a projection matrix that contains a nonzero value in the [3][4] element to be a perspective projection matrix. 
+				D3DPRASTERCAPS_ZBIAS | // Device supports z-bias values. These are integer values assigned to polygons that allow physically coplanar polygons to appear separate. For more information, see D3DRS_ZBIAS. 
+				// D3DPRASTERCAPS_ZBUFFERLESSHSR | // Device can perform hidden-surface removal (HSR) without requiring the application to sort polygons and without requiring the allocation of a depth-buffer. This leaves more video memory for textures. The method used to perform HSR is hardware-dependent and is transparent to the application. 
+				// Z-bufferless HSR is performed if no depth-buffer surface is associated with the rendering-target surface and the depth-buffer comparison test is enabled (that is, when the state value associated with the D3DRS_ZENABLE enumeration constant is set to TRUE). 
+				// D3DPRASTERCAPS_ZFOG | // Device supports z-based fog. 
+				D3DPRASTERCAPS_ZTEST | // Device can perform z-test operations. This effectively renders a primitive and indicates whether any z pixels have been rendered. 
+			0;
+			caps.ZCmpCaps = myCaps6.dpcTriCaps.dwZCmpCaps;
+			caps.SrcBlendCaps = myCaps6.dpcTriCaps.dwSrcBlendCaps;
+			caps.DestBlendCaps = myCaps6.dpcTriCaps.dwDestBlendCaps;
+			caps.AlphaCmpCaps = myCaps6.dpcTriCaps.dwAlphaCmpCaps;
+			caps.TextureCaps  = myCaps6.dpcTriCaps.dwTextureCaps;
+			caps.TextureFilterCaps = myCaps6.dpcTriCaps.dwTextureFilterCaps;
+			caps.CubeTextureFilterCaps = myCaps6.dpcTriCaps.dwTextureFilterCaps;
+			caps.VolumeTextureFilterCaps = myCaps6.dpcTriCaps.dwTextureFilterCaps;
+			caps.LineCaps = D3DLINECAPS_ALPHACMP | D3DLINECAPS_BLEND | D3DLINECAPS_FOG;
+			caps.MaxTextureWidth = 16384;
+			caps.MaxTextureHeight = 16384;
+			caps.MaxVolumeExtent = 2048;
+			caps.MaxTextureRepeat = 2048;
+			caps.MaxTextureAspectRatio = 2048;
+			
+			/* some happy values from ref driver */
+			caps.MaxVertexW      = 1.0e10;
+			caps.GuardBandLeft   = -32768.0f;
+			caps.GuardBandTop    = -32768.0f;
+			caps.GuardBandRight  = 32767.0f;
+			caps.GuardBandBottom = 32767.0f;
+			caps.ExtentsAdjust   = 0.0f; //  AA kernel is 1.0 x 1.0
+			caps.StencilCaps = MYSTENCIL_CAPS;
+			caps.FVFCaps = 8;
+			caps.TextureOpCaps = MYTEXOPCAPS;
+			caps.MaxTextureBlendStages = MESA_TMU_CNT();
+			caps.MaxSimultaneousTextures = MESA_TMU_CNT();
+			caps.VertexProcessingCaps = MYVERTEXPROCCAPS;
+
+			caps.MaxActiveLights = VMHALenv.num_light;
+			caps.MaxUserClipPlanes = VMHALenv.num_clips;
+			caps.MaxVertexBlendMatrices = 0;
+			caps.MaxVertexBlendMatrixIndex = 0;
+			if(VMHALenv.vertexblend)
+			{
+			 	caps.MaxVertexBlendMatrices = MESA_WORLDS_MAX;
+			 	caps.MaxVertexBlendMatrixIndex = 3;
+			}
+			caps.MaxPointSize = 1.0f;
+			caps.MaxPrimitiveCount = 0x000FFFFF;
+			caps.MaxVertexIndex = 0x000FFFFF;
+			caps.MaxStreams = 1;
+			caps.MaxStreamStride = 256;
+			caps.VertexShaderVersion = D3DVS_VERSION(0, 0);
+			caps.MaxVertexShaderConst = 0;
+			caps.PixelShaderVersion = D3DPS_VERSION(0, 0); // DX8
+			caps.MaxPixelShaderValue = 0;
+			
+			TRACE("sizeof(D3DCAPS8) = %d, pgdi2->dwExpectedSize = %d",
+				 sizeof(D3DCAPS8), pgdi2->dwExpectedSize);
+
+			DWORD copySize = min(sizeof(D3DCAPS8), pgdi2->dwExpectedSize);
+			memcpy(lpvData, &caps, copySize);
+			*lpActualSize = copySize;
+			*lpRVal = DD_OK;
+			break;
+		}
+		case D3DGDI2_TYPE_GETD3DQUERYCOUNT:
+			// Its a request for the number of asynchronous queries
+			// we support. Get the extended data structure so
+			// we can fill in the format count field.
+			/* tru */
+		case D3DGDI2_TYPE_GETD3DQUERY:
+			// Its a request for a particular asynchronous query 
+			// we support. Get the extended data structure so 
+			// we can fill in the format field.
+			/* tru */
+		default:
+			TRACE("pgdi2->dwType = %d DDERR_CURRENTLYNOTAVAIL", pgdi2->dwType);
+			*lpActualSize = 0;
+			*lpRVal = DDERR_CURRENTLYNOTAVAIL;
+			break;
+	}
+}
+
 #define COPY_INFO(_in, _s, _t) do{ \
 	DWORD size = min(_in->dwExpectedSize, sizeof(_t)); \
 	_in->dwActualSize = sizeof(_t); \
@@ -683,7 +909,7 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 
 	lpInput->ddRVal = DDERR_CURRENTLYNOTAVAIL;
 
-	TRACE("GUID: %08X-%04X-%04X-%02X%02X%02X%02X%02X%02X%02X%02X",
+/*	TRACE("GUID: %08X-%04X-%04X-%02X%02X%02X%02X%02X%02X%02X%02X",
 			lpInput->guidInfo.Data1,
 			lpInput->guidInfo.Data2,
 			lpInput->guidInfo.Data3,
@@ -695,7 +921,7 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 			lpInput->guidInfo.Data4[5],
 			lpInput->guidInfo.Data4[6],
 			lpInput->guidInfo.Data4[7]
-		);
+		);*/
 
 	if(IsEqualIID(&lpInput->guidInfo, &GUID_D3DCallbacks2))
 	{
@@ -820,44 +1046,12 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
     dxcaps.wMaxTextureBlendStages      = MESA_TMU_CNT();
     dxcaps.wMaxSimultaneousTextures    = MESA_TMU_CNT();
     dxcaps.dwMaxTextureRepeat          = 2048;
-    dxcaps.dwTextureOpCaps = D3DTEXOPCAPS_DISABLE
-			| D3DTEXOPCAPS_SELECTARG1
-			| D3DTEXOPCAPS_SELECTARG2
-			| D3DTEXOPCAPS_MODULATE
-			| D3DTEXOPCAPS_MODULATE2X
-			| D3DTEXOPCAPS_MODULATE4X
-			| D3DTEXOPCAPS_ADD
-			| D3DTEXOPCAPS_ADDSIGNED
-			| D3DTEXOPCAPS_ADDSIGNED2X
-			| D3DTEXOPCAPS_SUBTRACT
-			| D3DTEXOPCAPS_BLENDDIFFUSEALPHA
-			| D3DTEXOPCAPS_BLENDTEXTUREALPHA
-			| D3DTEXOPCAPS_BLENDFACTORALPHA
-			| D3DTEXOPCAPS_BLENDCURRENTALPHA
-			/* missing */
-			/*| D3DTEXOPCAPS_ADDSMOOTH
-			| D3DTEXOPCAPS_BLENDTEXTUREALPHAPM
-			| D3DTEXOPCAPS_PREMODULATE
-			| D3DTEXOPCAPS_MODULATEALPHA_ADDCOLOR
-			| D3DTEXOPCAPS_MODULATECOLOR_ADDALPHA
-			| D3DTEXOPCAPS_MODULATEINVALPHA_ADDCOLOR
-			| D3DTEXOPCAPS_MODULATEINVCOLOR_ADDALPHA
-			| D3DTEXOPCAPS_DOTPRODUCT3
-			| D3DTEXOPCAPS_BUMPENVMAP
-			| D3DTEXOPCAPS_BUMPENVMAPLUMINANCE */
-			;
+    dxcaps.dwTextureOpCaps = MYTEXOPCAPS;
   	dxcaps.wMaxTextureBlendStages      = MESA_TMU_CNT();
     dxcaps.wMaxSimultaneousTextures    = MESA_TMU_CNT();
 
 		// this need also Clear2 callback
-		dxcaps.dwStencilCaps = D3DSTENCILCAPS_KEEP
-			| D3DSTENCILCAPS_ZERO
-			| D3DSTENCILCAPS_REPLACE
-			| D3DSTENCILCAPS_INCRSAT
-			| D3DSTENCILCAPS_DECRSAT
-			| D3DSTENCILCAPS_INVERT
-			| D3DSTENCILCAPS_INCR
-			| D3DSTENCILCAPS_DECR;
+		dxcaps.dwStencilCaps = MYSTENCIL_CAPS;
 
 		/* some happy values from ref driver */
 		dxcaps.dvGuardBandLeft   = -32768.0f;
@@ -881,13 +1075,7 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 				dxcaps.wMaxVertexBlendMatrices = MESA_WORLDS_MAX;
 				//^ this need GL_ARB_vertex_blend or some extra CPU power
 
-			dxcaps.dwVertexProcessingCaps = 
-				//D3DVTXPCAPS_TEXGEN |
-				D3DVTXPCAPS_LOCALVIEWER |
-				D3DVTXPCAPS_MATERIALSOURCE7   |
-				D3DVTXPCAPS_VERTEXFOG         |
-				D3DVTXPCAPS_DIRECTIONALLIGHTS |
-				D3DVTXPCAPS_POSITIONALLIGHTS;
+			dxcaps.dwVertexProcessingCaps = MYVERTEXPROCCAPS;
 		}
 
 		if(VMHALenv.max_anisotropy > 1)
@@ -1010,6 +1198,7 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 
 		lpInput->ddRVal = DD_OK;
 		COPY_INFO(lpInput, vpCB, DDHAL_DDVIDEOPORTCALLBACKS);
+		TRACE("GUID_VideoPortCallbacks zero");
 	}
 	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_ColorControlCallbacks))
 	{
@@ -1019,6 +1208,7 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 
 		lpInput->ddRVal = DD_OK;
 		COPY_INFO(lpInput, ccCB, DDHAL_DDCOLORCONTROLCALLBACKS);
+		TRACE("GUID_ColorControlCallbacks zero");
 	}
 	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_VideoPortCaps))
 	{
@@ -1031,6 +1221,7 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 
 		lpInput->ddRVal = DD_OK;
 		COPY_INFO(lpInput, VideoPortCaps, DDVIDEOPORTCAPS);
+		TRACE("GUID_VideoPortCaps zero");
 	}
 	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_KernelCallbacks))
 	{
@@ -1040,6 +1231,7 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 
 		lpInput->ddRVal = DD_OK;
 		COPY_INFO(lpInput, kCB, DDHAL_DDKERNELCALLBACKS);
+		TRACE("GUID_KernelCallbacks zero");
 	}
 	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_KernelCaps))
 	{
@@ -1051,7 +1243,37 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 			return DDHAL_DRIVER_HANDLED;
 
 		lpInput->ddRVal = DD_OK;
-		COPY_INFO(lpInput, kcaps, DDHAL_DDKERNELCALLBACKS);
+		COPY_INFO(lpInput, kcaps, DDKERNELCAPS);
+		TRACE("GUID_KernelCaps zero");
+	}
+	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_MotionCompCallbacks))
+	{
+		DD_MOTIONCOMPCALLBACKS mcc;
+		memset(&mcc, 0, sizeof(DD_MOTIONCOMPCALLBACKS));
+		mcc.dwSize = sizeof(DD_MOTIONCOMPCALLBACKS);
+
+		if(lpInput->dwExpectedSize != sizeof(DD_MOTIONCOMPCALLBACKS))
+			return DDHAL_DRIVER_HANDLED;
+
+		lpInput->ddRVal = DD_OK;
+		COPY_INFO(lpInput, mcc, DD_MOTIONCOMPCALLBACKS);
+		TRACE("GUID_MotionCompCallbacks zero");	
+	}
+	// NOTE: GUID_GetDriverInfo2 has the same value as GUID_DDStereoMode
+	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_GetDriverInfo2) && VMHALenv.ddi >= 8) /*  */
+	{
+		if(((DD_GETDRIVERINFO2DATA*)(lpInput->lpvData))->dwMagic == D3DGDI2_MAGIC) /* GUID_GetDriverInfo2 */
+		{
+			DD_GETDRIVERINFO2DATA* pgdi2 = lpInput->lpvData;
+			GetDriverInfo2(pgdi2, &lpInput->ddRVal, &lpInput->dwExpectedSize, lpInput->lpvData);
+			lpInput->dwActualSize = lpInput->dwExpectedSize;
+			TRACE("GUID_GetDriverInfo2 success %d %d", lpInput->dwExpectedSize, lpInput->dwActualSize);
+		}
+		else /* GUID_DDStereoMode */
+		{
+			lpInput->ddRVal = DDERR_CURRENTLYNOTAVAIL;
+			TRACE("GUID_DDStereoMode ignored");
+		}
 	}
 	else
 	{
@@ -1068,10 +1290,11 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 			lpInput->guidInfo.Data4[6],
 			lpInput->guidInfo.Data4[7]
 		);
+		lpInput->ddRVal = DDERR_CURRENTLYNOTAVAIL;
 	}
 	/* also can be set:
 		CLSID_DirectDraw
-		GUID_MotionCompCallbacks
+		
 	 */
 	
 	return DDHAL_DRIVER_HANDLED;
@@ -1649,8 +1872,6 @@ static DDHAL_DDEXEBUFCALLBACKS myD3DHALExeBufCallbacks = {
 
 static D3DHAL_CALLBACKS myD3DHALCallbacks7;
 
-#include "d3d_caps.h"
-
 BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, LPDDHAL_DDEXEBUFCALLBACKS lpHALExeBufCallbacks, VMDAHAL_D3DCAPS_t *lpHALFlags)
 {
 	memset(&myGlobalD3DHal, 0, sizeof(D3DHAL_GLOBALDRIVERDATA));
@@ -1663,16 +1884,14 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, LP
 	
 	if(VMHALenv.ddi >= 7)
 	{
-		myGlobalD3DHal.hwCaps = myCaps7;
+		myGlobalD3DHal.hwCaps = myCaps6;
+		if(VMHALenv.ddi < 8)
+		{
+			myGlobalD3DHal.hwCaps.dwDevCaps &= ~(CAPS_DX8);
+		}
+		
 		if(VMHALenv.hw_tl)
 		{
-			/*
-			myGlobalD3DHal.hwCaps.dlcLightingCaps.dwCaps = D3DLIGHTCAPS_POINT | D3DLIGHTCAPS_SPOT | D3DLIGHTCAPS_DIRECTIONAL;
-			myGlobalD3DHal.hwCaps.dlcLightingCaps.dwLightingModel = D3DLIGHTINGMODEL_RGB;
-			myGlobalD3DHal.hwCaps.dlcLightingCaps.dwNumLights = 0;
-				^ this should be zero
-			*/
-		
 			myGlobalD3DHal.hwCaps.dwDevCaps |= 
 				D3DDEVCAPS_HWTRANSFORMANDLIGHT /* Device can support transformation and lighting in hardware and DRAWPRIMITIVES2EX must be also */
 				/*| D3DDEVCAPS_CANBLTSYSTONONLOCAL*/ /* Device supports a Tex Blt from system memory to non-local vidmem */
@@ -1682,6 +1901,7 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, LP
 	else if(VMHALenv.ddi >= 6)
 	{
 		myGlobalD3DHal.hwCaps = myCaps6;
+		myGlobalD3DHal.hwCaps.dwDevCaps &= ~(CAPS_DX7|CAPS_DX8);
 	}
 
 	*lplpGlobal = (DWORD)&myGlobalD3DHal;

@@ -331,6 +331,8 @@ NUKED_LOCAL void MesaTLRecalcModelview(mesa3d_ctx_t *ctx)
 
 #define NEXT_INST(_s) inst = (LPD3DHAL_DP2COMMAND)(prim + (_s))
 
+#define NEXT_INST_TC(_t, _c) inst = (LPD3DHAL_DP2COMMAND)(prim + (sizeof(_t)*(_c)))
+
 // Vertices in an IMM instruction are stored in the
 // command buffer and are DWORD aligned
 #define PRIM_ALIGN prim = (LPBYTE)((ULONG_PTR)(prim + 3) & ~3)
@@ -367,11 +369,14 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				// (wFirst+(wCount-1)). The number of D3DHAL_DP2POINTS
 				// structures to process is specified by the wPrimitiveCount
 				// field of D3DHAL_DP2COMMAND.
-				start = ((D3DHAL_DP2POINTS*)prim)->wVStart;
-				count = ((D3DHAL_DP2POINTS*)prim)->wCount;
-				MesaDrawFVFs(ctx, GL_POINTS, vertices, start, count);
+				for(i = 0; i < inst->wPrimitiveCount; i++)
+				{
+					D3DHAL_DP2POINTS *points = (D3DHAL_DP2POINTS*)prim;
+					MesaDrawFVFs(ctx, GL_POINTS, vertices, points->wVStart, points->wCount);
+					prim += sizeof(D3DHAL_DP2POINTS);
+				}
 				SET_DIRTY;
-				NEXT_INST(sizeof(D3DHAL_DP2POINTS));
+				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_LINELIST)
 				// Non-indexed vertex-buffer line lists are defined by the 
@@ -711,9 +716,10 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				{
 					LPD3DHAL_DP2RENDERSTATE rs = (LPD3DHAL_DP2RENDERSTATE)prim;
 					MesaSetRenderState(ctx, rs, RStates);
+					MesaRecState(ctx, rs->RenderState, rs->dwState);
 					prim += sizeof(D3DHAL_DP2RENDERSTATE);
 				}
-				
+
 				MesaStencilApply(ctx);
 				MesaDrawRefreshState(ctx);
 				NEXT_INST(0);
@@ -733,6 +739,7 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 					// state->TSState = D3DTSS_TEXTUREMAP, D3DTSS_TEXTURETRANSFORMFLAGS, ...
 					// state->dwValue = (value)
 					MesaSetTextureState(ctx, state->wStage, state->TSState, &state->dwValue);
+					MesaRecTMUState(ctx, state->wStage, state->TSState, state->dwValue);
 					prim += sizeof(D3DHAL_DP2TEXTURESTAGESTATE);
 				}
         MesaDrawRefreshState(ctx);
@@ -943,11 +950,34 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 					LPD3DHAL_DP2STATESET pStateSetOp = (LPD3DHAL_DP2STATESET)(prim);
 					switch(pStateSetOp->dwOperation)
 					{
+						case D3DHAL_STATESETCREATE:
+							// This DDI should be called only for drivers > DX7
+							// and only for those which support TLHals. It is 
+							// called only when the device created is a pure-device
+							// On receipt of this request the driver should create
+							// a state block of the type given in the field sbType
+							// and capture the current given state into it.
+							MesaRecStart(ctx, pStateSetOp->dwParam, pStateSetOp->sbType);
+							ctx->state.recording = TRUE;
+							break;
 						case D3DHAL_STATESETBEGIN:
+							MesaRecStart(ctx, pStateSetOp->dwParam, D3DSBT_ALL);
+							ctx->state.recording = TRUE;
+							break;
 						case D3DHAL_STATESETEND:
+							MesaRecStop(ctx);
+							ctx->state.recording = FALSE;
+							break;
 						case D3DHAL_STATESETDELETE:
+							MesaRecDelete(ctx, pStateSetOp->dwParam);
+							break;
 						case D3DHAL_STATESETEXECUTE:
+							MesaRecApply(ctx, pStateSetOp->dwParam);
+							break;
 						case D3DHAL_STATESETCAPTURE:
+							MesaRecStart(ctx, pStateSetOp->dwParam, D3DSBT_ALL);
+							ctx->state.recording = FALSE;
+							break;
 						default:
 							WARN("D3DDP2OP_STATESET: %d", pStateSetOp->dwOperation);
 							break;
@@ -1037,6 +1067,226 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				break;
 			// COMMAND(D3DDP2OP_RESERVED0)
 			// Used by the front-end only
+			/*
+			 *
+			 * DirectX 8
+			 *
+			 */
+	    COMMAND(D3DDP2OP_CREATEVERTEXSHADER)
+				for(i = 0; i < inst->wStateCount; i++)
+				{
+					D3DHAL_DP2CREATEVERTEXSHADER *shader = (D3DHAL_DP2CREATEVERTEXSHADER*)prim;
+					prim += sizeof(D3DHAL_DP2VERTEXSHADER);
+					prim += shader->dwDeclSize + shader->dwCodeSize;
+				}
+				NEXT_INST(0);
+	    	break;
+	    COMMAND(D3DDP2OP_DELETEVERTEXSHADER)
+	    	for(i = 0; i < inst->wStateCount; i++)
+				{
+					prim += sizeof(D3DHAL_DP2VERTEXSHADER);
+				}
+				NEXT_INST(0);
+	    	break;
+	    COMMAND(D3DDP2OP_SETVERTEXSHADER)
+	    	for(i = 0; i < inst->wStateCount; i++)
+				{
+					prim += sizeof(D3DHAL_DP2VERTEXSHADER);
+				}
+				NEXT_INST(0);
+	    	break;
+	    COMMAND(D3DDP2OP_SETVERTEXSHADERCONST)
+	    	for(i = 0; i < inst->wStateCount; i++)
+				{
+					D3DHAL_DP2SETVERTEXSHADERCONST *shaderconstset = (D3DHAL_DP2SETVERTEXSHADERCONST*)prim;
+					prim += sizeof(D3DHAL_DP2SETVERTEXSHADERCONST);
+					prim += shaderconstset->dwCount * 4 * sizeof(D3DVALUE);
+				}
+				NEXT_INST(0);
+	    	break;
+	    COMMAND(D3DDP2OP_SETSTREAMSOURCE)
+	    	for(i = 0; i < inst->wStateCount; i++)
+	    	{
+	    		prim += sizeof(D3DHAL_DP2SETSTREAMSOURCE);
+	    	}
+	    	NEXT_INST(0);
+	    	break;
+	    COMMAND(D3DDP2OP_SETSTREAMSOURCEUM)
+	    	for(i = 0; i < inst->wStateCount; i++)
+	    	{
+	    		prim += sizeof(D3DHAL_DP2SETSTREAMSOURCEUM);
+	    	}
+	    	NEXT_INST(0);
+	    	break;
+	    COMMAND(D3DDP2OP_SETINDICES)
+	    	for(i = 0; i < inst->wStateCount; i++)
+	    	{
+	    		prim += sizeof(D3DHAL_DP2SETINDICES);
+	    	}
+	    	NEXT_INST(0);
+	    	break;
+	    COMMAND(D3DDP2OP_DRAWPRIMITIVE)
+	    	for(i = 0; i < inst->wStateCount; i++)
+	    	{
+	    		D3DHAL_DP2DRAWPRIMITIVE *draw = (D3DHAL_DP2DRAWPRIMITIVE*)prim;
+	    		prim += sizeof(D3DHAL_DP2DRAWPRIMITIVE);
+	    		count = MesaConvPrimVertex(draw->primType, draw->PrimitiveCount);
+					if(count)
+					{
+						MesaDrawFVFs(ctx,
+							MesaConvPrimType(draw->primType),
+							vertices, draw->VStart, count);
+					}
+	    	}
+	    	SET_DIRTY;
+	    	NEXT_INST(0);
+	    	break;
+	    COMMAND(D3DDP2OP_DRAWINDEXEDPRIMITIVE)
+	    	for(i = 0; i < inst->wStateCount; i++)
+	    	{
+	    		//D3DHAL_DP2DRAWINDEXEDPRIMITIVE *draw = (D3DHAL_DP2DRAWINDEXEDPRIMITIVE*)prim;
+	    		prim += sizeof(D3DHAL_DP2DRAWINDEXEDPRIMITIVE);
+	    		//count = MesaConvPrimitivesTriangles(draw->primType, draw->PrimitiveCount);
+	    	}
+	    	SET_DIRTY;
+	    	NEXT_INST(0);
+	    	break;
+	    COMMAND(D3DDP2OP_CREATEPIXELSHADER)
+	    	for(i = 0; i < inst->wStateCount; i++)
+	    	{
+	    		D3DHAL_DP2CREATEPIXELSHADER *shader = (D3DHAL_DP2CREATEPIXELSHADER*)prim;
+	    		prim += sizeof(D3DHAL_DP2CREATEPIXELSHADER);
+					prim += shader->dwCodeSize;
+	    	}
+	    	NEXT_INST(0);
+	    	break;
+	    COMMAND(D3DDP2OP_DELETEPIXELSHADER)
+	    	for(i = 0; i < inst->wStateCount; i++)
+	    	{
+	    		prim += sizeof(D3DHAL_DP2PIXELSHADER);
+	    	}
+	    	NEXT_INST(0);
+	    	break;
+	    COMMAND(D3DDP2OP_SETPIXELSHADER)
+	    	for(i = 0; i < inst->wStateCount; i++)
+	    	{
+	    		prim += sizeof(D3DHAL_DP2PIXELSHADER);
+	    	}
+	    	NEXT_INST(0);
+	    	break;
+	    COMMAND(D3DDP2OP_SETPIXELSHADERCONST)
+	    	for(i = 0; i < inst->wStateCount; i++)
+				{
+					D3DHAL_DP2SETPIXELSHADERCONST *shaderconstset = (D3DHAL_DP2SETPIXELSHADERCONST*)prim;
+					prim += sizeof(D3DHAL_DP2SETPIXELSHADERCONST);
+					prim += shaderconstset->dwCount * 4 * sizeof(D3DVALUE);
+				}
+				NEXT_INST(0);
+	    	break;
+	    COMMAND(D3DDP2OP_CLIPPEDTRIANGLEFAN)
+	    	for(i = 0; i < inst->wStateCount; i++)
+	    	{
+	    		prim += sizeof(D3DHAL_CLIPPEDTRIANGLEFAN);
+	    	}
+	    	NEXT_INST(0);
+	    	break;
+	    COMMAND(D3DDP2OP_DRAWPRIMITIVE2)
+	    	for(i = 0; i < inst->wStateCount; i++)
+	    	{
+	    		prim += sizeof(D3DHAL_DP2DRAWPRIMITIVE2);
+	    	}
+	    	SET_DIRTY;
+	    	NEXT_INST(0);
+	    	break;
+	    COMMAND(D3DDP2OP_DRAWINDEXEDPRIMITIVE2)
+	    	for(i = 0; i < inst->wStateCount; i++)
+	    	{
+	    		prim += sizeof(D3DHAL_DP2DRAWINDEXEDPRIMITIVE2);
+	    	}
+	    	SET_DIRTY;
+	    	NEXT_INST(0);
+	    	break;
+	    COMMAND(D3DDP2OP_DRAWRECTPATCH)
+	    {
+	    	DWORD extraBytes = 0;
+	    	for(i = 0; i < inst->wStateCount; i++)
+	    	{
+	    		D3DHAL_DP2DRAWRECTPATCH *patch = (D3DHAL_DP2DRAWRECTPATCH*)prim;
+	    		prim += sizeof(D3DHAL_DP2DRAWRECTPATCH);
+	    		// draw
+					if(patch->Flags & RTPATCHFLAG_HASSEGS)                    
+					{
+						extraBytes += sizeof(D3DVALUE)* 4;
+					}
+					if(patch->Flags & RTPATCHFLAG_HASINFO)                    
+					{
+						extraBytes += sizeof(D3DRECTPATCH_INFO);
+					}
+					prim += extraBytes;
+	    	}
+	    	SET_DIRTY;
+	    	NEXT_INST(0);
+	    	break;
+	    }
+	    COMMAND(D3DDP2OP_DRAWTRIPATCH)
+	  	{
+	    	DWORD extraBytes = 0;
+	    	for(i = 0; i < inst->wStateCount; i++)
+	    	{
+	    		D3DHAL_DP2DRAWTRIPATCH *patch = (D3DHAL_DP2DRAWTRIPATCH*)prim;
+	    		prim += sizeof(D3DHAL_DP2DRAWTRIPATCH);
+	    		// draw
+					if(patch->Flags & RTPATCHFLAG_HASSEGS)                    
+					{
+						extraBytes += sizeof(D3DVALUE)* 3;
+					}
+					if(patch->Flags & RTPATCHFLAG_HASINFO)                    
+					{
+						extraBytes += sizeof(D3DTRIPATCH_INFO);
+					}
+					prim += extraBytes;
+	    	}
+	    	SET_DIRTY;
+	    	NEXT_INST(0);
+	    	break;
+	    }
+	    COMMAND(D3DDP2OP_VOLUMEBLT)
+	    	for(i = 0; i < inst->wStateCount; i++)
+	    	{
+	    		prim += sizeof(D3DHAL_DP2VOLUMEBLT);
+	    	}
+	    	NEXT_INST(0);
+	    	break;
+	    COMMAND(D3DDP2OP_BUFFERBLT)
+	    	for(i = 0; i < inst->wStateCount; i++)
+	    	{
+	    		prim += sizeof(D3DHAL_DP2BUFFERBLT);
+	    	}
+	    	NEXT_INST(0);
+	    	break;
+	    COMMAND(D3DDP2OP_MULTIPLYTRANSFORM)
+	    	for(i = 0; i < inst->wStateCount; i++)
+	    	{
+	    		D3DHAL_DP2MULTIPLYTRANSFORM *rf = (D3DHAL_DP2MULTIPLYTRANSFORM*)prim;
+	    		prim += sizeof(D3DHAL_DP2MULTIPLYTRANSFORM);
+	    		
+	    	}
+	    	NEXT_INST(0);
+	    	break;
+	    COMMAND(D3DDP2OP_ADDDIRTYRECT)
+	    	for(i = 0; i < inst->wStateCount; i++)
+	    	{
+	    		prim += sizeof(D3DHAL_DP2ADDDIRTYRECT);
+	    	}
+	    	NEXT_INST(0);
+	    	break;
+	    COMMAND(D3DDP2OP_ADDDIRTYBOX)
+	    	for(i = 0; i < inst->wStateCount; i++)
+	    	{
+	    		prim += sizeof(D3DHAL_DP2ADDDIRTYBOX);
+	    	}
+	    	NEXT_INST(0);
+	    	break;
 			default:
 				WARN("Unknown command: 0x%X", inst->bCommand);
 				
@@ -1064,3 +1314,347 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 	return TRUE;
 }
 
+
+NUKED_LOCAL BOOL MesaRecord6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LPBYTE vertices, DWORD *error_offset, LPDWORD RStates)
+{
+	TOPIC("READBACK", "MesaDraw6");
+
+	mesa3d_entry_t *entry = ctx->entry;
+	LPD3DHAL_DP2COMMAND inst = (LPD3DHAL_DP2COMMAND)cmdBufferStart;
+	DWORD i;
+
+	while((LPBYTE)inst < cmdBufferEnd)
+	{
+		LPBYTE prim = (LPBYTE)(inst + 1);
+		switch((D3DHAL_DP2OPERATION)inst->bCommand)
+		{
+			COMMAND(D3DDP2OP_POINTS)
+				NEXT_INST_TC(D3DHAL_DP2POINTS, inst->wPrimitiveCount);
+				break;
+			COMMAND(D3DDP2OP_LINELIST)
+				NEXT_INST_TC(D3DHAL_DP2LINELIST, 1);
+				break;
+			COMMAND(D3DDP2OP_LINESTRIP)
+				NEXT_INST_TC(D3DHAL_DP2LINESTRIP, 1);
+				break;
+			COMMAND(D3DDP2OP_TRIANGLELIST)
+				NEXT_INST_TC(D3DHAL_DP2TRIANGLELIST, 1);
+				break;
+			COMMAND(D3DDP2OP_TRIANGLESTRIP)
+				NEXT_INST_TC(D3DHAL_DP2TRIANGLESTRIP, 1);
+				break;
+			COMMAND(D3DDP2OP_TRIANGLEFAN)
+				NEXT_INST_TC(D3DHAL_DP2TRIANGLEFAN, 1);
+				break;
+			COMMAND(D3DDP2OP_INDEXEDLINELIST)
+				NEXT_INST_TC(D3DHAL_DP2INDEXEDLINELIST, inst->wPrimitiveCount);
+				break;
+			COMMAND(D3DDP2OP_INDEXEDLINESTRIP)
+				prim += sizeof(D3DHAL_DP2STARTVERTEX);
+				NEXT_INST_TC(WORD, inst->wPrimitiveCount+1);
+				break;
+			COMMAND(D3DDP2OP_INDEXEDTRIANGLELIST)
+				NEXT_INST_TC(D3DHAL_DP2INDEXEDTRIANGLELIST, inst->wPrimitiveCount);
+				break;
+			COMMAND(D3DDP2OP_INDEXEDTRIANGLESTRIP)
+				prim += sizeof(D3DHAL_DP2STARTVERTEX);
+				NEXT_INST_TC(WORD, inst->wPrimitiveCount+2);
+				break;
+			COMMAND(D3DDP2OP_INDEXEDTRIANGLEFAN)
+				prim += sizeof(D3DHAL_DP2STARTVERTEX);
+				NEXT_INST_TC(WORD, inst->wPrimitiveCount+2);
+				break;
+			COMMAND(D3DDP2OP_INDEXEDTRIANGLELIST2)
+				prim += sizeof(D3DHAL_DP2STARTVERTEX);
+				NEXT_INST_TC(D3DHAL_DP2INDEXEDTRIANGLELIST2, inst->wPrimitiveCount);
+				break;
+			COMMAND(D3DDP2OP_INDEXEDLINELIST2)
+				prim += sizeof(D3DHAL_DP2STARTVERTEX);
+				NEXT_INST_TC(D3DHAL_DP2INDEXEDLINELIST, inst->wPrimitiveCount);
+				break;
+			COMMAND(D3DDP2OP_TRIANGLEFAN_IMM)
+    		prim += sizeof(D3DHAL_DP2TRIANGLEFAN_IMM);
+    		PRIM_ALIGN;
+				prim += ctx->state.fvf.stride * (inst->wPrimitiveCount + 2);
+        NEXT_INST(0);
+				break;
+			COMMAND(D3DDP2OP_LINELIST_IMM)
+			  PRIM_ALIGN;
+				prim += ctx->state.fvf.stride * (inst->wPrimitiveCount * 2);
+        NEXT_INST(0);
+				break;
+			COMMAND(D3DDP2OP_RENDERSTATE)
+				for(i = 0; i < inst->wStateCount; i++)
+				{
+					LPD3DHAL_DP2RENDERSTATE rs = (LPD3DHAL_DP2RENDERSTATE)prim;
+					MesaRecState(ctx, rs->RenderState, rs->dwState);
+					prim += sizeof(D3DHAL_DP2RENDERSTATE);
+				}
+				NEXT_INST(0);
+				break;
+			COMMAND(D3DDP2OP_TEXTURESTAGESTATE) // Has edge flags and called from Execute
+				for(i = 0; i < inst->wStateCount; i++)
+				{
+					D3DHAL_DP2TEXTURESTAGESTATE *state = (D3DHAL_DP2TEXTURESTAGESTATE *)(prim);
+					MesaRecTMUState(ctx, state->wStage, state->TSState, state->dwValue);
+					prim += sizeof(D3DHAL_DP2TEXTURESTAGESTATE);
+				}
+        NEXT_INST(0);
+				break;
+			COMMAND(D3DDP2OP_VIEWPORTINFO)
+				NEXT_INST_TC(D3DHAL_DP2VIEWPORTINFO, inst->wStateCount);
+				break;
+			COMMAND(D3DDP2OP_WINFO)
+				NEXT_INST_TC(D3DHAL_DP2WINFO, inst->wStateCount);
+				break;
+			COMMAND(D3DDP2OP_SETPALETTE)
+				NEXT_INST_TC(D3DHAL_DP2SETPALETTE, inst->wStateCount);
+				break;
+			COMMAND(D3DDP2OP_UPDATEPALETTE)
+				NEXT_INST_TC(D3DHAL_DP2UPDATEPALETTE, inst->wStateCount);
+				break;
+			COMMAND(D3DDP2OP_ZRANGE)
+				NEXT_INST_TC(D3DHAL_DP2ZRANGE, inst->wStateCount);
+				break;
+			COMMAND(D3DDP2OP_SETMATERIAL)
+				NEXT_INST_TC(D3DHAL_DP2SETMATERIAL, inst->wStateCount);
+				break;
+			COMMAND(D3DDP2OP_SETLIGHT)
+				for(i = 0; i < inst->wStateCount; i++)
+				{
+					LPD3DHAL_DP2SETLIGHT lightset = (LPD3DHAL_DP2SETLIGHT)prim;
+					prim += sizeof(D3DHAL_DP2SETLIGHT);
+					if(lightset->dwDataType == D3DHAL_SETLIGHT_DATA)
+					{
+						prim += sizeof(D3DLIGHT7);
+					}
+				}
+				NEXT_INST(0);
+				break;
+			COMMAND(D3DDP2OP_CREATELIGHT)
+				NEXT_INST_TC(D3DHAL_DP2CREATELIGHT, inst->wStateCount);
+				break;
+			COMMAND(D3DDP2OP_SETTRANSFORM)
+				NEXT_INST_TC(D3DHAL_DP2SETTRANSFORM, inst->wStateCount);
+				break;
+			COMMAND(D3DDP2OP_EXT)
+				NEXT_INST_TC(D3DHAL_DP2EXT, inst->wStateCount);
+				break;
+			COMMAND(D3DDP2OP_TEXBLT)
+				NEXT_INST_TC(D3DHAL_DP2TEXBLT, inst->wStateCount);
+				break;
+			COMMAND(D3DDP2OP_STATESET)
+				for(i = 0; inst->wStateCount; i++)
+				{
+					LPD3DHAL_DP2STATESET pStateSetOp = (LPD3DHAL_DP2STATESET)(prim);
+					switch(pStateSetOp->dwOperation)
+					{
+						case D3DHAL_STATESETCREATE:
+							MesaRecStart(ctx, pStateSetOp->dwParam, pStateSetOp->sbType);
+							ctx->state.recording = TRUE;
+							break;
+						case D3DHAL_STATESETBEGIN:
+							MesaRecStart(ctx, pStateSetOp->dwParam, D3DSBT_ALL);
+							ctx->state.recording = TRUE;
+							break;
+						case D3DHAL_STATESETEND:
+							MesaRecStop(ctx);
+							ctx->state.recording = FALSE;
+							break;
+						case D3DHAL_STATESETDELETE:
+							MesaRecDelete(ctx, pStateSetOp->dwParam);
+							break;
+						case D3DHAL_STATESETEXECUTE:
+							MesaRecApply(ctx, pStateSetOp->dwParam);
+							break;
+						case D3DHAL_STATESETCAPTURE:
+							MesaRecStart(ctx, pStateSetOp->dwParam, D3DSBT_ALL);
+							ctx->state.recording = FALSE;
+						default:
+							break;
+					}
+					prim += sizeof(D3DHAL_DP2STATESET);
+				}
+				NEXT_INST(0);
+				break;
+			COMMAND(D3DDP2OP_SETPRIORITY)
+				NEXT_INST_TC(D3DHAL_DP2TEXBLT, inst->wStateCount);
+				break;
+			COMMAND(D3DDP2OP_SETRENDERTARGET)
+				NEXT_INST_TC(D3DHAL_DP2SETRENDERTARGET, inst->wStateCount);
+				break;
+			COMMAND(D3DDP2OP_CLEAR)
+				prim += sizeof(D3DHAL_DP2CLEAR) - sizeof(RECT);
+				prim += sizeof(RECT) * inst->wStateCount;
+				NEXT_INST(0);
+				break;
+			COMMAND(D3DDP2OP_SETTEXLOD)
+				NEXT_INST_TC(D3DDP2OP_SETTEXLOD, inst->wStateCount);
+				break;
+			COMMAND(D3DDP2OP_SETCLIPPLANE)
+				NEXT_INST_TC(D3DHAL_DP2SETCLIPPLANE, inst->wStateCount);
+				break;
+			// COMMAND(D3DDP2OP_RESERVED0)
+			// Used by the front-end only
+			/*
+			 *
+			 * DirectX 8
+			 *
+			 */
+	    COMMAND(D3DDP2OP_CREATEVERTEXSHADER)
+				for(i = 0; i < inst->wStateCount; i++)
+				{
+					D3DHAL_DP2CREATEVERTEXSHADER *shader = (D3DHAL_DP2CREATEVERTEXSHADER*)prim;
+					prim += sizeof(D3DHAL_DP2VERTEXSHADER);
+					prim += shader->dwDeclSize + shader->dwCodeSize;
+				}
+				NEXT_INST(0);
+	    	break;
+	    COMMAND(D3DDP2OP_DELETEVERTEXSHADER)
+				NEXT_INST_TC(D3DHAL_DP2VERTEXSHADER, inst->wStateCount);
+	    	break;
+	    COMMAND(D3DDP2OP_SETVERTEXSHADER)
+				NEXT_INST_TC(D3DHAL_DP2VERTEXSHADER, inst->wStateCount);
+	    	break;
+	    COMMAND(D3DDP2OP_SETVERTEXSHADERCONST)
+	    	for(i = 0; i < inst->wStateCount; i++)
+				{
+					D3DHAL_DP2SETVERTEXSHADERCONST *shaderconstset = (D3DHAL_DP2SETVERTEXSHADERCONST*)prim;
+					prim += sizeof(D3DHAL_DP2SETVERTEXSHADERCONST);
+					prim += shaderconstset->dwCount * 4 * sizeof(D3DVALUE);
+				}
+				NEXT_INST(0);
+	    	break;
+	    COMMAND(D3DDP2OP_SETSTREAMSOURCE)
+	    	NEXT_INST_TC(D3DHAL_DP2SETSTREAMSOURCE, inst->wStateCount);
+	    	break;
+	    COMMAND(D3DDP2OP_SETSTREAMSOURCEUM)
+	    	NEXT_INST_TC(D3DHAL_DP2SETSTREAMSOURCEUM, inst->wStateCount);
+	    	break;
+	    COMMAND(D3DDP2OP_SETINDICES)
+	    	NEXT_INST_TC(D3DHAL_DP2SETINDICES, inst->wStateCount);
+	    	break;
+	    COMMAND(D3DDP2OP_DRAWPRIMITIVE)
+	    	NEXT_INST_TC(D3DHAL_DP2DRAWPRIMITIVE, inst->wStateCount);
+	    	break;
+	    COMMAND(D3DDP2OP_DRAWINDEXEDPRIMITIVE)
+	    	NEXT_INST_TC(D3DHAL_DP2DRAWINDEXEDPRIMITIVE, inst->wStateCount);
+	    	break;
+	    COMMAND(D3DDP2OP_CREATEPIXELSHADER)
+	    	for(i = 0; i < inst->wStateCount; i++)
+	    	{
+	    		D3DHAL_DP2CREATEPIXELSHADER *shader = (D3DHAL_DP2CREATEPIXELSHADER*)prim;
+	    		prim += sizeof(D3DHAL_DP2CREATEPIXELSHADER);
+					prim += shader->dwCodeSize;
+	    	}
+	    	NEXT_INST(0);
+	    	break;
+	    COMMAND(D3DDP2OP_DELETEPIXELSHADER)
+	    	NEXT_INST_TC(D3DHAL_DP2PIXELSHADER, inst->wStateCount);
+	    	break;
+	    COMMAND(D3DDP2OP_SETPIXELSHADER)
+	    	NEXT_INST_TC(D3DHAL_DP2PIXELSHADER, inst->wStateCount);
+	    	break;
+	    COMMAND(D3DDP2OP_SETPIXELSHADERCONST)
+	    	for(i = 0; i < inst->wStateCount; i++)
+				{
+					D3DHAL_DP2SETPIXELSHADERCONST *shaderconstset = (D3DHAL_DP2SETPIXELSHADERCONST*)prim;
+					prim += sizeof(D3DHAL_DP2SETPIXELSHADERCONST);
+					prim += shaderconstset->dwCount * 4 * sizeof(D3DVALUE);
+				}
+				NEXT_INST(0);
+	    	break;
+	    COMMAND(D3DDP2OP_CLIPPEDTRIANGLEFAN)
+	    	NEXT_INST_TC(D3DHAL_CLIPPEDTRIANGLEFAN, inst->wStateCount);
+	    	break;
+	    COMMAND(D3DDP2OP_DRAWPRIMITIVE2)
+	    	NEXT_INST_TC(D3DHAL_DP2DRAWPRIMITIVE2, inst->wStateCount);
+	    	break;
+	    COMMAND(D3DDP2OP_DRAWINDEXEDPRIMITIVE2)
+	    	NEXT_INST_TC(D3DHAL_DP2DRAWINDEXEDPRIMITIVE2, inst->wStateCount);
+	    	break;
+	    COMMAND(D3DDP2OP_DRAWRECTPATCH)
+	    {
+	    	DWORD extraBytes = 0;
+	    	for(i = 0; i < inst->wStateCount; i++)
+	    	{
+	    		D3DHAL_DP2DRAWRECTPATCH *patch = (D3DHAL_DP2DRAWRECTPATCH*)prim;
+	    		prim += sizeof(D3DHAL_DP2DRAWRECTPATCH);
+	    		// draw
+					if(patch->Flags & RTPATCHFLAG_HASSEGS)                    
+					{
+						extraBytes += sizeof(D3DVALUE)* 4;
+					}
+					if(patch->Flags & RTPATCHFLAG_HASINFO)                    
+					{
+						extraBytes += sizeof(D3DRECTPATCH_INFO);
+					}
+					prim += extraBytes;
+	    	}
+	    	SET_DIRTY;
+	    	NEXT_INST(0);
+	    	break;
+	    }
+	    COMMAND(D3DDP2OP_DRAWTRIPATCH)
+	  	{
+	    	DWORD extraBytes = 0;
+	    	for(i = 0; i < inst->wStateCount; i++)
+	    	{
+	    		D3DHAL_DP2DRAWTRIPATCH *patch = (D3DHAL_DP2DRAWTRIPATCH*)prim;
+	    		prim += sizeof(D3DHAL_DP2DRAWTRIPATCH);
+	    		// draw
+					if(patch->Flags & RTPATCHFLAG_HASSEGS)                    
+					{
+						extraBytes += sizeof(D3DVALUE)* 3;
+					}
+					if(patch->Flags & RTPATCHFLAG_HASINFO)                    
+					{
+						extraBytes += sizeof(D3DTRIPATCH_INFO);
+					}
+					prim += extraBytes;
+	    	}
+	    	SET_DIRTY;
+	    	NEXT_INST(0);
+	    	break;
+	    }
+	    COMMAND(D3DDP2OP_VOLUMEBLT)
+	    	NEXT_INST_TC(D3DHAL_DP2VOLUMEBLT, inst->wStateCount);
+	    	break;
+	    COMMAND(D3DDP2OP_BUFFERBLT)
+	    	NEXT_INST_TC(D3DHAL_DP2BUFFERBLT, inst->wStateCount);
+	    	break;
+	    COMMAND(D3DDP2OP_MULTIPLYTRANSFORM)
+	    	NEXT_INST_TC(D3DHAL_DP2MULTIPLYTRANSFORM, inst->wStateCount);
+	    	break;
+	    COMMAND(D3DDP2OP_ADDDIRTYRECT)
+	    	NEXT_INST_TC(D3DHAL_DP2ADDDIRTYRECT, inst->wStateCount);
+	    	break;
+	    COMMAND(D3DDP2OP_ADDDIRTYBOX)
+	    	NEXT_INST_TC(D3DHAL_DP2ADDDIRTYBOX, inst->wStateCount);
+	    	break;
+			default:
+				WARN("Unknown command: 0x%X", inst->bCommand);
+				
+				if(!entry->D3DParseUnknownCommand)
+				{
+					*error_offset = (LPBYTE)inst - (LPBYTE)cmdBufferStart;
+					return FALSE;
+				}
+				
+				{
+					void *resume_inst = NULL;
+					PFND3DPARSEUNKNOWNCOMMAND fn = (PFND3DPARSEUNKNOWNCOMMAND)entry->D3DParseUnknownCommand;
+					fn((LPVOID)inst, &resume_inst);
+					if(resume_inst == NULL)
+					{
+						*error_offset = (LPBYTE)inst - (LPBYTE)cmdBufferStart;
+						return FALSE;
+					}
+					inst = resume_inst;
+				}
+				break;
+		} // switch
+	} // while
+		
+	return TRUE;
+}

@@ -103,37 +103,16 @@ DWORD __stdcall CreateSurface(LPDDHAL_CREATESURFACEDATA pcsd)
 
 			if(lpSurf->lpGbl->ddpfSurface.dwFlags & DDPF_FOURCC)
 			{
-				DWORD blksize = 0;
+				DWORD pitch;
+				DWORD size = SurfaceDataSize(lpSurf, &pitch);
 
-				switch(lpSurf->lpGbl->ddpfSurface.dwFourCC)
-				{
-					case MAKEFOURCC('D', 'X', 'T', '1'):
-						blksize = 8;
-						break;
-					case MAKEFOURCC('D', 'X', 'T', '2'):
-					case MAKEFOURCC('D', 'X', 'T', '3'):
-						blksize = 16;
-						break;
-					case MAKEFOURCC('D', 'X', 'T', '4'):
-					case MAKEFOURCC('D', 'X', 'T', '5'):
-						blksize = 16;
-						break;
-					default:
-						pcsd->ddRVal = DD_OK;
-						return DDHAL_DRIVER_NOTHANDLED;
-						break;
-				}
-
-				DWORD dx = (lpSurf->lpGbl->wWidth  + 3) >> 2;
-				DWORD dy = (lpSurf->lpGbl->wHeight + 3) >> 2;
-
-				lpSurf->lpGbl->lPitch = dx * blksize; // for FOURCC needs to be fill
+				lpSurf->lpGbl->lPitch = pitch; // for FOURCC needs to be fill
 				if(i == 0)
 				{
-					pcsd->lpDDSurfaceDesc->lPitch = dx * blksize;
+					pcsd->lpDDSurfaceDesc->lPitch = pitch;
 				}
 				
-				lpSurf->lpGbl->dwBlockSizeX = dx * dy *  blksize;
+				lpSurf->lpGbl->dwBlockSizeX = size;
 				lpSurf->lpGbl->dwBlockSizeY = 1;
 				lpSurf->lpGbl->fpVidMem     = DDHAL_PLEASEALLOC_BLOCKSIZE;
 				

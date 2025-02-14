@@ -923,8 +923,59 @@ typedef enum _D3DHAL_DP2OPERATION
     D3DDP2OP_CLEAR                = 42,
 //#if(DIRECT3D_VERSION >= 0x0700)
     D3DDP2OP_SETTEXLOD            = 43,
-    D3DDP2OP_SETCLIPPLANE         = 44
+    D3DDP2OP_SETCLIPPLANE         = 44,
 //#endif /* DIRECT3D_VERSION >= 0x0700 */
+//#if(DIRECT3D_VERSION >= 0x0800)
+    D3DDP2OP_CREATEVERTEXSHADER   = 45,
+    D3DDP2OP_DELETEVERTEXSHADER   = 46,
+    D3DDP2OP_SETVERTEXSHADER      = 47,
+    D3DDP2OP_SETVERTEXSHADERCONST = 48,
+    D3DDP2OP_SETSTREAMSOURCE      = 49,
+    D3DDP2OP_SETSTREAMSOURCEUM    = 50,
+    D3DDP2OP_SETINDICES           = 51,
+    D3DDP2OP_DRAWPRIMITIVE        = 52,
+    D3DDP2OP_DRAWINDEXEDPRIMITIVE = 53,
+    D3DDP2OP_CREATEPIXELSHADER    = 54,
+    D3DDP2OP_DELETEPIXELSHADER    = 55,
+    D3DDP2OP_SETPIXELSHADER       = 56,
+    D3DDP2OP_SETPIXELSHADERCONST  = 57,
+    D3DDP2OP_CLIPPEDTRIANGLEFAN   = 58,
+    D3DDP2OP_DRAWPRIMITIVE2       = 59,
+    D3DDP2OP_DRAWINDEXEDPRIMITIVE2= 60,
+    D3DDP2OP_DRAWRECTPATCH        = 61,
+    D3DDP2OP_DRAWTRIPATCH         = 62,
+    D3DDP2OP_VOLUMEBLT            = 63,
+    D3DDP2OP_BUFFERBLT            = 64,
+    D3DDP2OP_MULTIPLYTRANSFORM    = 65,
+    D3DDP2OP_ADDDIRTYRECT         = 66,
+    D3DDP2OP_ADDDIRTYBOX          = 67,
+//#endif 
+#if(DIRECT3D_VERSION >= 0x0900)
+    D3DDP2OP_CREATEVERTEXSHADERDECL   = 71,
+    D3DDP2OP_DELETEVERTEXSHADERDECL   = 72,
+    D3DDP2OP_SETVERTEXSHADERDECL      = 73,
+    D3DDP2OP_CREATEVERTEXSHADERFUNC   = 74,
+    D3DDP2OP_DELETEVERTEXSHADERFUNC   = 75,
+    D3DDP2OP_SETVERTEXSHADERFUNC      = 76,
+    D3DDP2OP_SETVERTEXSHADERCONSTI    = 77,
+    D3DDP2OP_SETSCISSORRECT           = 79,
+    D3DDP2OP_SETSTREAMSOURCE2         = 80,
+    D3DDP2OP_BLT                      = 81,
+    D3DDP2OP_COLORFILL                = 82,
+    D3DDP2OP_SETVERTEXSHADERCONSTB    = 83,
+    D3DDP2OP_CREATEQUERY              = 84,
+    D3DDP2OP_SETRENDERTARGET2         = 85,
+    D3DDP2OP_SETDEPTHSTENCIL          = 86,
+    D3DDP2OP_RESPONSECONTINUE         = 87,
+    D3DDP2OP_RESPONSEQUERY            = 88,
+    D3DDP2OP_GENERATEMIPSUBLEVELS     = 89,
+    D3DDP2OP_DELETEQUERY              = 90,
+    D3DDP2OP_ISSUEQUERY               = 91,
+    D3DDP2OP_SETPIXELSHADERCONSTI     = 93,
+    D3DDP2OP_SETPIXELSHADERCONSTB     = 94,
+    D3DDP2OP_SETSTREAMSOURCEFREQ      = 95,
+    D3DDP2OP_SURFACEBLT               = 96,
+#endif
 } D3DHAL_DP2OPERATION;
 
 //
@@ -1077,6 +1128,7 @@ typedef struct _D3DHAL_DP2SETRENDERTARGET
 #define D3DHAL_STATESETDELETE    2
 #define D3DHAL_STATESETEXECUTE   3
 #define D3DHAL_STATESETCAPTURE   4
+#define D3DHAL_STATESETCREATE    5 /* DX8 */
 
 typedef struct _D3DHAL_DP2STATESET
 {
@@ -1179,5 +1231,608 @@ typedef HRESULT (__stdcall *PFND3DPARSEUNKNOWNCOMMAND) (LPVOID lpvCommands, LPVO
 #define D3DDEVCAPS_HWVERTEXBUFFER 0x02000000L /* Device supports Driver Allocated Vertex Buffers*/
 #define D3DDEVCAPS_HWINDEXBUFFER  0x04000000L /* Device supports Driver Allocated Index Buffers*/
 #define D3DDEVCAPS_SUBVOLUMELOCK  0x08000000L /* Device supports locking a part of volume texture*/
+
+
+/*
+ *
+ * DX 8
+ *
+ */
+//-----------------------------------------------------------------------------
+//
+// DirectX 8.0's new driver info querying mechanism.
+//
+// How to handle the new driver info query mechanism.
+//
+// DirectX 8.0 utilizes an extension to GetDriverInfo() to query for
+// additional information from the driver. Currently this mechanism is only
+// used for querying for DX8 style D3D caps but it may be used for other
+// information over time.
+//
+// This extension to GetDriverInfo takes the form of a GetDriverInfo call
+// with the GUID GUID_GetDriverInfo2. When a GetDriverInfo call with this
+// GUID is received by the driver the driver must check the data passed
+// in the lpvData field of the DD_GETDRIVERINFODATA data structure to see
+// what information is being requested.
+//
+// It is important to note that the GUID GUID_GetDriverInfo2 is, in fact,
+// the same as the GUID_DDStereoMode. If you driver doesn't handle
+// GUID_DDStereoMode this is not an issue. However, if you wish your driver
+// to handle GUID_DDStereoMode as well as GUID_GetDriverInfo2 special action
+// must be taken. When a call tp GetDriverInfo with the GUID
+// GUID_GetDriverInfo2/GUID_DDStereoMode is made the runtime sets the
+// dwHeight field of the DD_STEREOMODE structure to the special value
+// D3DGDI2_MAGIC. In this way you can determine when the request is a
+// stereo mode call or a GetDriverInfo2 call. The dwHeight field of
+// DD_STEREOMODE corresponds to the dwMagic field of the
+// DD_GETDRIVERINFO2DATA structure.
+//
+// The dwExpectedSize field of the DD_GETDRIVERINFODATA structure is not
+// used by when a GetDriverInfo2 request is being made and should be
+// ignored. The actual expected size of the data is found in the
+// dwExpectedSize of the DD_GETDRIVERINFO2DATA structure.
+//
+// Once the driver has determined that this is a call to
+// GetDriverInfo2 it must then determine the type of information being
+// requested by the runtime. This type is contained in the dwType field
+// of the DD_GETDRIVERINFO2DATA data structure.
+//
+// Finally, once the driver knows this is a GetDriverInfo2 request of a
+// particular type it can copy the requested data into the data buffer.
+// It is important to note that the lpvData field of the DD_GETDRIVERINFODATA
+// data structure points to data buffer in which to copy your data. lpvData
+// also points to the DD_GETDRIVERINFO2DATA structure. This means that the
+// data returned by the driver will overwrite the DD_GETDRIVERINFO2DATA
+// structure and, hence, the DD_GETDRIVERINFO2DATA structure occupies the
+// first few DWORDs of the buffer.
+//
+// The following code fragment demonstrates how to handle GetDriverInfo2.
+//
+// D3DCAPS8 myD3DCaps8;
+//
+// DWORD CALLBACK
+// DdGetDriverInfo(LPDDHAL_GETDRIVERINFODATA lpData)
+// {
+//     if (MATCH_GUID((lpData->guidInfo), GUID_GetDriverInfo2) )
+//     {
+//         ASSERT(NULL != lpData);
+//         ASSERT(NULL != lpData->lpvData);
+//
+//         // Is this a call to GetDriverInfo2 or DDStereoMode?
+//         if (((DD_GETDRIVERINFO2DATA*)(lpData->lpvData))->dwMagic == D3DGDI2_MAGIC)
+//         {
+//             // Yes, its a call to GetDriverInfo2, fetch the
+//             // DD_GETDRIVERINFO2DATA data structure.
+//             DD_GETDRIVERINFO2DATA* pgdi2 = lpData->lpvData;
+//             ASSERT(NULL != pgdi2);
+//
+//             // What type of request is this?
+//             switch (pgdi2->dwType)
+//             {
+//             case D3DGDI2_TYPE_GETD3DCAPS8:
+//                 {
+//                     // The runtime is requesting the DX8 D3D caps so
+//                     // copy them over now.
+//
+//                     // It should be noted that the dwExpectedSize field
+//                     // of DD_GETDRIVERINFODATA is not used for
+//                     // GetDriverInfo2 calls and should be ignored.
+//                     size_t copySize = min(sizeof(myD3DCaps8), pgdi2->dwExpectedSize);
+//                     memcpy(lpData->lpvData, &myD3DCaps8, copySize);
+//                     lpData->dwActualSize = copySize;
+//                     lpData->ddRVal       = DD_OK;
+//                     return DDHAL_DRIVER_HANDLED;
+//                 }
+//             default:
+//                 // For any other GetDriverInfo2 types not handled
+//                 // or understood by the driver set an ddRVal of
+//                 // DDERR_CURRENTLYNOTAVAIL and return
+//                 // DDHAL_DRIVER_HANDLED.
+//                 lpData->dwActualSize = 0;
+//                 lpData->ddRVal       = DDERR_CURRENTLYNOTAVAIL;
+//                 return DDHAL_DRIVER_HANDLED;
+//             }
+//         }
+//         else
+//         {
+//             // It must be a call a request for stereo mode support.
+//             // Fetch the stereo mode data
+//             DD_STEREOMODE* pStereoMode = lpData->lpvData;
+//             ASSERT(NULL != pStereoMode);
+//
+//             // Process the stereo mode request...
+//             lpData->dwActualSize = sizeof(DD_STEREOMODE);
+//             lpData->ddRVal       = DD_OK;
+//             return DDHAL_DRIVER_HANDLED;
+//         }
+//     }
+//
+//     // Handle any other device GUIDs...
+//
+// } // DdGetDriverInfo
+//
+//-----------------------------------------------------------------------------
+
+//
+// The data structure which is passed to the driver when GetDriverInfo is
+// called with a GUID of GUID_GetDriverInfo2.
+//
+// NOTE: Although the fields listed below are all read only this data
+// structure is actually the first four DWORDs of the data buffer into
+// which the driver writes the requested infomation. As such, these fields
+// (and the entire data structure) are overwritten by the data returned by
+// the driver.
+//
+typedef struct _DD_GETDRIVERINFO2DATA
+{
+    DWORD       dwReserved;     // Reserved Field.
+                                // Driver should not read or write this field.
+
+    DWORD       dwMagic;        // Magic Number. Has the value D3DGDI2_MAGIC if
+                                // this is a GetDriverInfo2 call. Otherwise
+                                // this structure is, in fact, a DD_STEREOMODE
+                                // call.
+                                // Driver should only read this field.
+
+    DWORD       dwType;         // Type of information requested. This field
+                                // contains one of the DDGDI2_TYPE_ #defines
+                                // listed below.
+                                // Driver should only read (not write) this
+                                // field.
+
+    DWORD       dwExpectedSize; // Expected size of the information requested.
+                                // Driver should only read (not write) this
+                                // field.
+
+    // The remainder of the data buffer (beyond the first four DWORDs)
+    // follows here.
+} DD_GETDRIVERINFO2DATA;
+
+//
+// IMPORTANT NOTE: This GUID has exactly the same value as GUID_DDStereoMode
+// and as such you must be very careful when using it. If your driver needs
+// to handle both GetDriverInfo2 and DDStereoMode it must have a single
+// check for the shared GUID and then distinguish between which use of that
+// GUID is being requested.
+//
+#define GUID_GetDriverInfo2 (GUID_DDStereoMode)
+
+//
+// Magic value used to determine whether a GetDriverInfo call with the
+// GUID GUID_GetDriverInfo2/GUID_DDStereoMode is a GetDriverInfo2 request
+// or a query about stereo capabilities. This magic number is stored in
+// the dwHeight field of the DD_STEREOMODE data structure.
+//
+#define D3DGDI2_MAGIC       (0xFFFFFFFFul)
+
+//
+// The types of information which can be requested from the driver via
+// GetDriverInfo2.
+//
+
+#define D3DGDI2_TYPE_GETD3DCAPS8            (0x00000001ul) // Return the D3DCAPS8 data
+#define D3DGDI2_TYPE_GETFORMATCOUNT         (0x00000002ul) // Return the number of supported formats
+#define D3DGDI2_TYPE_GETFORMAT              (0x00000003ul) // Return a particular format
+#define D3DGDI2_TYPE_DXVERSION              (0x00000004ul) // Notify driver of current DX Version
+#define D3DGDI2_TYPE_GETD3DCAPS9            (0x00000010ul) // Return the D3DCAPS9 data
+#define D3DGDI2_TYPE_GETEXTENDEDMODECOUNT   (0x00000011ul) // Return the number of supported extended mode
+#define D3DGDI2_TYPE_GETEXTENDEDMODE        (0x00000012ul) // Return a particular extended mode
+#define D3DGDI2_TYPE_GETADAPTERGROUP        (0x00000013ul) // Return a adapter group information
+#define D3DGDI2_TYPE_GETMULTISAMPLEQUALITYLEVELS (0x00000016ul) // Return the number of multisample quality levels
+#define D3DGDI2_TYPE_DEFERRED_AGP_AWARE     (0x00000018ul) // Runtime is aware of deferred AGP frees, and will send following (NT only)
+#define D3DGDI2_TYPE_FREE_DEFERRED_AGP      (0x00000019ul) // Free any deferred-freed AGP allocations for this process (NT only)
+#define D3DGDI2_TYPE_DEFER_AGP_FREES        (0x00000020ul) // Start defering AGP frees for this process
+#define D3DGDI2_TYPE_GETD3DQUERYCOUNT       (0x00000021ul) // Return the number of supported queries
+#define D3DGDI2_TYPE_GETD3DQUERY            (0x00000022ul) // Return supported query
+#define D3DGDI2_TYPE_GETDDIVERSION          (0x00000023ul) // Return DX9_DDI_VERSION
+
+//
+// This data structure is returned by the driver in response to a
+// GetDriverInfo2 query with the type D3DGDI2_TYPE_GETFORMATCOUNT. It simply
+// gives the number of surface formats supported by the driver. Currently this
+// structure consists of a single member giving the number of supported
+// surface formats.
+//
+typedef struct _DD_GETFORMATCOUNTDATA
+{
+    DD_GETDRIVERINFO2DATA gdi2;          // [in/out] GetDriverInfo2 data
+    DWORD                 dwFormatCount; // [out]    Number of supported surface formats
+    DWORD                 dwReserved;    // Reserved
+} DD_GETFORMATCOUNTDATA;
+
+//
+// This data structure is used to request a specific surface format from the
+// driver. It is guaranteed that the requested format will be greater than or
+// equal to zero and less that the format count reported by the driver from
+// the preceeding D3DGDI2_TYPE_GETFORMATCOUNT request.
+//
+typedef struct _DD_GETFORMATDATA
+{
+    DD_GETDRIVERINFO2DATA gdi2;             // [in/out] GetDriverInfo2 data
+    DWORD                 dwFormatIndex;    // [in]     The format to return
+    DDPIXELFORMAT         format;           // [out]    The actual format
+} DD_GETFORMATDATA;
+
+//
+// This data structure is used to notify drivers about the DirectX version
+// number. This is the value that is denoted as DD_RUNTIME_VERSION in the
+// DDK headers.
+//
+typedef struct _DD_DXVERSION
+{
+    DD_GETDRIVERINFO2DATA gdi2;             // [in/out] GetDriverInfo2 data
+    DWORD                 dwDXVersion;      // [in]     The Version of DX
+    DWORD                 dwReserved;       // Reserved
+} DD_DXVERSION;
+
+// Informs driver that runtime will send a notification after last outstanding AGP
+// lock has been released.
+typedef struct _DD_DEFERRED_AGP_AWARE_DATA
+{
+    DD_GETDRIVERINFO2DATA gdi2;        // [in/out] GetDriverInfo2 data
+} DD_DEFERRED_AGP_AWARE_DATA;
+
+// Notification that the last AGP lock has been released. Driver can free all deferred AGP
+// allocations for this process.
+typedef struct _DD_FREE_DEFERRED_AGP_DATA
+{
+    DD_GETDRIVERINFO2DATA gdi2;        // [in/out] GetDriverInfo2 data
+    DWORD dwProcessId;                   // [in] Process ID for whom to free deferred AGP
+} DD_FREE_DEFERRED_AGP_DATA;
+
+/*
+this is part of "standard" d3d8types.h/d3d9types.h, but we cannot combine
+them with legacy headers
+*/
+typedef enum _D3DFORMAT
+{
+    D3DFMT_UNKNOWN              =  0,
+
+    D3DFMT_R8G8B8               = 20,
+    D3DFMT_A8R8G8B8             = 21,
+    D3DFMT_X8R8G8B8             = 22,
+    D3DFMT_R5G6B5               = 23,
+    D3DFMT_X1R5G5B5             = 24,
+    D3DFMT_A1R5G5B5             = 25,
+    D3DFMT_A4R4G4B4             = 26,
+    D3DFMT_R3G3B2               = 27,
+    D3DFMT_A8                   = 28,
+    D3DFMT_A8R3G3B2             = 29,
+    D3DFMT_X4R4G4B4             = 30,
+    D3DFMT_A2B10G10R10          = 31,
+    D3DFMT_A8B8G8R8             = 32,
+    D3DFMT_X8B8G8R8             = 33,
+    D3DFMT_G16R16               = 34,
+    D3DFMT_A2R10G10B10          = 35,
+    D3DFMT_A16B16G16R16         = 36,
+
+    D3DFMT_A8P8                 = 40,
+    D3DFMT_P8                   = 41,
+
+    D3DFMT_L8                   = 50,
+    D3DFMT_A8L8                 = 51,
+    D3DFMT_A4L4                 = 52,
+
+    D3DFMT_V8U8                 = 60,
+    D3DFMT_L6V5U5               = 61,
+    D3DFMT_X8L8V8U8             = 62,
+    D3DFMT_Q8W8V8U8             = 63,
+    D3DFMT_V16U16               = 64,
+    D3DFMT_A2W10V10U10          = 67,
+
+    D3DFMT_UYVY                 = MAKEFOURCC('U', 'Y', 'V', 'Y'),
+    D3DFMT_R8G8_B8G8            = MAKEFOURCC('R', 'G', 'B', 'G'),
+    D3DFMT_YUY2                 = MAKEFOURCC('Y', 'U', 'Y', '2'),
+    D3DFMT_G8R8_G8B8            = MAKEFOURCC('G', 'R', 'G', 'B'),
+    D3DFMT_DXT1                 = MAKEFOURCC('D', 'X', 'T', '1'),
+    D3DFMT_DXT2                 = MAKEFOURCC('D', 'X', 'T', '2'),
+    D3DFMT_DXT3                 = MAKEFOURCC('D', 'X', 'T', '3'),
+    D3DFMT_DXT4                 = MAKEFOURCC('D', 'X', 'T', '4'),
+    D3DFMT_DXT5                 = MAKEFOURCC('D', 'X', 'T', '5'),
+
+    D3DFMT_D16_LOCKABLE         = 70,
+    D3DFMT_D32                  = 71,
+    D3DFMT_D15S1                = 73,
+    D3DFMT_D24S8                = 75,
+    D3DFMT_D24X8                = 77,
+    D3DFMT_D24X4S4              = 79,
+    D3DFMT_D16                  = 80,
+
+    D3DFMT_D32F_LOCKABLE        = 82,
+    D3DFMT_D24FS8               = 83,
+
+
+    D3DFMT_L16                  = 81,
+
+    D3DFMT_VERTEXDATA           =100,
+    D3DFMT_INDEX16              =101,
+    D3DFMT_INDEX32              =102,
+
+    D3DFMT_Q16W16V16U16         =110,
+
+    D3DFMT_MULTI2_ARGB8         = MAKEFOURCC('M','E','T','1'),
+
+    // Floating point surface formats
+
+    // s10e5 formats (16-bits per channel)
+    D3DFMT_R16F                 = 111,
+    D3DFMT_G16R16F              = 112,
+    D3DFMT_A16B16G16R16F        = 113,
+
+    // IEEE s23e8 formats (32-bits per channel)
+    D3DFMT_R32F                 = 114,
+    D3DFMT_G32R32F              = 115,
+    D3DFMT_A32B32G32R32F        = 116,
+
+    D3DFMT_CxV8U8               = 117,
+
+
+    D3DFMT_FORCE_DWORD          =0x7fffffff
+} D3DFORMAT;
+
+//
+// This stuff is not API visible but should be DDI visible.
+// Should be in Sync with d3d8types.h
+//
+#define D3DFMT_D32    (D3DFORMAT)71
+#define D3DFMT_S1D15  (D3DFORMAT)72
+#define D3DFMT_D15S1  (D3DFORMAT)73
+#define D3DFMT_S8D24  (D3DFORMAT)74
+#define D3DFMT_D24S8  (D3DFORMAT)75
+#define D3DFMT_X8D24  (D3DFORMAT)76
+#define D3DFMT_D24X8 (D3DFORMAT)77
+#define D3DFMT_X4S4D24 (D3DFORMAT)78
+#define D3DFMT_D24X4S4 (D3DFORMAT)79
+
+/* Direct3D8 Device types */
+typedef enum _D3DDEVTYPE
+{
+	D3DDEVTYPE_HAL         = 1,
+	D3DDEVTYPE_REF         = 2,
+	D3DDEVTYPE_SW          = 3,
+	D3DDEVTYPE_FORCE_DWORD  = 0x7fffffff
+} D3DDEVTYPE;
+
+/* Multi-Sample buffer types */
+typedef enum _D3DMULTISAMPLE_TYPE
+{
+    D3DMULTISAMPLE_NONE            =  0,
+    D3DMULTISAMPLE_NONMASKABLE     =  1,
+    D3DMULTISAMPLE_2_SAMPLES       =  2,
+    D3DMULTISAMPLE_3_SAMPLES       =  3,
+    D3DMULTISAMPLE_4_SAMPLES       =  4,
+    D3DMULTISAMPLE_5_SAMPLES       =  5,
+    D3DMULTISAMPLE_6_SAMPLES       =  6,
+    D3DMULTISAMPLE_7_SAMPLES       =  7,
+    D3DMULTISAMPLE_8_SAMPLES       =  8,
+    D3DMULTISAMPLE_9_SAMPLES       =  9,
+    D3DMULTISAMPLE_10_SAMPLES      = 10,
+    D3DMULTISAMPLE_11_SAMPLES      = 11,
+    D3DMULTISAMPLE_12_SAMPLES      = 12,
+    D3DMULTISAMPLE_13_SAMPLES      = 13,
+    D3DMULTISAMPLE_14_SAMPLES      = 14,
+    D3DMULTISAMPLE_15_SAMPLES      = 15,
+    D3DMULTISAMPLE_16_SAMPLES      = 16,
+
+    D3DMULTISAMPLE_FORCE_DWORD     = 0x7fffffff
+} D3DMULTISAMPLE_TYPE;
+
+// pixel shader version token
+#define D3DPS_VERSION(_Major,_Minor) (0xFFFF0000|((_Major)<<8)|(_Minor))
+
+// vertex shader version token
+#define D3DVS_VERSION(_Major,_Minor) (0xFFFE0000|((_Major)<<8)|(_Minor))
+
+typedef struct _D3DHAL_DP2CREATEVERTEXSHADER {
+	DWORD dwHandle;
+	DWORD dwDeclSize;
+	DWORD dwCodeSize;
+} D3DHAL_DP2CREATEVERTEXSHADER, *LPD3DHAL_DP2CREATEVERTEXSHADER;
+
+typedef struct _D3DHAL_DP2VERTEXSHADER {
+	DWORD dwHandle;
+} D3DHAL_DP2VERTEXSHADER, *LPD3DHAL_DP2VERTEXSHADER;
+
+typedef struct _D3DHAL_DP2SETVERTEXSHADERCONST {
+	DWORD dwRegister;
+	DWORD dwCount;
+} D3DHAL_DP2SETVERTEXSHADERCONST, *LPD3DHAL_DP2SETVERTEXSHADERCONST;
+
+typedef struct _D3DHAL_DP2SETSTREAMSOURCE {
+	DWORD dwStream;
+	DWORD dwVBHandle;
+	DWORD dwStride;
+} D3DHAL_DP2SETSTREAMSOURCE, *LPD3DHAL_DP2SETSTREAMSOURCE;
+
+typedef struct _D3DHAL_DP2SETSTREAMSOURCEUM {
+	DWORD dwStream;
+	DWORD dwStride;
+} D3DHAL_DP2SETSTREAMSOURCEUM, *LPD3DHAL_DP2SETSTREAMSOURCEUM;
+
+typedef struct _D3DHAL_DP2SETINDICES {
+	DWORD dwVBHandle;
+	DWORD dwStride;
+} D3DHAL_DP2SETINDICES, *LPD3DHAL_DP2SETINDICES;
+
+typedef struct _D3DHAL_DP2DRAWPRIMITIVE {
+	D3DPRIMITIVETYPE    primType;
+	DWORD               VStart;
+	DWORD               PrimitiveCount;
+} D3DHAL_DP2DRAWPRIMITIVE, *LPD3DHAL_DP2DRAWPRIMITIVE;
+
+typedef struct _D3DHAL_DP2DRAWINDEXEDPRIMITIVE {
+	D3DPRIMITIVETYPE primType;
+	INT BaseVertexIndex;
+	DWORD MinIndex;
+	DWORD NumVertices;
+	DWORD StartIndex;
+	DWORD PrimitiveCount;
+} D3DHAL_DP2DRAWINDEXEDPRIMITIVE, *LPD3DHAL_DP2DRAWINDEXEDPRIMITIVE;
+
+typedef struct _D3DHAL_DP2DRAWINDEXEDPRIMITIVE2 {
+	D3DPRIMITIVETYPE primType;
+	INT   BaseVertexOffset;
+	DWORD MinIndex;
+	DWORD NumVertices;
+	DWORD StartIndexOffset;
+	DWORD PrimitiveCount;
+} D3DHAL_DP2DRAWINDEXEDPRIMITIVE2, *LPD3DHAL_DP2DRAWINDEXEDPRIMITIVE2;
+
+typedef struct _D3DHAL_DP2CREATEPIXELSHADER {
+	DWORD dwHandle;
+	DWORD dwCodeSize;
+} D3DHAL_DP2CREATEPIXELSHADER, *LPD3DHAL_DP2CREATEPIXELSHADER;
+
+typedef struct _D3DHAL_DP2PIXELSHADER {
+	DWORD dwHandle;
+} D3DHAL_DP2PIXELSHADER, *LPD3DHAL_DP2PIXELSHADER;
+
+typedef struct _D3DHAL_DP2SETPIXELSHADERCONST {
+    DWORD dwRegister;
+    DWORD dwCount;
+} D3DHAL_DP2SETPIXELSHADERCONST, *LPD3DHAL_DP2SETPIXELSHADERCONST;
+
+typedef struct _D3DHAL_CLIPPEDTRIANGLEFAN {
+	DWORD FirstVertexOffset;
+	DWORD dwEdgeFlags;
+	DWORD PrimitiveCount;
+} D3DHAL_CLIPPEDTRIANGLEFAN, *LPD3DHAL_CLIPPEDTRIANGLEFAN;
+
+typedef struct _D3DHAL_DP2DRAWPRIMITIVE2 {
+	D3DPRIMITIVETYPE primType;
+	DWORD FirstVertexOffset;
+	DWORD PrimitiveCount;
+} D3DHAL_DP2DRAWPRIMITIVE2, *LPD3DHAL_DP2DRAWPRIMITIVE2;
+
+typedef struct _D3DHAL_DP2DRAWRECTPATCH {
+	DWORD Handle;
+	DWORD Flags;
+} D3DHAL_DP2DRAWRECTPATCH, *LPD3DHAL_DP2DRAWRECTPATCH;
+
+typedef struct _D3DHAL_DP2DRAWTRIPATCH {
+	DWORD Handle;
+	DWORD Flags;
+} D3DHAL_DP2DRAWTRIPATCH, *LPD3DHAL_DP2DRAWTRIPATCH;
+
+#define RTPATCHFLAG_HASSEGS  0x00000001L
+#define RTPATCHFLAG_HASINFO  0x00000002L
+
+/* Structures for LockBox */
+typedef struct _D3DBOX
+{
+	UINT                Left;
+	UINT                Top;
+	UINT                Right;
+	UINT                Bottom;
+	UINT                Front;
+	UINT                Back;
+} D3DBOX;
+
+/* Structures for LockRange */
+typedef struct _D3DRANGE
+{
+	UINT                Offset;
+	UINT                Size;
+} D3DRANGE;
+
+typedef struct _D3DHAL_DP2VOLUMEBLT {
+	DWORD   dwDDDestSurface;
+	DWORD   dwDDSrcSurface;
+	DWORD   dwDestX;
+	DWORD   dwDestY;
+	DWORD   dwDestZ;
+	D3DBOX  srcBox;
+	DWORD   dwFlags;
+} D3DHAL_DP2VOLUMEBLT, *LPD3DHAL_DP2VOLUMEBLT;
+
+typedef struct _D3DHAL_DP2BUFFERBLT {
+	DWORD   dwDDDestSurface;
+	DWORD   dwDDSrcSurface;
+	DWORD   dwOffset;
+  D3DRANGE rSrc;
+  DWORD   dwFlags;
+} D3DHAL_DP2BUFFERBLT, *LPD3DHAL_DP2BUFFERBLT;
+
+typedef struct _D3DHAL_DP2MULTIPLYTRANSFORM {
+	D3DTRANSFORMSTATETYPE xfrmType;
+	D3DMATRIX matrix;
+} D3DHAL_DP2MULTIPLYTRANSFORM, *LPD3DHAL_DP2MULTIPLYTRANSFORM;
+
+typedef struct _D3DHAL_DP2ADDDIRTYRECT {
+	DWORD   dwSurface;
+	RECTL   rDirtyArea;
+} D3DHAL_DP2ADDDIRTYRECT, *LPD3DHAL_DP2ADDDIRTYRECT;
+
+typedef struct _D3DHAL_DP2ADDDIRTYBOX {
+  DWORD   dwSurface;
+  D3DBOX  DirtyBox;
+} D3DHAL_DP2ADDDIRTYBOX, *LPD3DHAL_DP2ADDDIRTYBOX;
+
+// High order surfaces
+//
+typedef enum _D3DBASISTYPE
+{
+	D3DBASIS_BEZIER      = 0,
+	D3DBASIS_BSPLINE     = 1,
+	D3DBASIS_INTERPOLATE = 2,
+	D3DBASIS_FORCE_DWORD = 0x7fffffff,
+} D3DBASISTYPE;
+
+typedef enum _D3DORDERTYPE
+{
+   D3DORDER_LINEAR      = 1,
+   D3DORDER_QUADRATIC   = 2,
+   D3DORDER_CUBIC       = 3,
+   D3DORDER_QUINTIC     = 5,
+   D3DORDER_FORCE_DWORD = 0x7fffffff,
+} D3DORDERTYPE;
+
+/* Structures for high order primitives */
+typedef struct _D3DRECTPATCH_INFO
+{
+	UINT                StartVertexOffsetWidth;
+	UINT                StartVertexOffsetHeight;
+	UINT                Width;
+	UINT                Height;
+	UINT                Stride;
+	D3DBASISTYPE        Basis;
+	D3DORDERTYPE        Order;
+} D3DRECTPATCH_INFO;
+
+typedef struct _D3DTRIPATCH_INFO
+{
+	UINT                StartVertexOffset;
+	UINT                NumVertices;
+	D3DBASISTYPE        Basis;
+	D3DORDERTYPE        Order;
+} D3DTRIPATCH_INFO;
+
+
+#define D3DRS_SOFTWAREVERTEXPROCESSING  ((D3DRENDERSTATETYPE)153)
+#define D3DRS_POINTSIZE                 ((D3DRENDERSTATETYPE)154)   /* float point size */
+#define D3DRS_POINTSIZE_MIN             ((D3DRENDERSTATETYPE)155)   /* float point size min threshold */
+#define D3DRS_POINTSPRITEENABLE         ((D3DRENDERSTATETYPE)156)   /* BOOL point texture coord control */
+#define D3DRS_POINTSCALEENABLE          ((D3DRENDERSTATETYPE)157)   /* BOOL point size scale enable */
+#define D3DRS_POINTSCALE_A              ((D3DRENDERSTATETYPE)158)   /* float point attenuation A value */
+#define D3DRS_POINTSCALE_B              ((D3DRENDERSTATETYPE)159)   /* float point attenuation B value */
+#define D3DRS_POINTSCALE_C              ((D3DRENDERSTATETYPE)160)   /* float point attenuation C value */
+#define D3DRS_MULTISAMPLEANTIALIAS      ((D3DRENDERSTATETYPE)161)  // BOOL - set to do FSAA with multisample buffer
+#define D3DRS_MULTISAMPLEMASK           ((D3DRENDERSTATETYPE)162)  // DWORD - per-sample enable/disable
+#define D3DRS_PATCHEDGESTYLE            ((D3DRENDERSTATETYPE)163)  // Sets whether patch edges will use float style tessellation
+#define D3DRS_PATCHSEGMENTS             ((D3DRENDERSTATETYPE)164)  // Number of segments per edge when drawing patches
+#define D3DRS_DEBUGMONITORTOKEN         ((D3DRENDERSTATETYPE)165)  // DEBUG ONLY - token to debug monitor
+#define D3DRS_POINTSIZE_MAX             ((D3DRENDERSTATETYPE)166)   /* float point size max threshold */
+#define D3DRS_INDEXEDVERTEXBLENDENABLE  ((D3DRENDERSTATETYPE)167)
+#define D3DRS_COLORWRITEENABLE          ((D3DRENDERSTATETYPE)168)  // per-channel write enable
+#define D3DRS_TWEENFACTOR               ((D3DRENDERSTATETYPE)170)   // float tween factor
+#define D3DRS_BLENDOP                   ((D3DRENDERSTATETYPE)171)   // D3DBLENDOP setting
+#define D3DRS_POSITIONORDER             ((D3DRENDERSTATETYPE)172)   // NPatch position interpolation order. D3DORDER_LINEAR or D3DORDER_CUBIC (default)
+#define D3DRS_NORMALORDER               ((D3DRENDERSTATETYPE)173)   // NPatch normal interpolation order. D3DORDER_LINEAR (default) or D3DORDER_QUADRATIC
+
+#define D3DTSS_ADDRESSW         ((D3DTEXTURESTAGESTATETYPE)25)
+#define D3DTSS_COLORARG0        ((D3DTEXTURESTAGESTATETYPE)26) /* D3DTA_* third arg for triadic ops */
+#define D3DTSS_ALPHAARG0        ((D3DTEXTURESTAGESTATETYPE)27) /* D3DTA_* third arg for triadic ops */
+#define D3DTSS_RESULTARG        ((D3DTEXTURESTAGESTATETYPE)28) /* D3DTA_* arg for result (CURRENT or TEMP) */
+#define D3DTSS_CONSTANT         ((D3DTEXTURESTAGESTATETYPE)32) /* Per-stage constant D3DTA_CONSTANT */
 
 #endif /* _D3DHAL_H */

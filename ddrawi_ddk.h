@@ -326,4 +326,141 @@ typedef struct _DDVIDEOPORTCAPS
 #define DDHAL_EXEBUFCB32_LOCKEXEBUF         0x00000008l
 #define DDHAL_EXEBUFCB32_UNLOCKEXEBUF       0x00000010l
 
+/*
+ * This DDPF flag is used to indicate a DX8+ format capability entry in
+ * the texture format list. It is not visible to applications.
+ */
+#define DDPF_D3DFORMAT                                          0x00200000l
+
+/*
+ * List of operations supported on formats in DX8+ texture list.
+ * See the DX8 DDK for a complete description of these flags.
+ */
+#define D3DFORMAT_OP_TEXTURE                    0x00000001L
+#define D3DFORMAT_OP_VOLUMETEXTURE              0x00000002L
+#define D3DFORMAT_OP_CUBETEXTURE                0x00000004L
+#define D3DFORMAT_OP_OFFSCREEN_RENDERTARGET     0x00000008L
+#define D3DFORMAT_OP_SAME_FORMAT_RENDERTARGET   0x00000010L
+#define D3DFORMAT_OP_ZSTENCIL                   0x00000040L
+#define D3DFORMAT_OP_ZSTENCIL_WITH_ARBITRARY_COLOR_DEPTH 0x00000080L
+
+// This format can be used as a render target if the current display mode
+// is the same depth if the alpha channel is ignored. e.g. if the device 
+// can render to A8R8G8B8 when the display mode is X8R8G8B8, then the
+// format op list entry for A8R8G8B8 should have this cap. 
+#define D3DFORMAT_OP_SAME_FORMAT_UP_TO_ALPHA_RENDERTARGET 0x00000100L
+
+// This format contains DirectDraw support (including Flip).  This flag
+// should not to be set on alpha formats.
+#define D3DFORMAT_OP_DISPLAYMODE                0x00000400L
+
+// The rasterizer can support some level of Direct3D support in this format
+// and implies that the driver can create a Context in this mode (for some 
+// render target format).  When this flag is set, the D3DFORMAT_OP_DISPLAYMODE
+// flag must also be set.
+#define D3DFORMAT_OP_3DACCELERATION             0x00000800L
+
+// If the driver needs a private format to be D3D or driver manageable,
+// then it needs to tell D3D the pixelsize in bits per pixel by setting
+// dwPrivateFormatBitCount in DDPIXELFORMAT and by setting the below
+// format op. If the below format op is not set, then D3D or the driver
+// will NOT be allowed to manage the format.
+#define D3DFORMAT_OP_PIXELSIZE                  0x00001000L
+
+// Indicates that this format can be converted to any RGB format for which
+// D3DFORMAT_MEMBEROFGROUP_ARGB is specified
+#define D3DFORMAT_OP_CONVERT_TO_ARGB            0x00002000L
+
+// Indicates that this format can be used to create offscreen plain surfaces.
+#define D3DFORMAT_OP_OFFSCREENPLAIN             0x00004000L
+
+// Indicated that this format can be read as an SRGB texture (meaning that the
+// sampler will linearize the looked up data)
+#define D3DFORMAT_OP_SRGBREAD                   0x00008000L
+
+// Indicates that this format can be used in the bumpmap instructions
+#define D3DFORMAT_OP_BUMPMAP                    0x00010000L
+
+// Indicates that this format can be sampled by the displacement map sampler
+#define D3DFORMAT_OP_DMAP                       0x00020000L
+
+// Indicates that this format cannot be used with texture filtering
+#define D3DFORMAT_OP_NOFILTER                   0x00040000L
+
+// Indicates that format conversions are supported to this RGB format if
+// D3DFORMAT_OP_CONVERT_TO_ARGB is specified in the source format.
+#define D3DFORMAT_MEMBEROFGROUP_ARGB            0x00080000L
+
+// Indicated that this format can be written as an SRGB target (meaning that the
+// pixel pipe will DE-linearize data on output to format)
+#define D3DFORMAT_OP_SRGBWRITE                  0x00100000L
+
+// Indicates that this format cannot be used with alpha blending
+#define D3DFORMAT_OP_NOALPHABLEND               0x00200000L
+
+//Indicates that the device can auto-generated sublevels for resources
+//of this format
+#define D3DFORMAT_OP_AUTOGENMIPMAP              0x00400000L
+
+// Indicates that this format cannot be used by vertex texture sampler
+#define D3DFORMAT_OP_VERTEXTEXTURE              0x00800000L 
+
+// Indicates that this format supports neither texture coordinate wrap modes, nor mipmapping
+#define D3DFORMAT_OP_NOTEXCOORDWRAPNORMIP		0x01000000L
+
+DEFINE_GUID( GUID_MotionCompCallbacks,          0xb1122b40, 0x5dA5, 0x11d1, 0x8f, 0xcF, 0x00, 0xc0, 0x4f, 0xc2, 0x9b, 0x4e);
+
+typedef struct _DD_GETMOCOMPGUIDSDATA *PDD_GETMOCOMPGUIDSDATA;
+typedef struct _DD_GETMOCOMPFORMATSDATA *PDD_GETMOCOMPFORMATSDATA;
+typedef struct _DD_CREATEMOCOMPDATA *PDD_CREATEMOCOMPDATA;
+typedef struct _DD_GETMOCOMPCOMPBUFFDATA *PDD_GETMOCOMPCOMPBUFFDATA;
+typedef struct _DD_GETINTERNALMOCOMPDATA *PDD_GETINTERNALMOCOMPDATA;
+typedef struct _DD_BEGINMOCOMPFRAMEDATA *PDD_BEGINMOCOMPFRAMEDATA;
+typedef struct _DD_ENDMOCOMPFRAMEDATA *PDD_ENDMOCOMPFRAMEDATA;
+typedef struct _DD_RENDERMOCOMPDATA *PDD_RENDERMOCOMPDATA;
+typedef struct _DD_QUERYMOCOMPSTATUSDATA *PDD_QUERYMOCOMPSTATUSDATA;
+typedef struct _DD_DESTROYMOCOMPDATA *PDD_DESTROYMOCOMPDATA;
+
+/*
+ * DIRECTDRAWVIDEO object callbacks
+ */
+typedef DWORD (__stdcall *PDD_MOCOMPCB_GETGUIDS)( PDD_GETMOCOMPGUIDSDATA);
+typedef DWORD (__stdcall *PDD_MOCOMPCB_GETFORMATS)( PDD_GETMOCOMPFORMATSDATA);
+typedef DWORD (__stdcall *PDD_MOCOMPCB_CREATE)( PDD_CREATEMOCOMPDATA);
+typedef DWORD (__stdcall *PDD_MOCOMPCB_GETCOMPBUFFINFO)( PDD_GETMOCOMPCOMPBUFFDATA);
+typedef DWORD (__stdcall *PDD_MOCOMPCB_GETINTERNALINFO)( PDD_GETINTERNALMOCOMPDATA);
+typedef DWORD (__stdcall *PDD_MOCOMPCB_BEGINFRAME)( PDD_BEGINMOCOMPFRAMEDATA);
+typedef DWORD (__stdcall *PDD_MOCOMPCB_ENDFRAME)( PDD_ENDMOCOMPFRAMEDATA);
+typedef DWORD (__stdcall *PDD_MOCOMPCB_RENDER)( PDD_RENDERMOCOMPDATA);
+typedef DWORD (__stdcall *PDD_MOCOMPCB_QUERYSTATUS)( PDD_QUERYMOCOMPSTATUSDATA);
+typedef DWORD (__stdcall *PDD_MOCOMPCB_DESTROY)( PDD_DESTROYMOCOMPDATA);
+
+typedef struct DD_MOTIONCOMPCALLBACKS
+{
+    DWORD                           dwSize;
+    DWORD                           dwFlags;
+    PDD_MOCOMPCB_GETGUIDS           GetMoCompGuids;
+    PDD_MOCOMPCB_GETFORMATS         GetMoCompFormats;
+    PDD_MOCOMPCB_CREATE             CreateMoComp;
+    PDD_MOCOMPCB_GETCOMPBUFFINFO    GetMoCompBuffInfo;
+    PDD_MOCOMPCB_GETINTERNALINFO    GetInternalMoCompInfo;
+    PDD_MOCOMPCB_BEGINFRAME         BeginMoCompFrame;
+    PDD_MOCOMPCB_ENDFRAME           EndMoCompFrame;
+    PDD_MOCOMPCB_RENDER             RenderMoComp;
+    PDD_MOCOMPCB_QUERYSTATUS        QueryMoCompStatus;
+    PDD_MOCOMPCB_DESTROY            DestroyMoComp;
+} DD_MOTIONCOMPCALLBACKS;
+typedef DD_MOTIONCOMPCALLBACKS *PDD_MOTIONCOMPCALLBACKS;
+
+#define DDHAL_MOCOMP32_GETGUIDS                 0x00000001
+#define DDHAL_MOCOMP32_GETFORMATS               0x00000002
+#define DDHAL_MOCOMP32_CREATE                   0x00000004
+#define DDHAL_MOCOMP32_GETCOMPBUFFINFO          0x00000008
+#define DDHAL_MOCOMP32_GETINTERNALINFO          0x00000010
+#define DDHAL_MOCOMP32_BEGINFRAME               0x00000020
+#define DDHAL_MOCOMP32_ENDFRAME                 0x00000040
+#define DDHAL_MOCOMP32_RENDER                   0x00000080
+#define DDHAL_MOCOMP32_QUERYSTATUS              0x00000100
+#define DDHAL_MOCOMP32_DESTROY                  0x00000200
+
 #endif /* __DDRAWI_DDK_H__INCLUDED__ */
