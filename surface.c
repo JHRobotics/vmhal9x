@@ -171,32 +171,32 @@ static surface_info_t *SurfaceCreateInfo(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL re
 		info->magic = SURFACE_TABLE_MAGIC;
 		info->first = NULL;
 		info->flags = 0;
-		
+
 		SurfaceCopyLCL(surf, &info->surf, recursion);
-	}
+
+		if(info->surf.fpVidMem <= DDHAL_PLEASEALLOC_LINEARSIZE)
+		{
+			info->flags |= SURF_FLAG_NO_VIDMEM;
+			//info->flags |= SURF_FLAG_EMPTY;
+			info->surf.fpVidMem = 0;
+		}
+		else
+		{
+			info->surf.fpVidMem = info->surf.lpGbl->fpVidMem;
+		}
 	
-	if(info->surf.fpVidMem <= DDHAL_PLEASEALLOC_LINEARSIZE)
-	{
-		info->flags |= SURF_FLAG_NO_VIDMEM;
-		//info->flags |= SURF_FLAG_EMPTY;
-		info->surf.fpVidMem = 0;
-	}
-	else
-	{
-		info->surf.fpVidMem = info->surf.lpGbl->fpVidMem;
-	}
-
-	DWORD id = SurfaceNextId();
-	if(id)
-	{
-		infos.table[id] = info;
-		surf->dwReserved1 = id;
-
-		return info;
-	}
-	else
-	{
-		HeapFree(hSharedHeap, 0, info);
+		DWORD id = SurfaceNextId();
+		if(id)
+		{
+			infos.table[id] = info;
+			surf->dwReserved1 = id;
+	
+			return info;
+		}
+		else
+		{
+			HeapFree(hSharedHeap, 0, info);
+		}
 	}
 	
 	return NULL;
@@ -448,6 +448,7 @@ void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 		{
 			if(SurfaceGetVidMem(citem->ctx->backbuffer) == vidmem)
 			{
+				TOPIC("DEPTHCONV", "Color to mesa");
 				GL_BLOCK_BEGIN(citem->ctx)
 					MesaBufferUploadColor(ctx, vidmem);
 					ctx->render.dirty = FALSE;
@@ -458,9 +459,16 @@ void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 			{
 				if(SurfaceGetVidMem(citem->ctx->depth) == vidmem)
 				{
+					TOPIC("DEPTHCONV", "Depth to mesa");
 					GL_BLOCK_BEGIN(citem->ctx)
+						//entry->proc.pglDepthMask(GL_TRUE);
+						//entry->proc.pglClear(GL_DEPTH_BUFFER_BIT);
 						MesaBufferUploadDepth(ctx, vidmem);
 						ctx->render.zdirty = FALSE;
+						//if(!ctx->state.depth.writable)
+						//{
+						//	entry->proc.pglDepthMask(GL_FALSE);
+						//}
 					GL_BLOCK_END
 				}
 			}
@@ -560,6 +568,7 @@ BOOL SurfaceDelete(surface_id sid)
 						TOPIC("GARBAGE", "wrong pid=%X", item->pid);
 						if(ProcessExists(item->pid))
 						{
+							TOPIC("TEXMEM", "NON deleted: %d", item->texture.tex->gltex);
 							MesaDestroyTexture(item->texture.tex, TRUE, sid);
 						}
 					}

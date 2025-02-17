@@ -34,7 +34,7 @@ OBJ := .o
 LIBSUFFIX := .a
 LIBPREFIX := lib
 
-DEPS=libddraw.a Makefile config.mk vmhal9x.h mesa3d.h mesa3d_api.h d3d_caps.h surface.h
+DEPS=libddraw.a Makefile config.mk vmhal9x.h mesa3d.h mesa3d_api.h surface.h
 RUNPATH=$(if $(filter $(OS),Windows_NT),.\,./)
 
 HOST_SUFFIX=
@@ -80,6 +80,10 @@ endif
 BASE_vmhal9x.dll := 0xB00B0000
 BASE_vmdisp9x.dll := 0x32500000
 
+d3d.c.o: d3d_caps.h
+mesa3d_buffer.c.o: mesa3d_zconv.h mesa3d_flip.h
+mesa3d_nuked.c.o: mesa3d.c mesa3d_buffer.c mesa3d_draw.c mesa3d_chroma.c mesa3d_matrix.c mesa3d_draw6.c mesa3d_dump.c mesa3d_state.c
+
 NOCRT_OBJS = nocrt/nocrt.c.o nocrt/nocrt_math.c.o nocrt/nocrt_math_calc.c.o nocrt/nocrt_file_win.c.o nocrt/nocrt_mem_win.c.o nocrt/nocrt_dll.c.o
 VMHAL9X_OBJS = $(NOCRT_OBJS) vmhal9x.c.o ddraw.c.o 3d_accel.c.o flip32.c.o blt32.c.o rop3.c.o transblt.c.o debug.c.o dump.c.o fill.c.o vmhal9x.res
 VMDISP9X_OBJS = $(NOCRT_OBJS) vmdisp9x.c.o
@@ -87,7 +91,6 @@ VMDISP9X_OBJS = $(NOCRT_OBJS) vmdisp9x.c.o
 ifdef D3DHAL
   ifdef CODENUKED
     VMHAL9X_OBJS += mesa3d_nuked.c.o
-    DEPS += d3d.c surface.c mesa3d.c mesa3d_buffer.c mesa3d_draw.c mesa3d_chroma.c mesa3d_matrix.c mesa3d_draw6.c mesa3d_dump.c mesa3d_state.c
   else
 	  VMHAL9X_OBJS += d3d.c.o surface.c.o mesa3d.c.o mesa3d_buffer.c.o mesa3d_draw.c.o mesa3d_chroma.c.o mesa3d_matrix.c.o mesa3d_draw6.c.o mesa3d_dump.c.o mesa3d_state.c.o
 	endif

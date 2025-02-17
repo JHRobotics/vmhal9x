@@ -313,7 +313,7 @@ DWORD __stdcall Unlock32(LPDDHAL_UNLOCKDATA pld)
 	}
 	
 	TOPIC("READBACK", "UNLOCK %X", pld->lpDDSurface->lpGbl->fpVidMem);
-	
+	TOPIC("DEPTHCONV", "Unlock32");
 	SurfaceToMesa(pld->lpDDSurface, FALSE);
 
 	return DDHAL_DRIVER_NOTHANDLED; /* let the unlock processed */

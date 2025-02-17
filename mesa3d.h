@@ -104,6 +104,7 @@ struct mesa3d_tmustate
 	// texture address DX5 DX6 DX7
 	D3DTEXTUREADDRESS texaddr_u; // wrap, mirror, clamp, border
 	D3DTEXTUREADDRESS texaddr_v;
+	D3DTEXTUREADDRESS texaddr_w;
 
 	// blend DX5
 	D3DTEXTUREBLEND   texblend;

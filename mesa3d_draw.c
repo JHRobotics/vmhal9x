@@ -458,13 +458,27 @@ NUKED_LOCAL void MesaDrawFVFs(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vertices
 {
 	mesa3d_entry_t *entry = ctx->entry;
 	DWORD stride = ctx->state.fvf.stride;
-	BYTE *vb = ((BYTE *)vertices) + ((start + cnt - 1) * stride);
+	//BYTE *vb = ((BYTE *)vertices) + ((start + cnt - 1) * stride);
+	BYTE *vb = ((BYTE *)vertices) + (start * stride);
 	
 	TOPIC("GL", "glBegin(%d)", gl_ptype);
 	switch(gl_ptype)
 	{
+		case GL_TRIANGLES:
+			entry->proc.pglBegin(GL_TRIANGLES);
+			while(cnt >= 3)
+			{
+				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + stride*2));
+				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb + stride*1));
+				MesaDrawFVF_internal(entry, ctx, (FVF_t *)(vb));
+				vb += stride*3;
+				cnt -= 3;
+			}
+			GL_CHECK(entry->proc.pglEnd());
+			break;
 		case GL_TRIANGLE_FAN:
 		{
+			vb = ((BYTE *)vertices) + ((start + cnt - 1) * stride);
 			entry->proc.pglBegin(GL_TRIANGLE_FAN);
 			BYTE *first = ((BYTE *)vertices) + (start * stride);
 			MesaDrawFVF_internal(entry, ctx, (FVF_t *)first);
@@ -487,7 +501,7 @@ NUKED_LOCAL void MesaDrawFVFs(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vertices
 				while(cnt > 0)
 				{
 					MesaDrawFVF_internal(entry, ctx, (FVF_t *)vb);
-					vb -= stride;
+					vb += stride;
 					cnt--;
 				}
 				GL_CHECK(entry->proc.pglEnd());
@@ -502,7 +516,7 @@ NUKED_LOCAL void MesaDrawFVFs(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vertices
 			while(cnt > 0)
 			{
 				MesaDrawFVF_internal(entry, ctx, (FVF_t *)vb);
-				vb -= stride;
+				vb += stride;
 				cnt--;
 			}
 			GL_CHECK(entry->proc.pglEnd());

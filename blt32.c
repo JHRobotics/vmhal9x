@@ -237,6 +237,7 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 				stretchrop3(ddhal->pFBHDA32->bpp, rop3_code,
 					(void*)src->fpVidMem, (void*)dst->fpVidMem, dwColorKey, &srect);
 			}
+			TOPIC("DEPTHCONV", "Blt32 - ROP stretch");
 			SurfaceToMesa(dstx, FALSE);
 		}
 		else /* ROP 1:1 pixels */
@@ -276,7 +277,7 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 							pbd->rSrc.left, pbd->rSrc.top, pbd->rDest.left, pbd->rDest.top, dwSrcWidth, dwSrcHeight, spitch, dpitch);
 			}
 		}
-		
+		TOPIC("DEPTHCONV", "Blt32 - ROP 1:1");
 		SurfaceToMesa(dstx, FALSE);
 	}
 	else if (dwFlags & (DDBLT_COLORFILL | DDBLT_DEPTHFILL))
@@ -309,7 +310,7 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 			rop3(bpp, 0xF0, (void*)dst->fpVidMem, (void*)dst->fpVidMem, dwFillColor,
 				pbd->rDest.left, pbd->rDest.top, pbd->rDest.left, pbd->rDest.top, dwDstWidth, dwDstHeight, dst->lPitch, dst->lPitch);
 		}
-		
+		TOPIC("DEPTHCONV", "Blt32 - DDBLT_COLORFILL | DDBLT_DEPTHFILL");
 		SurfaceToMesa(dstx, FALSE);
 	}
 	else

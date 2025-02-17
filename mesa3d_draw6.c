@@ -369,6 +369,7 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				// (wFirst+(wCount-1)). The number of D3DHAL_DP2POINTS
 				// structures to process is specified by the wPrimitiveCount
 				// field of D3DHAL_DP2COMMAND.
+				TOPIC("DRAW", "DRAW - D3DDP2OP_POINTS, blocks = %d", inst->wPrimitiveCount);
 				for(i = 0; i < inst->wPrimitiveCount; i++)
 				{
 					D3DHAL_DP2POINTS *points = (D3DHAL_DP2POINTS*)prim;
@@ -388,6 +389,7 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				// rendered will be 
 				// (wVStart, wVStart+1),(wVStart+2, wVStart+3),...,
 				// (wVStart+(wPrimitiveCount-1)*2), wVStart+wPrimitiveCount*2 - 1).
+				TOPIC("DRAW", "DRAW - D3DDP2OP_LINELIST, primitives = %d, vertices = %d", inst->wPrimitiveCount, inst->wPrimitiveCount*2);
 				start = ((D3DHAL_DP2LINELIST*)prim)->wVStart;
 				MesaDrawFVFs(ctx, GL_LINES, vertices, start, inst->wPrimitiveCount*2);
 				SET_DIRTY;
@@ -402,6 +404,7 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				// of lines rendered will be (wVStart, wVStart+1),
 				// (wVStart+1, wVStart+2),(wVStart+2, wVStart+3),...,
 				// (wVStart+wPrimitiveCount, wVStart+wPrimitiveCount+1).
+				TOPIC("DRAW", "DRAW - D3DDP2OP_LINESTRIP, primitives = %d, vertices = %d", inst->wPrimitiveCount, inst->wPrimitiveCount+1);
 				start = ((D3DHAL_DP2LINESTRIP*)prim)->wVStart;
 				MesaDrawFVFs(ctx, GL_LINE_STRIP, vertices, start, inst->wPrimitiveCount+1);
 				SET_DIRTY;
@@ -418,6 +421,7 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				// vVStart+2), (wVStart+3, wVStart+4, vVStart+5),...,
 				// (wVStart+(wPrimitiveCount-1)*3), wVStart+wPrimitiveCount*3-2, 
 				// vStart+wPrimitiveCount*3-1).
+				TOPIC("DRAW", "DRAW - D3DDP2OP_TRIANGLELIST, primitives = %d, vertices = %d", inst->wPrimitiveCount, inst->wPrimitiveCount*3);
 				start = ((D3DHAL_DP2TRIANGLELIST*)prim)->wVStart;
 				MesaDrawFVFs(ctx, GL_TRIANGLES, vertices, start, inst->wPrimitiveCount*3);
 				SET_DIRTY;
@@ -437,6 +441,7 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				// even number of , the last triangle will be .,
 				// (wVStart+wPrimitiveCount-1, vStart+wPrimitiveCount+1,
 				// wVStart+wPrimitiveCount).
+				TOPIC("DRAW", "DRAW - D3DDP2OP_TRIANGLESTRIP, primitives = %d, vertices = %d", inst->wPrimitiveCount, inst->wPrimitiveCount+2);
 				start = ((D3DHAL_DP2TRIANGLESTRIP*)prim)->wVStart;
 				MesaDrawFVFs(ctx, GL_TRIANGLE_STRIP, vertices, start, inst->wPrimitiveCount+2);
 				SET_DIRTY;
@@ -449,6 +454,7 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				// (wVStart+2,wVStart+3,wVStart), (wVStart+3,wVStart+4
 				// wVStart),...,(wVStart+wPrimitiveCount,
 				// wVStart+wPrimitiveCount+1,wVStart).
+				TOPIC("DRAW", "DRAW - D3DDP2OP_TRIANGLEFAN, primitives = %d, vertices = %d", inst->wPrimitiveCount, inst->wPrimitiveCount+2);
 				start = ((D3DHAL_DP2TRIANGLEFAN*)prim)->wVStart;
 				MesaDrawFVFs(ctx, GL_TRIANGLE_FAN, vertices, start, inst->wPrimitiveCount+2);
 				SET_DIRTY;
@@ -463,6 +469,7 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				// D3DHAL_DP2COMMAND.  The sequence of lines 
 				// rendered will be (wV[0], wV[1]), (wV[2], wV[3]),...
 				// (wVStart[(wPrimitiveCount-1)*2], wVStart[wPrimitiveCount*2-1]).
+				TOPIC("DRAW", "DRAW - D3DDP2OP_INDEXEDLINELIST, primitives = %d, vertices = %d", inst->wPrimitiveCount, inst->wPrimitiveCount*2);
 				entry->proc.pglBegin(GL_LINES);
 				for(i = 0; i < inst->wPrimitiveCount; i++)
 				{
@@ -492,6 +499,7 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				// array with wPrimitiveCount+1 elements.
 				// The indexes are relative to a base index value that 
 				// immediately follows the command
+				TOPIC("DRAW", "DRAW - D3DDP2OP_INDEXEDLINESTRIP, primitives = %d, vertices = %d", inst->wPrimitiveCount, inst->wPrimitiveCount+1);
 				base = ((D3DHAL_DP2STARTVERTEX*)prim)->wVStart;
 				prim += sizeof(D3DHAL_DP2STARTVERTEX);
 
@@ -523,6 +531,7 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				// DX3 compatibility. A new primitive 
 				// (D3DDP2OP_INDEXEDTRIANGLELIST2) has been added to handle
 				// the corresponding DX6 primitive.
+				TOPIC("DRAW", "DRAW - D3DDP2OP_INDEXEDTRIANGLELIST, primitives = %d, vertices = %d", inst->wPrimitiveCount, inst->wPrimitiveCount*3);
 				entry->proc.pglBegin(GL_TRIANGLES);
 				for(i = 0; i < inst->wPrimitiveCount; i++)
 				{
@@ -564,13 +573,14 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				pos = (WORD*)prim;
 				count = inst->wPrimitiveCount+2;
 				prim += sizeof(WORD) * count;
+				TOPIC("DRAW", "DRAW - D3DDP2OP_INDEXEDTRIANGLESTRIP, primitives = %d, vertices = %d", inst->wPrimitiveCount, count);
 
 				if(count >= 3)
 				{
 					MesaReverseCull(ctx);
 
 					entry->proc.pglBegin(GL_TRIANGLE_STRIP);
-					for(i = count-1; i >= 0; i--)
+					for(i = 0; i < count; i++)
 					{
 						MesaDrawFVFIndex(ctx, vertices, base+pos[i]);
 					}
@@ -589,6 +599,7 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				// (wV[wPrimitiveCount], wV[wPrimitiveCount+1],wV[0]).
 				// The indexes are relative to a base index value that 
 				// immediately follows the command
+				TOPIC("DRAW", "DRAW - D3DDP2OP_INDEXEDTRIANGLEFAN, primitives = %d, vertices = %d", inst->wPrimitiveCount, inst->wPrimitiveCount+2);
 				base = ((D3DHAL_DP2STARTVERTEX*)prim)->wVStart;
 				prim += sizeof(D3DHAL_DP2STARTVERTEX);
 				pos = (WORD*)prim;
@@ -617,6 +628,7 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				// D3DHAL_DP2COMMAND.
 				// The indexes are relative to a base index value that 
 				// immediately follows the command
+				TOPIC("DRAW", "DRAW - D3DDP2OP_INDEXEDTRIANGLELIST2, primitives = %d, vertices = %d", inst->wPrimitiveCount, inst->wPrimitiveCount*3);
 				base = ((D3DHAL_DP2STARTVERTEX*)prim)->wVStart;
 				prim += sizeof(D3DHAL_DP2STARTVERTEX);
 				entry->proc.pglBegin(GL_TRIANGLES);
@@ -648,6 +660,7 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				// (wVStart[(wPrimitiveCount-1)*2], wVStart[wPrimitiveCount*2-1]).
 				// The indexes are relative to a base index value that 
 				// immediately follows the command
+				TOPIC("DRAW", "DRAW - D3DDP2OP_INDEXEDLINELIST2, primitives = %d, vertices = %d", inst->wPrimitiveCount, inst->wPrimitiveCount*2);
 				base = ((D3DHAL_DP2STARTVERTEX*)prim)->wVStart;
 				prim += sizeof(D3DHAL_DP2STARTVERTEX);
 				entry->proc.pglBegin(GL_LINES);
@@ -674,6 +687,7 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				// vertices are determined by the dwVertexType member
 				// of the D3DHAL_DRAWPRIMITIVES2DATA structure.
 				count = (DWORD)inst->wPrimitiveCount + 2;
+				TOPIC("DRAW", "DRAW - D3DDP2OP_TRIANGLEFAN_IMM, primitives = %d, vertices = %d", inst->wPrimitiveCount, count);
 
 				// Get Edge flags (we still have to process them)
 				//dwEdgeFlags = ((D3DHAL_DP2TRIANGLEFAN_IMM *)prim)->dwEdgeFlags;
@@ -696,6 +710,7 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				// vertices are determined by the dwVertexType member
 				// of the D3DHAL_DRAWPRIMITIVES2DATA structure.
 				count = (DWORD)inst->wPrimitiveCount * 2;
+				TOPIC("DRAW", "DRAW - D3DDP2OP_LINELIST_IMM, primitives = %d, vertices = %d", inst->wPrimitiveCount, count);
 
 				// Primitives in an IMM instruction are stored in the
 				// command buffer and are DWORD aligned

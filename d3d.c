@@ -312,15 +312,6 @@ DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 		return DDHAL_DRIVER_HANDLED;
 	}
 	
-	if(pd->dwFlags & (D3DHALDP2_REQVERTEXBUFSIZE | D3DHALDP2_REQCOMMANDBUFSIZE))
-	{
-		WARN("vertex buffer flags: pd->dwFlags=0x%X", pd->dwFlags);
-		/*
-		pd->dwErrorOffset   = 0;
-		pd->ddrval          = DDERR_INVALIDPARAMS;
-		return DDHAL_DRIVER_HANDLED;*/
-	}
-
 	if(pd->lpVertices)
 	{
 		if(pd->dwFlags & D3DHALDP2_USERMEMVERTICES)
@@ -1747,10 +1738,12 @@ DWORD __stdcall CreateExecuteBuffer32(LPDDHAL_CREATESURFACEDATA csd)
 		LPDDRAWI_DDRAWSURFACE_LCL surf = lplpSList[i];
 		TOPIC("EXEBUF", "CreateExecuteBuffer32 dwLinearSize = %d", surf->lpGbl->dwLinearSize);
 
-		if(surf->lpGbl->dwLinearSize < 1*1024*1024)
+/*	if(surf->lpGbl->dwLinearSize < 1*1024*1024)
 		{
 			surf->lpGbl->dwLinearSize = 1*1024*1024;
 		}
+		^ This is wasn't good idea, beacuse this exhaust memory very quickly
+*/
 
 		surf->lpGbl->fpVidMem = (DWORD)HeapAlloc(hSharedLargeHeap, HEAP_ZERO_MEMORY, surf->lpGbl->dwLinearSize);
 		if(surf->lpGbl->fpVidMem == 0)

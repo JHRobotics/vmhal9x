@@ -111,9 +111,14 @@ static void *convert_int_to_s24s8(mesa3d_ctx_t *ctx, const void *in, int bpp)
 	return plane;
 }
 
+typedef union _masked_float_t
+{
+	DWORD dw;
+	float fv;
+} masked_float_t;
+
 #define FIXED_12_4_TO_FLOAT(_dw) (((float)((_dw) >> 4)) + (((float)((_dw) & 0xF)) * MESA_1OVER16))
-#define FLOAT_24_TO_FLOAT(_dw) ((((_dw) & 0x3FFFFF) | 0x1FC00000))
-#define COPY_DW_TO_FLOAT(_dw) (*((float*)(&_dw)))
+#define EXPAND_FLOAT24(_u) _u.dw = (((_u.dw) & 0x3FFFFF) | 0x1FC00000)
 
 static void *convert_float_to_s24s8(mesa3d_ctx_t *ctx, const void *in, int bpp)
 {
@@ -153,12 +158,12 @@ static void *convert_float_to_s24s8(mesa3d_ctx_t *ctx, const void *in, int bpp)
 				{
 					for(x = 0; x < ctx->state.sw; x++)
 					{
-						//DWORD dwtmp = *((DWORD*)&src[x*3]); = faster but break mem. allign
-						DWORD dwtmp = ((DWORD)src[x*3]) | ((DWORD)src[x*3+1] << 8) | ((DWORD)src[x*3+2] << 16); // LE only
-						DWORD ftmp_dw = FLOAT_24_TO_FLOAT(dwtmp);
-						float ftmp = COPY_DW_TO_FLOAT(ftmp_dw);
-						dst[x] = (DWORD)(ftmp * 0x7FFFFF);
-						dst[x] &= 0xFFFFFF;						
+						masked_float_t tmp;
+						//tmp.dw = ((DWORD)src[x*3]) | ((DWORD)src[x*3+1] << 8) | ((DWORD)src[x*3+2] << 16); // LE only
+						tmp.dw = *((DWORD*)&src[x*3]);
+						EXPAND_FLOAT24(tmp);
+						dst[x] = (DWORD)(tmp.fv * 8388607.0f); // * 0x7FFFFF
+						dst[x] &= 0xFFFFFF;
 					}
 					src = src + src_pitch;
 					dst = (DWORD*)(((BYTE*)dst) + dst_pitch);
@@ -173,18 +178,15 @@ static void *convert_float_to_s24s8(mesa3d_ctx_t *ctx, const void *in, int bpp)
 				{
 					for(x = 0; x < ctx->state.sw; x++)
 					{
-						dst[x] = src[x];
-						if(!ctx->depth_stencil)
-						{
-							DWORD tmp_dw = FLOAT_24_TO_FLOAT(src[x]);
-							float tmp = COPY_DW_TO_FLOAT(tmp_dw);
-							dst[x] = (DWORD)(tmp * 0x7FFFFF);
-							dst[x] &= 0xFFFFFF;
+						masked_float_t tmp;
+						tmp.dw = src[x];
+						EXPAND_FLOAT24(tmp);
+						dst[x] = (DWORD)(tmp.fv * 8388607.0f);
+						dst[x] &= 0xFFFFFF;
 
-							if(ctx->depth_stencil)
-							{
-								dst[x] |= src[x] << 24;
-							}
+						if(ctx->depth_stencil)
+						{
+							dst[x] |= src[x] << 24;
 						}
 					}
 					src = (DWORD*)(((BYTE*)src) + src_pitch);
@@ -214,9 +216,11 @@ static void *convert_int_to_f32s8(mesa3d_ctx_t *ctx, const void *in, int bpp)
 
 	DWORD *plane = MesaTempAlloc(ctx, ctx->state.sw, size);
 	f32_s8_t *dst = (f32_s8_t*)plane;
-	
+
 	DWORD x, y;
 	
+	TOPIC("DEPTHCONV", "convert_int_to_f32s8 - bpp=%d, sizeof(f32_s8_t)=%d", bpp, sizeof(f32_s8_t));
+
 	if(plane)
 	{
 		switch(bpp)
@@ -246,7 +250,7 @@ static void *convert_int_to_f32s8(mesa3d_ctx_t *ctx, const void *in, int bpp)
 					for(x = 0; x < ctx->state.sw; x++)
 					{
 						dst[x].depth = src[x] * MESA_1OVER65535;
-						dst[x].stencil = 0;
+						dst[x].stencil = 0;//0xFFFFFFFF;
 					}
 					src = ( WORD*)(((BYTE*)src) + src_pitch);
 					dst = (f32_s8_t*)(((BYTE*)dst) + dst_pitch);
@@ -330,9 +334,10 @@ static void *convert_float_to_f32s8(mesa3d_ctx_t *ctx, const void *in, int bpp)
 				{
 					for(x = 0; x < ctx->state.sw; x++)
 					{
-						DWORD tmp_dw = *((DWORD*)&src[x*3]);
-						DWORD tmp_fdw = FLOAT_24_TO_FLOAT(tmp_dw);
-						dst[x].depth = COPY_DW_TO_FLOAT(tmp_fdw);		
+						masked_float_t tmp;
+						tmp.dw = *((DWORD*)&src[x*3]);
+						EXPAND_FLOAT24(tmp);
+						dst[x].depth = tmp.fv;
 						dst[x].stencil = 0;
 					}
 					src = src + src_pitch;
@@ -348,8 +353,10 @@ static void *convert_float_to_f32s8(mesa3d_ctx_t *ctx, const void *in, int bpp)
 				{
 					for(x = 0; x < ctx->state.sw; x++)
 					{
-						DWORD tmp_fdw = FLOAT_24_TO_FLOAT(src[x]);
-						dst[x].depth = COPY_DW_TO_FLOAT(tmp_fdw);	
+						masked_float_t tmp;
+						tmp.dw = src[x];
+						EXPAND_FLOAT24(tmp);
+						dst[x].depth = tmp.fv;
 						dst[x].stencil = src[x] >> 24;
 					}
 					src = (DWORD*)(((BYTE*)src) + src_pitch);
@@ -369,10 +376,12 @@ static void *convert_depth2GL(mesa3d_ctx_t *ctx, const void *in, int bpp)
 	{
 		if(VMHALenv.zfloat)
 		{
+			TOPIC("DEPTHCONV", "Z DX->GL: float -> F32S8");
 			return convert_float_to_f32s8(ctx, in, bpp);
 		}
 		else
 		{
+			TOPIC("DEPTHCONV", "Z DX->GL: float -> S24S8");
 			return convert_float_to_s24s8(ctx, in, bpp);
 		}
 	}
@@ -380,10 +389,12 @@ static void *convert_depth2GL(mesa3d_ctx_t *ctx, const void *in, int bpp)
 	{
 		if(VMHALenv.zfloat)
 		{
+			TOPIC("DEPTHCONV", "Z DX->GL: int -> F32S8");
 			return convert_int_to_f32s8(ctx, in, bpp);
 		}
 		else
 		{
+			TOPIC("DEPTHCONV", "Z DX->GL: int -> S24S8");
 			return convert_int_to_s24s8(ctx, in, bpp);
 		}
 	}
@@ -452,8 +463,9 @@ static void copy_int_to(mesa3d_ctx_t *ctx, const void *in, void *out, int bpp, B
 					DWORD d;
 					if(f24)
 					{
-						float f = (src[x] & 0x00FFFFFF) * MESA_1OVER16777215;
-						d = *((DWORD*)&f);
+						masked_float_t tmp;
+						tmp.fv = (src[x] & 0x00FFFFFF) * MESA_1OVER16777215;
+						d = tmp.dw;
 						d &= 0x003FFFFF;
 					}
 					else

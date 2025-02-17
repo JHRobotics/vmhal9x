@@ -256,6 +256,7 @@ NUKED_LOCAL void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 		void *native_src = convert_depth2GL(ctx, src, ctx->depth_bpp);
 		if(native_src)
 		{
+			TOPIC("DEPTHCONV", "convert_depth2GL - %d %d", ctx->state.sw, ctx->state.sh);
 			GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0+ctx->fbo_tmu));
 			GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
 			GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_CUBE_MAP));
@@ -305,6 +306,7 @@ NUKED_LOCAL void MesaBufferDownloadDepth(mesa3d_ctx_t *ctx, void *dst)
 			return;
 	}
 
+	TOPIC("DEPTHCONV", "Z GL->DX, bpp=%d", ctx->depth_bpp);
 	if(ctx->depth_bpp != 24)
 	{
 		GL_CHECK(entry->proc.pglReadPixels(0, 0, ctx->state.sw, ctx->state.sh, format, type, dst));
@@ -630,21 +632,26 @@ NUKED_LOCAL BOOL MesaBufferFBOSetup(mesa3d_ctx_t *ctx, int width, int height)
 		GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
 		GL_CHECK(entry->proc.pglFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fbo->plane_color_tex, 0));
 		
-		GLenum depth_format = GL_DEPTH24_STENCIL8;
+/*		GLenum depth_format = GL_DEPTH24_STENCIL8;
 		if(VMHALenv.zfloat)
 		{
 			depth_format = GL_DEPTH32F_STENCIL8;
-		}
+		}*/
 
-		GL_CHECK(entry->proc.pglBindRenderbuffer(GL_RENDERBUFFER, fbo->plane_depth_tex));
-		GL_CHECK(entry->proc.pglRenderbufferStorage(GL_RENDERBUFFER, depth_format, width, height));
-		GL_CHECK(entry->proc.pglFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, fbo->plane_depth_tex));
+		//GL_CHECK(entry->proc.pglBindRenderbuffer(GL_RENDERBUFFER, fbo->plane_depth_tex));
+		//GL_CHECK(entry->proc.pglRenderbufferStorage(GL_RENDERBUFFER, depth_format, width, height));
+		//GL_CHECK(entry->proc.pglFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, fbo->plane_depth_tex));
 		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, fbo->plane_depth_tex));
 		GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0,
 			VMHALenv.zfloat ? GL_DEPTH32F_STENCIL8 : GL_DEPTH24_STENCIL8,
-			width, height, 0, GL_DEPTH_STENCIL, 
+			width, height, 0, GL_DEPTH_STENCIL,
 			VMHALenv.zfloat ? GL_FLOAT_32_UNSIGNED_INT_24_8_REV : GL_UNSIGNED_INT_24_8,			
 			NULL));
+
+		GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST));
+		GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
+		GL_CHECK(entry->proc.pglFramebufferTexture2D(GL_DRAW_FRAMEBUFFER,	GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, fbo->plane_depth_tex, 0));
+		GL_CHECK(entry->proc.pglFramebufferTexture2D(GL_DRAW_FRAMEBUFFER,	GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, fbo->plane_depth_tex, 0));
 
 		fbo->width = width;
 		fbo->height = height;
