@@ -171,6 +171,16 @@ typedef struct mesa_fbo
 	GLenum color16_format;
 } mesa_fbo_t;
 
+#define MESA_MAX_STREAM 16
+
+typedef struct mesa_vertex_stream
+{
+	DWORD VBHandle; /* DX surface ID */
+	surface_id sid;
+	DWORD stride;
+	void *mem; /* direct pointer to (surface) memory */
+} mesa_vertex_stream_t;
+
 typedef struct mesa_rec_tmu
 {
 	DWORD set[1];
@@ -230,9 +240,13 @@ typedef struct mesa3d_ctx
 		BOOL zvisible; // Z-visibility testing
 		BOOL specular; // specular enable (DX state)
 		BOOL specular_vertex; // use glSecondaryColor
-		BOOL blend;
-		GLenum blend_sfactor;
-		GLenum blend_dfactor;
+		struct {
+			BOOL alpha;
+			GLenum srcRGB;
+			GLenum dstRGB;
+			GLenum srcAlpha;
+			GLenum dstAlpha;
+		} blend;
 		DWORD overrides[8]; // 256 bit set
 		DWORD stipple[32];
 		GLfloat tfactor[4]; // TEXTUREFACTOR eq. GL_CONSTANT
@@ -301,9 +315,13 @@ typedef struct mesa3d_ctx
 		struct mesa3d_tmustate tmu[MESA_TMU_MAX];
 		BOOL recording;
 		mesa_rec_state_t *record;
+		int bind_vertices; /* DX8 vertex stream */
+		int bind_indices_sid; /* DX8 index stream */
+		DWORD bind_indices_stride; /* DX8 index stream */
 		D3DSTATEBLOCKTYPE record_type;
 	} state;
 	mesa_rec_state_t *records[MESA_RECS_MAX];
+	mesa_vertex_stream_t vstream[MESA_MAX_STREAM];
 
 	/* fbo */
 	mesa_fbo_t fbo;
@@ -598,8 +616,5 @@ NUKED_LOCAL void mesa_dump_inc();
 /* memory */
 NUKED_LOCAL void *MesaTempAlloc(mesa3d_ctx_t *ctx, DWORD w, DWORD size);
 NUKED_LOCAL void MesaTempFree(mesa3d_ctx_t *ctx, void *ptr);
-/* heaps */
-extern HANDLE hSharedHeap;
-extern HANDLE hSharedLargeHeap;
 
 #endif /* __MESA3D_H__INCLUDED__ */

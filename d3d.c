@@ -509,7 +509,7 @@ DWORD __stdcall GetDriverState32(LPDDHAL_GETDRIVERSTATEDATA pGDSData)
  *     runtime/system/HEL/whatever so don't write to this variable your own numbers.
  *
  */
-DWORD __stdcall CreateSurfaceEx32(LPDDHAL_CREATESURFACEEXDATA lpcsxd)
+DDENTRY_FPUSAVE(CreateSurfaceEx32, LPDDHAL_CREATESURFACEEXDATA, lpcsxd)
 {
 	TRACE_ENTRY
 
@@ -591,6 +591,8 @@ DWORD __stdcall CreateSurfaceEx32(LPDDHAL_CREATESURFACEEXDATA lpcsxd)
 		if(surf->ddsCaps.dwCaps & DDSCAPS_RESERVED2)
 		{
 			TOPIC("EXEBUF", "surface 0x%X, vram=0x%X", surf->lpSurfMore->dwSurfaceHandle, surf->lpGbl->fpVidMem);
+			/* DX8+ need register buffer too for usage with streams */
+			SurfaceExInsert(entry, lpcsxd->lpDDLcl, surf);
 		}
 		else
 		{
@@ -641,7 +643,7 @@ DWORD __stdcall CreateSurfaceEx32(LPDDHAL_CREATESURFACEEXDATA lpcsxd)
  *      DDHAL_DRIVER_HANDLED
  *      DDHAL_DRIVER_NOTHANDLED
  */
-DWORD __stdcall DestroyDDLocal32(LPDDHAL_DESTROYDDLOCALDATA lpdddd)
+DDENTRY_FPUSAVE(DestroyDDLocal32, LPDDHAL_DESTROYDDLOCALDATA, lpdddd)
 {
 	TRACE_ENTRY
 
@@ -804,6 +806,8 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 			caps.CubeTextureFilterCaps = myCaps6.dpcTriCaps.dwTextureFilterCaps;
 			caps.VolumeTextureFilterCaps = myCaps6.dpcTriCaps.dwTextureFilterCaps;
 			caps.LineCaps = D3DLINECAPS_ALPHACMP | D3DLINECAPS_BLEND | D3DLINECAPS_FOG;
+			caps.TextureAddressCaps = myCaps6.dpcTriCaps.dwTextureAddressCaps;
+			caps.PresentationIntervals = 0;
 			caps.MaxTextureWidth = 16384;
 			caps.MaxTextureHeight = 16384;
 			caps.MaxVolumeExtent = 2048;
@@ -890,7 +894,7 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
  *               it fills out the required data and returns.
  *
  **/ 
-DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
+DDENTRY_FPUSAVE(GetDriverInfo32, LPDDHAL_GETDRIVERINFODATA, lpInput)
 {
 	TRACE_ENTRY
 
@@ -1291,7 +1295,7 @@ DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput)
 	return DDHAL_DRIVER_HANDLED;
 }
 
-DWORD __stdcall ContextCreate32(LPD3DHAL_CONTEXTCREATEDATA pccd)
+DDENTRY(ContextCreate32, LPD3DHAL_CONTEXTCREATEDATA, pccd)
 {
 	TRACE_ENTRY
 
@@ -1380,13 +1384,13 @@ DWORD __stdcall ContextCreate32(LPD3DHAL_CONTEXTCREATEDATA pccd)
 	return DDHAL_DRIVER_HANDLED;
 }
 
-DWORD __stdcall ContextDestroy32(LPD3DHAL_CONTEXTDESTROYDATA pcdd)
+DDENTRY(ContextDestroy32, LPD3DHAL_CONTEXTDESTROYDATA, pcdd)
 {
 	TRACE_ENTRY
 
 	mesa3d_ctx_t *ctx = MESA_HANDLE_TO_CTX(pcdd->dwhContext);
 	SurfaceDeattachCtx(ctx);
-	MesaDestroyCtx(ctx);	
+	MesaDestroyCtx(ctx);
 
 	pcdd->dwhContext = 0;
 
@@ -1394,14 +1398,7 @@ DWORD __stdcall ContextDestroy32(LPD3DHAL_CONTEXTDESTROYDATA pcdd)
 	return DDHAL_DRIVER_HANDLED;
 }
 
-DWORD __stdcall ContextDestroyAllCallback32(LPVOID lpData, HDDRVITEM hItem, DWORD dwData)
-{
-	TRACE_ENTRY
-	
-	return DDRV_SUCCESS_CONTINUE; // FIXME: check documentation
-}
-
-DWORD __stdcall ContextDestroyAll32(LPD3DHAL_CONTEXTDESTROYALLDATA pcdd)
+DDENTRY(ContextDestroyAll32, LPD3DHAL_CONTEXTDESTROYALLDATA, pcdd)
 {
 	TRACE_ENTRY
 	
@@ -1409,7 +1406,7 @@ DWORD __stdcall ContextDestroyAll32(LPD3DHAL_CONTEXTDESTROYALLDATA pcdd)
 	return DDHAL_DRIVER_HANDLED;
 }
 
-DWORD __stdcall RenderState32(LPD3DHAL_RENDERSTATEDATA prd)
+DDENTRY(RenderState32, LPD3DHAL_RENDERSTATEDATA, prd)
 {
 	TRACE_ENTRY
 	
@@ -1435,7 +1432,7 @@ DWORD __stdcall RenderState32(LPD3DHAL_RENDERSTATEDATA prd)
 	return DDHAL_DRIVER_HANDLED;
 }
 
-DWORD __stdcall RenderPrimitive32(LPD3DHAL_RENDERPRIMITIVEDATA prd)
+DDENTRY(RenderPrimitive32, LPD3DHAL_RENDERPRIMITIVEDATA, prd)
 {
 	TRACE_ENTRY
 
@@ -1467,7 +1464,7 @@ DWORD __stdcall RenderPrimitive32(LPD3DHAL_RENDERPRIMITIVEDATA prd)
 	return DDHAL_DRIVER_HANDLED;
 }
 
-DWORD __stdcall TextureCreate32(LPD3DHAL_TEXTURECREATEDATA ptcd)
+DDENTRY(TextureCreate32, LPD3DHAL_TEXTURECREATEDATA, ptcd)
 {
 	TRACE_ENTRY
 	
@@ -1504,7 +1501,7 @@ DWORD __stdcall TextureCreate32(LPD3DHAL_TEXTURECREATEDATA ptcd)
 	return DDHAL_DRIVER_HANDLED;
 }
 
-DWORD __stdcall TextureDestroy32(LPD3DHAL_TEXTUREDESTROYDATA ptcd)
+DDENTRY(TextureDestroy32, LPD3DHAL_TEXTUREDESTROYDATA, ptcd)
 {
 	TRACE_ENTRY
 
@@ -1524,7 +1521,7 @@ DWORD __stdcall TextureDestroy32(LPD3DHAL_TEXTUREDESTROYDATA ptcd)
 	return DDHAL_DRIVER_HANDLED;
 }
 
-DWORD __stdcall TextureSwap32(LPD3DHAL_TEXTURESWAPDATA ptsd)
+DDENTRY(TextureSwap32, LPD3DHAL_TEXTURESWAPDATA, ptsd)
 {
 	TRACE_ENTRY
 	
@@ -1550,7 +1547,7 @@ DWORD __stdcall TextureSwap32(LPD3DHAL_TEXTURESWAPDATA ptsd)
 	return DDHAL_DRIVER_HANDLED;
 }
 
-DWORD __stdcall TextureGetSurf32(LPD3DHAL_TEXTUREGETSURFDATA ptgd)
+DDENTRY(TextureGetSurf32, LPD3DHAL_TEXTUREGETSURFDATA, ptgd)
 {
 	TRACE_ENTRY
 	
@@ -1559,7 +1556,7 @@ DWORD __stdcall TextureGetSurf32(LPD3DHAL_TEXTUREGETSURFDATA ptgd)
 	mesa3d_texture_t *tex = MESA_HANDLE_TO_TEX(ptgd->dwHandle);
 	if(tex)
 	{
-		ptgd->lpDDS  = (DWORD)SurfaceGetLCL(tex->data_sid[0][0]);
+		ptgd->lpDDS  = (DWORD)SurfaceGetLCL_DX7(tex->data_sid[0][0]);
 		ptgd->ddrval = DD_OK;
 	}
 	else
@@ -1578,7 +1575,7 @@ DWORD __stdcall MatrixCreate32(LPD3DHAL_MATRIXCREATEDATA pmcd)
 {
 	TRACE_ENTRY
 	
-	GLfloat *ptr = HeapAlloc(hSharedHeap, HEAP_ZERO_MEMORY, GL_MATRIX_SIZE);
+	GLfloat *ptr = hal_calloc(HEAP_NORMAL, GL_MATRIX_SIZE, 0);
 	if(ptr)
 	{
 		pmcd->ddrval = DD_OK;
@@ -1595,7 +1592,7 @@ DWORD __stdcall MatrixDestroy32(LPD3DHAL_MATRIXDESTROYDATA pmdd)
 	if(ptr)
 	{
 		pmdd->ddrval = DD_OK;
-		HeapFree(hSharedHeap, 0, ptr);
+		hal_free(HEAP_NORMAL, ptr);
 	}
 
 	return DDHAL_DRIVER_HANDLED;
@@ -1673,7 +1670,7 @@ DWORD __stdcall MaterialGetData32(LPD3DHAL_MATERIALGETDATADATA pmgd)
 }
 #endif /* unused templates */
 
-DWORD __stdcall GetState32(LPD3DHAL_GETSTATEDATA pgsd)
+DDENTRY(GetState32, LPD3DHAL_GETSTATEDATA, pgsd)
 {
 	TRACE_ENTRY
 	
@@ -1689,7 +1686,7 @@ DWORD __stdcall GetState32(LPD3DHAL_GETSTATEDATA pgsd)
 	return DDHAL_DRIVER_HANDLED;
 }
 
-DWORD __stdcall SceneCapture32(LPD3DHAL_SCENECAPTUREDATA scdata)
+DDENTRY(SceneCapture32, LPD3DHAL_SCENECAPTUREDATA, scdata)
 {
 	TRACE_ENTRY
 	
@@ -1714,7 +1711,7 @@ DWORD __stdcall SceneCapture32(LPD3DHAL_SCENECAPTUREDATA scdata)
 	return DDHAL_DRIVER_HANDLED;
 }
 
-DWORD __stdcall CanCreateExecuteBuffer32(LPDDHAL_CANCREATESURFACEDATA csd)
+DDENTRY(CanCreateExecuteBuffer32, LPDDHAL_CANCREATESURFACEDATA, csd)
 {
 	TRACE_ENTRY
 	TOPIC("EXEBUF", "CanCreateExecuteBuffer32");
@@ -1725,7 +1722,7 @@ DWORD __stdcall CanCreateExecuteBuffer32(LPDDHAL_CANCREATESURFACEDATA csd)
 	return DDHAL_DRIVER_HANDLED;
 }
 
-DWORD __stdcall CreateExecuteBuffer32(LPDDHAL_CREATESURFACEDATA csd)
+DDENTRY_FPUSAVE(CreateExecuteBuffer32, LPDDHAL_CREATESURFACEDATA, csd)
 {
 	TRACE_ENTRY
 	TOPIC("EXEBUF", "CreateExecuteBuffer32");
@@ -1745,26 +1742,28 @@ DWORD __stdcall CreateExecuteBuffer32(LPDDHAL_CREATESURFACEDATA csd)
 		^ This is wasn't good idea, beacuse this exhaust memory very quickly
 */
 
-		surf->lpGbl->fpVidMem = (DWORD)HeapAlloc(hSharedLargeHeap, HEAP_ZERO_MEMORY, surf->lpGbl->dwLinearSize);
+		surf->lpGbl->fpVidMem = (DWORD)hal_calloc(HEAP_LARGE, surf->lpGbl->dwLinearSize, surf->lpGbl->dwLinearSize);
 		if(surf->lpGbl->fpVidMem == 0)
 		{
 			csd->ddRVal = DDERR_OUTOFVIDEOMEMORY;
 			return DDHAL_DRIVER_HANDLED;
 		}
+		
+		SurfaceCreate(surf);
 	}
 
 	csd->ddRVal = DD_OK;
 	return DDHAL_DRIVER_HANDLED;
 }
 
-DWORD __stdcall DestroyExecuteBuffer32(LPDDHAL_DESTROYSURFACEDATA dsd)
+DDENTRY_FPUSAVE(DestroyExecuteBuffer32, LPDDHAL_DESTROYSURFACEDATA, dsd)
 {
 	TRACE_ENTRY
 	TOPIC("EXEBUF", "DestroyExecuteBuffer32");
 
 	if(dsd->lpDDSurface->lpGbl->fpVidMem != 0)
 	{
-		HeapFree(hSharedLargeHeap, 0, (void*)dsd->lpDDSurface->lpGbl->fpVidMem);
+		hal_free(HEAP_LARGE, (void*)dsd->lpDDSurface->lpGbl->fpVidMem);
 		dsd->lpDDSurface->lpGbl->fpVidMem = 0;
 	}
 
@@ -1772,7 +1771,7 @@ DWORD __stdcall DestroyExecuteBuffer32(LPDDHAL_DESTROYSURFACEDATA dsd)
 	return DDHAL_DRIVER_HANDLED;
 }
 
-DWORD __stdcall LockExecuteBuffer32(LPDDHAL_LOCKDATA lock)
+DDENTRY(LockExecuteBuffer32, LPDDHAL_LOCKDATA, lock)
 {
 	TRACE_ENTRY
 	TOPIC("EXEBUF", "LockExecuteBuffer32");
@@ -1781,7 +1780,7 @@ DWORD __stdcall LockExecuteBuffer32(LPDDHAL_LOCKDATA lock)
 	return DDHAL_DRIVER_NOTHANDLED; /* let the lock processed */
 }
 
-DWORD __stdcall UnlockExecuteBuffer32(LPDDHAL_UNLOCKDATA lock)
+DDENTRY(UnlockExecuteBuffer32, LPDDHAL_UNLOCKDATA, lock)
 {
 	TRACE_ENTRY
 	TOPIC("EXEBUF", "UnlockExecuteBuffer32");

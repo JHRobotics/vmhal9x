@@ -34,11 +34,6 @@
 
 #include "nocrt.h"
 
-#ifndef HEAP_SHARED
-/* undocumented heap behaviour for shared DLL (from D3_DD32.C) */
-#define HEAP_SHARED      0x04000000
-#endif
-
 #ifndef DDHALINFO_ISPRIMARYDISPLAY
 #define DDHALINFO_ISPRIMARYDISPLAY 0x00000001l
 // indicates driver is primary display driver
@@ -60,8 +55,6 @@
 // of GetDriverInfo. New for DX 8.0
 #endif
 
-HANDLE hSharedHeap;
-HANDLE hSharedLargeHeap;
 static HINSTANCE dllHinst = NULL;
 
 VMDAHAL_t *globalHal;
@@ -269,9 +262,9 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 	
 	globalHal = ptr;
 	
-	globalHal->cb32.CreateSurface = CreateSurface;
-	globalHal->cb32.DestroySurface = DestroySurface;
-	globalHal->cb32.CanCreateSurface = CanCreateSurface;
+	globalHal->cb32.CreateSurface = CreateSurface32;
+	globalHal->cb32.DestroySurface = DestroySurface32;
+	globalHal->cb32.CanCreateSurface = CanCreateSurface32;
 	
 	globalHal->cb32.Flip = Flip32;
 	globalHal->cb32.GetFlipStatus = GetFlipStatus32;
@@ -398,9 +391,8 @@ BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpvReserved)
 
 			if(tmp == 0) // First process?
 			{
-				hSharedHeap = HeapCreate(HEAP_SHARED, 0x2000, 0);
-				hSharedLargeHeap = HeapCreate(HEAP_SHARED, 0x10000, 0);
 				TRACE("--- vmhal9x created ---");
+				hal_memory_init();
 			}
 			tmp += 1;
 			InterlockedExchange(&lProcessCount, tmp);
@@ -426,10 +418,7 @@ BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpvReserved)
 
 			if(tmp == 0)         // Last process?
 			{
-				HeapDestroy(hSharedHeap);
-				HeapDestroy(hSharedLargeHeap);
-				hSharedHeap = NULL;
-				hSharedLargeHeap = NULL;
+				hal_memory_destroy();
 				TRACE("--- vmhal9x destroyed ---");
 			}
 			InterlockedExchange(&lProcessCount, tmp);

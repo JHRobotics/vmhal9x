@@ -403,7 +403,7 @@ NUKED_LOCAL mesa_rec_state_t *MesaRecLookup(mesa3d_ctx_t *ctx, DWORD handle, BOO
 		return NULL;
 	}
 
-	ctx->records[empty] = HeapAlloc(hSharedHeap, HEAP_ZERO_MEMORY, sizeof(mesa_rec_state_t));
+	ctx->records[empty] = hal_alloc(HEAP_NORMAL, sizeof(mesa_rec_state_t), 0);
 	if(ctx->records[empty])
 	{
 		ctx->records[empty]->handle = handle;
@@ -414,6 +414,8 @@ NUKED_LOCAL mesa_rec_state_t *MesaRecLookup(mesa3d_ctx_t *ctx, DWORD handle, BOO
 
 NUKED_LOCAL void MesaRecStart(mesa3d_ctx_t *ctx, DWORD handle, D3DSTATEBLOCKTYPE sbType)
 {
+	TRACE_ENTRY
+	
 	mesa_rec_state_t *rec = MesaRecLookup(ctx, handle, TRUE);
 	
 	if(rec)
@@ -425,6 +427,8 @@ NUKED_LOCAL void MesaRecStart(mesa3d_ctx_t *ctx, DWORD handle, D3DSTATEBLOCKTYPE
 
 NUKED_LOCAL void MesaRecStop(mesa3d_ctx_t *ctx)
 {
+	TRACE_ENTRY
+	
 	if(ctx->state.record)
 	{
 		state_apply_mask(ctx->state.record, ctx->state.record_type);
@@ -434,6 +438,8 @@ NUKED_LOCAL void MesaRecStop(mesa3d_ctx_t *ctx)
 
 NUKED_LOCAL void MesaRecApply(mesa3d_ctx_t *ctx, DWORD handle)
 {
+	TRACE_ENTRY
+	
 	mesa_rec_state_t *rec = MesaRecLookup(ctx, handle, TRUE);
 	if(rec != NULL)
 	{
@@ -448,6 +454,8 @@ NUKED_LOCAL void MesaRecApply(mesa3d_ctx_t *ctx, DWORD handle)
 
 NUKED_LOCAL void MesaRecDelete(mesa3d_ctx_t *ctx, DWORD handle)
 {
+	TRACE_ENTRY
+	
 	DWORD i;
 	for(i = 0; i < MESA_RECS_MAX; i++)
 	{
@@ -461,7 +469,7 @@ NUKED_LOCAL void MesaRecDelete(mesa3d_ctx_t *ctx, DWORD handle)
 					ctx->state.recording = FALSE;
 				}
 			}
-			HeapFree(hSharedHeap, 0, ctx->records[i]);
+			hal_free(HEAP_NORMAL, ctx->records[i]);
 			ctx->records[i] = NULL;
 		}
 	} // for

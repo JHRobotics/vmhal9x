@@ -201,22 +201,15 @@ static void LightCreate(mesa3d_ctx_t *ctx, DWORD id)
 	if(id >= ctx->light.lights_size)
 	{
 		DWORD new_size = (id + 8);
-		if(ctx->light.lights == NULL)
+		if(hal_realloc(HEAP_NORMAL, (void**)&ctx->light.lights, new_size*sizeof(mesa3d_light_t*), TRUE))
 		{
-			ctx->light.lights = HeapAlloc(hSharedHeap, HEAP_ZERO_MEMORY,
-				new_size*sizeof(mesa3d_light_t*));
+			ctx->light.lights_size = new_size;
 		}
-		else
-		{
-			ctx->light.lights = HeapReAlloc(hSharedHeap, HEAP_ZERO_MEMORY, ctx->light.lights,
-				new_size*sizeof(mesa3d_light_t*));
-		}
-		ctx->light.lights_size = new_size;
 	}
 
 	if(ctx->light.lights[id] == NULL)
 	{
-		ctx->light.lights[id] = HeapAlloc(hSharedHeap, HEAP_ZERO_MEMORY, sizeof(mesa3d_light_t));
+		ctx->light.lights[id] = hal_calloc(HEAP_NORMAL, sizeof(mesa3d_light_t), 0);
 		
 		TOPIC("LIGHT", "Light %d created!", id);
 	}
@@ -233,11 +226,11 @@ NUKED_LOCAL void MesaLightDestroyAll(mesa3d_ctx_t *ctx)
 		{
 			if(ctx->light.lights[i] != NULL)
 			{
-				HeapFree(hSharedHeap, 0, ctx->light.lights[i]);
+				hal_free(HEAP_NORMAL, ctx->light.lights[i]);
 			}
 		}
 
-		HeapFree(hSharedHeap, 0, ctx->light.lights);
+		hal_free(HEAP_NORMAL, ctx->light.lights);
 		ctx->light.lights_size = 0;
 		ctx->light.lights = NULL;
 	}
@@ -354,6 +347,22 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 	DWORD start, count, base;
 	int i;
 	WORD *pos;
+	LPBYTE verticesDX8 = NULL;
+	DWORD verticesDX8_stride = 0;
+	LPBYTE indicesDX8 = NULL;
+	DWORD  indicesDX8_stride = 0; // 2 or 4
+
+	if(ctx->state.bind_vertices >= 0)
+	{
+		verticesDX8 = ctx->vstream[ctx->state.bind_vertices].mem;
+		verticesDX8_stride = ctx->vstream[ctx->state.bind_vertices].stride;
+	}
+	
+	if(ctx->state.bind_indices_sid > 0)
+	{
+		indicesDX8 = SurfaceGetVidMem(ctx->state.bind_indices_sid);
+		indicesDX8_stride = ctx->state.bind_indices_stride;
+	}
 	
 	while((LPBYTE)inst < cmdBufferEnd)
 	{
@@ -918,6 +927,7 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_SETTRANSFORM)
+				TRACE("D3DDP2OP_SETTRANSFORM inst->wStateCount=%d", inst->wStateCount);
 				for(i = 0; i < inst->wStateCount; i++)
 				{
 					LPD3DHAL_DP2SETTRANSFORM stf = (LPD3DHAL_DP2SETTRANSFORM)prim;
@@ -951,7 +961,7 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				// In this case, the driver is expected to BitBlt all the mipmap
 				// levels present in the texture.
 				
-				for(i = 0; inst->wStateCount; i++)
+				for(i = 0; i < inst->wStateCount; i++)
 				{
 					// FIXME: do the blit...
 					WARN("D3DDP2OP_TEXBLT");
@@ -960,9 +970,11 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_STATESET)
-				for(i = 0; inst->wStateCount; i++)
+				TRACE("D3DDP2OP_STATESET inst->wStateCount=%d", inst->wStateCount);
+				for(i = 0; i < inst->wStateCount; i++)
 				{
-					LPD3DHAL_DP2STATESET pStateSetOp = (LPD3DHAL_DP2STATESET)(prim);
+					LPD3DHAL_DP2STATESET pStateSetOp = (LPD3DHAL_DP2STATESET)prim;
+					prim += sizeof(D3DHAL_DP2STATESET);
 					switch(pStateSetOp->dwOperation)
 					{
 						case D3DHAL_STATESETCREATE:
@@ -997,7 +1009,7 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 							WARN("D3DDP2OP_STATESET: %d", pStateSetOp->dwOperation);
 							break;
 					}
-					prim += sizeof(D3DHAL_DP2STATESET);
+					
 				}
 				NEXT_INST(0);
 				break;
@@ -1066,6 +1078,14 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 					D3DHAL_DP2SETCLIPPLANE *plane = (D3DHAL_DP2SETCLIPPLANE*)prim;
 					prim += sizeof(D3DHAL_DP2SETCLIPPLANE);
 
+					TRACE("clip plane %d = (%f, %f, %f, %f)",
+						plane->dwIndex,
+						plane->plane[0],
+						plane->plane[1],
+						plane->plane[2],
+						plane->plane[3]
+					);
+
 					if(plane->dwIndex < MESA_CLIPS_MAX)
 					{
 						ctx->state.clipping.plane[plane->dwIndex][0] = plane->plane[0];
@@ -1122,21 +1142,54 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 	    COMMAND(D3DDP2OP_SETSTREAMSOURCE)
 	    	for(i = 0; i < inst->wStateCount; i++)
 	    	{
+	    		D3DHAL_DP2SETSTREAMSOURCE *vsrc = (D3DHAL_DP2SETSTREAMSOURCE*)prim;
 	    		prim += sizeof(D3DHAL_DP2SETSTREAMSOURCE);
+	    		if(vsrc->dwStream < MESA_MAX_STREAM)
+	    		{
+	    			if(vsrc->dwVBHandle > 0)
+	    			{
+	    				surface_id sid = ctx->surfaces->table[vsrc->dwVBHandle];
+	    				if(sid)
+	    				{
+	    					ctx->vstream[vsrc->dwStream].sid = sid;
+	    					ctx->vstream[vsrc->dwStream].VBHandle = vsrc->dwVBHandle;
+	    					ctx->vstream[vsrc->dwStream].stride = vsrc->dwStride;
+	    					ctx->vstream[vsrc->dwStream].mem = SurfaceGetVidMem(sid);
+	    					
+	    					verticesDX8 = ctx->vstream[vsrc->dwStream].mem;
+	    					ctx->state.bind_vertices = vsrc->dwStream;
+	    				}
+	    			}
+	    		}
 	    	}
 	    	NEXT_INST(0);
 	    	break;
 	    COMMAND(D3DDP2OP_SETSTREAMSOURCEUM)
 	    	for(i = 0; i < inst->wStateCount; i++)
 	    	{
+	    		D3DHAL_DP2SETSTREAMSOURCEUM *um = (D3DHAL_DP2SETSTREAMSOURCEUM*)prim;
 	    		prim += sizeof(D3DHAL_DP2SETSTREAMSOURCEUM);
+	    		if(um->dwStream < MESA_MAX_STREAM)
+	    		{
+	    			ctx->vstream[um->dwStream].stride = um->dwStride;
+	    		}
 	    	}
 	    	NEXT_INST(0);
 	    	break;
 	    COMMAND(D3DDP2OP_SETINDICES)
 	    	for(i = 0; i < inst->wStateCount; i++)
 	    	{
+	    		D3DHAL_DP2SETINDICES *si = (D3DHAL_DP2SETINDICES*)prim;
 	    		prim += sizeof(D3DHAL_DP2SETINDICES);
+	    		
+	    		if(si->dwVBHandle > 0)
+	    		{
+	    			ctx->state.bind_indices_sid = ctx->surfaces->table[si->dwVBHandle];
+	    			ctx->state.bind_indices_stride = si->dwStride;
+	    			
+	    			indicesDX8 = SurfaceGetVidMem(ctx->state.bind_indices_sid);
+	    			indicesDX8_stride = si->dwStride;
+	    		}
 	    	}
 	    	NEXT_INST(0);
 	    	break;
@@ -1148,9 +1201,9 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 	    		count = MesaConvPrimVertex(draw->primType, draw->PrimitiveCount);
 					if(count)
 					{
-						MesaDrawFVFs(ctx,
+						/*MesaDrawFVFs(ctx,
 							MesaConvPrimType(draw->primType),
-							vertices, draw->VStart, count);
+							vertices, draw->VStart, count);*/
 					}
 	    	}
 	    	SET_DIRTY;
@@ -1332,7 +1385,7 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 
 NUKED_LOCAL BOOL MesaRecord6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LPBYTE vertices, DWORD *error_offset, LPDWORD RStates)
 {
-	TOPIC("READBACK", "MesaDraw6");
+	TRACE_ENTRY
 
 	mesa3d_entry_t *entry = ctx->entry;
 	LPD3DHAL_DP2COMMAND inst = (LPD3DHAL_DP2COMMAND)cmdBufferStart;
@@ -1459,7 +1512,7 @@ NUKED_LOCAL BOOL MesaRecord6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cm
 				NEXT_INST_TC(D3DHAL_DP2TEXBLT, inst->wStateCount);
 				break;
 			COMMAND(D3DDP2OP_STATESET)
-				for(i = 0; inst->wStateCount; i++)
+				for(i = 0; i < inst->wStateCount; i++)
 				{
 					LPD3DHAL_DP2STATESET pStateSetOp = (LPD3DHAL_DP2STATESET)(prim);
 					switch(pStateSetOp->dwOperation)

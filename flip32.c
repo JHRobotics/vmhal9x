@@ -135,7 +135,7 @@ uint64_t last_flip_time = 0;
 
 volatile BOOL is_flipping = FALSE;
 
-DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
+DDENTRY_FPUSAVE(Flip32, LPDDHAL_FLIPDATA, pfd)
 {
 	TRACE_ENTRY
 	/*
@@ -226,7 +226,7 @@ DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd)
 	return DDHAL_DRIVER_HANDLED;
 } /* Flip32 */
 
-DWORD __stdcall GetFlipStatus32(LPDDHAL_GETFLIPSTATUSDATA pfd)
+DDENTRY_FPUSAVE(GetFlipStatus32, LPDDHAL_GETFLIPSTATUSDATA, pfd)
 {
 	TRACE_ENTRY
 	VMDAHAL_t *ddhal = GetHAL(pfd->lpDD);	

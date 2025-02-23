@@ -23,31 +23,66 @@
  * OTHER DEALINGS IN THE SOFTWARE.                                            *
  *                                                                            *
  ******************************************************************************/
-#ifndef __SURFACE_H__INCLUDED__
-#define __SURFACE_H__INCLUDED__
+#ifndef __VMHAL9X__X86_H__INCLUDED__
+#define __VMHAL9X__X86_H__INCLUDED__
 
-typedef struct surface_info surface_info_t;
+/*
+From DDK:
 
-#define DDSURF_ATTACH_MAX (6*16)
+The DirectX runtime saves and restores floating-point state as required
+for the following Direct3D callback functions:
 
-typedef struct _DDSURF
-{
-	FLATPTR fpVidMem;
-	LPDDRAWI_DDRAWSURFACE_GBL lpGbl;
-	LPDDRAWI_DDRAWSURFACE_LCL lpLclDX7; // DX7 and older only!
-	DWORD dwFlags;
-	DWORD dwCaps;
-	DWORD dwCaps2;
-	DWORD dwSurfaceHandle;
-	DWORD dwColorKeyLow;
-	DWORD dwColorKeyHigh;
-	DWORD attachments_cnt;
-	surface_id attachments[DDSURF_ATTACH_MAX];
-} DDSURF;
+D3dContextCreate 
+D3dContextDestroy 
+D3dDrawPrimitives2 
+D3dGetDriverState 
+D3dValidateTextureStageState 
 
-LPDDRAWI_DDRAWSURFACE_LCL SurfaceDuplicate(LPDDRAWI_DDRAWSURFACE_LCL original);
+For the following callback functions, a Direct3D-supported display driver
+must save floating-point state before performing floating-point operations,
+and restore it when the operations are complete:
 
-DDSURF *SurfaceGetSURF(surface_id sid);
-void *SurfaceGetVidMem(surface_id sid);
+D3dCreateSurfaceEx 
+D3dDestroyDDLocal 
+D3DBuffer Callbacks
+(and all DDRAW functions)
+*/
 
-#endif /* __SURFACE_H__INCLUDED__ */
+#define FXSAVE_REGION_SIZE 512
+#define FSAVE_REGION_SIZE 128
+
+#ifdef __SSE__
+/* save using FXSAVE */
+/* todo: detect AVX/XSAVE and use XSAVE when available */
+#define SAVE_X87_XMM \
+	unsigned char saveregion[FXSAVE_REGION_SIZE] __attribute__((aligned(32))); \
+	asm volatile ("FXSAVE %0" : : "m" (saveregion))
+
+#define RESTORE_X87_XMM \
+	asm volatile ("FXRSTOR %0" : : "m" (saveregion))
+
+#else /* __SSE__ */
+/* save only x87/MMX (FSAVE) */
+#define SAVE_X87_XMM \
+	unsigned char saveregion[FSAVE_REGION_SIZE]; \
+	asm volatile ("FNSAVE %0" : : "m" (saveregion))
+
+#define RESTORE_X87_XMM \
+	asm volatile ("FRSTOR %0" : : "m" (saveregion))
+
+#endif /* !__SSE__ */
+
+#define DDENTRY_FPUSAVE(_name, _argtype, _argname) \
+static DWORD _name ## _proc(_argtype _argname); \
+DWORD __stdcall _name(_argtype _argname){ \
+	DWORD rc; \
+	SAVE_X87_XMM; \
+	rc = _name ## _proc(_argname); \
+	RESTORE_X87_XMM; \
+	return rc;} \
+static DWORD _name ## _proc(_argtype _argname)
+
+#define DDENTRY(_name, _argtype, _argname) \
+DWORD __stdcall _name(_argtype _argname)
+
+#endif /* __VMHAL9X__X86_H__INCLUDED__ */

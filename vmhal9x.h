@@ -26,6 +26,9 @@
 #ifndef __VMHAL9X_H__INCLUDED__
 #define __VMHAL9X_H__INCLUDED__
 
+#include "x86.h"
+#include "memory.h"
+
 /* version */
 #define VMHAL9X_STR_(x) #x
 #define VMHAL9X_STR(x) VMHAL9X_STR_(x)
@@ -90,23 +93,23 @@ void dbg_prefix_printf(const char *topic, const char *prefix, const char *file, 
 /* calls */
 VMDAHAL_t *GetHAL(LPDDRAWI_DIRECTDRAW_GBL lpDD);
 
-DWORD __stdcall CanCreateSurface(LPDDHAL_CANCREATESURFACEDATA pccsd);
-DWORD __stdcall CreateSurface(LPDDHAL_CREATESURFACEDATA pcsd);
-DWORD __stdcall DestroySurface( LPDDHAL_DESTROYSURFACEDATA lpd);
+DDENTRY(CanCreateSurface32, LPDDHAL_CANCREATESURFACEDATA, pccsd);
+DDENTRY(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd);
+DDENTRY(DestroySurface32, LPDDHAL_DESTROYSURFACEDATA, lpd);
 
-DWORD __stdcall Flip32(LPDDHAL_FLIPDATA pfd);
-DWORD __stdcall GetFlipStatus32(LPDDHAL_GETFLIPSTATUSDATA pfd);
-DWORD __stdcall Lock32(LPDDHAL_LOCKDATA pld);
-DWORD __stdcall Unlock32(LPDDHAL_UNLOCKDATA pld);
-DWORD __stdcall WaitForVerticalBlank32(LPDDHAL_WAITFORVERTICALBLANKDATA pwd);
-DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd);
-DWORD __stdcall GetBltStatus32(LPDDHAL_GETBLTSTATUSDATA pbd);
-DWORD __stdcall SetExclusiveMode32(LPDDHAL_SETEXCLUSIVEMODEDATA psem);
-DWORD __stdcall SetMode32(LPDDHAL_SETMODEDATA psmod);
-DWORD __stdcall GetDriverInfo32(LPDDHAL_GETDRIVERINFODATA lpInput);
-DWORD __stdcall SetColorKey32(LPDDHAL_SETCOLORKEYDATA lpSetColorKey);
+DDENTRY(Flip32, LPDDHAL_FLIPDATA, pfd);
+DDENTRY(GetFlipStatus32, LPDDHAL_GETFLIPSTATUSDATA, pfd);
+DDENTRY(Lock32, LPDDHAL_LOCKDATA, pld);
+DDENTRY(Unlock32, LPDDHAL_UNLOCKDATA, pld);
+DDENTRY(WaitForVerticalBlank32, LPDDHAL_WAITFORVERTICALBLANKDATA, pwd);
+DDENTRY(Blt32, LPDDHAL_BLTDATA, pbd);
+DDENTRY(GetBltStatus32, LPDDHAL_GETBLTSTATUSDATA, pbd);
+DDENTRY(SetExclusiveMode32, LPDDHAL_SETEXCLUSIVEMODEDATA, psem);
+DDENTRY(SetMode32, LPDDHAL_SETMODEDATA, psmod);
+DDENTRY(GetDriverInfo32, LPDDHAL_GETDRIVERINFODATA, lpInput);
+DDENTRY(SetColorKey32, LPDDHAL_SETCOLORKEYDATA, lpSetColorKey);
 
-DWORD __stdcall DestroyDriver32(LPDDHAL_DESTROYDRIVERDATA pdstr);
+DDENTRY(DestroyDriver32, LPDDHAL_DESTROYDRIVERDATA, pdstr);
 
 BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, LPDDHAL_DDEXEBUFCALLBACKS lpHALExeBufCallbacks, VMDAHAL_D3DCAPS_t *lpHALFlags);
 
@@ -152,13 +155,15 @@ void SurfaceAttachTexture(surface_id sid, void *mesa_tex, int level, int side);
 void SurfaceAttachCtx(void *mesa_ctx);
 void SurfaceDeattachTexture(surface_id sid, void *mesa_tex, int level, int side);
 void SurfaceDeattachCtx(void *mesa_ctx);
+void SurfaceToMesaTex(surface_id sid);
 void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly);
 void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly);
 BOOL SurfaceIsEmpty(surface_id sid);
+void SurfaceApplyColorKey(surface_id sid, DWORD low, DWORD hi);
 void SurfaceClearEmpty(surface_id sid);
 void SurfaceClearData(surface_id sid);
-DWORD SurfaceDataSize(LPDDRAWI_DDRAWSURFACE_LCL surf, DWORD *outPitch);
-LPDDRAWI_DDRAWSURFACE_LCL SurfaceGetLCL(surface_id sid);
+DWORD SurfaceDataSize(LPDDRAWI_DDRAWSURFACE_GBL gbl, DWORD *outPitch);
+LPDDRAWI_DDRAWSURFACE_LCL SurfaceGetLCL_DX7(surface_id sid);
 
 inline static DWORD SurfacePitch(DWORD width, DWORD bpp)
 {

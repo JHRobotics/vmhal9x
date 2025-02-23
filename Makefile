@@ -1,5 +1,5 @@
 ################################################################################
-# Copyright (c) 2023-2024 Jaroslav Hensl                                       #
+# Copyright (c) 2023-2025 Jaroslav Hensl                                       #
 #                                                                              #
 # See LICENCE file for law informations                                        #
 # See README.md file for more build instructions                               #
@@ -25,16 +25,16 @@ ifeq ($(GIT_IS),true)
   VERSION_BUILD := $(shell $(GIT) rev-list --count main)
 endif
 
-TARGETS = vmdisp9x.dll vmhal9x.dll
+vmhal9x.dll:
 
-all: $(TARGETS)
+all: vmhal9x.dll
 .PHONY: all clean
 
 OBJ := .o
 LIBSUFFIX := .a
 LIBPREFIX := lib
 
-DEPS=libddraw.a Makefile config.mk vmhal9x.h mesa3d.h mesa3d_api.h surface.h
+DEPS=libddraw.a Makefile config.mk vmhal9x.h mesa3d.h mesa3d_api.h surface.h x86.h memory.h
 RUNPATH=$(if $(filter $(OS),Windows_NT),.\,./)
 
 HOST_SUFFIX=
@@ -85,7 +85,7 @@ mesa3d_buffer.c.o: mesa3d_zconv.h mesa3d_flip.h
 mesa3d_nuked.c.o: mesa3d.c mesa3d_buffer.c mesa3d_draw.c mesa3d_chroma.c mesa3d_matrix.c mesa3d_draw6.c mesa3d_dump.c mesa3d_state.c
 
 NOCRT_OBJS = nocrt/nocrt.c.o nocrt/nocrt_math.c.o nocrt/nocrt_math_calc.c.o nocrt/nocrt_file_win.c.o nocrt/nocrt_mem_win.c.o nocrt/nocrt_dll.c.o
-VMHAL9X_OBJS = $(NOCRT_OBJS) vmhal9x.c.o ddraw.c.o 3d_accel.c.o flip32.c.o blt32.c.o rop3.c.o transblt.c.o debug.c.o dump.c.o fill.c.o vmhal9x.res
+VMHAL9X_OBJS = $(NOCRT_OBJS) vmhal9x.c.o ddraw.c.o 3d_accel.c.o flip32.c.o blt32.c.o rop3.c.o transblt.c.o debug.c.o dump.c.o fill.c.o memory.c.o vmhal9x.res
 VMDISP9X_OBJS = $(NOCRT_OBJS) vmdisp9x.c.o
 
 ifdef D3DHAL
@@ -100,12 +100,12 @@ endif
 fixlink$(HOST_SUFFIX):
 	$(HOST_CC) -std=$(CSTD) fixlink/fixlink.c -o fixlink$(HOST_SUFFIX)
 
-vmhal9x.dll: $(VMHAL9X_OBJS) fixlink$(HOST_SUFFIX)
-	$(CC) $(LDFLAGS) $(VMHAL9X_OBJS) vmhal9x.def $(LIBS) $(DLLFLAGS)
-	$(RUNPATH)fixlink$(HOST_SUFFIX) -shared $@
-
 vmdisp9x.dll: $(VMDISP9X_OBJS)
 	$(CC) $(LDFLAGS) $(VMDISP9X_OBJS) vmdisp9x.def $(LIBS) $(DLLFLAGS)
+
+vmhal9x.dll: $(VMHAL9X_OBJS) fixlink$(HOST_SUFFIX) vmdisp9x.dll
+	$(CC) $(LDFLAGS) $(VMHAL9X_OBJS) vmhal9x.def $(LIBS) $(DLLFLAGS)
+	$(RUNPATH)fixlink$(HOST_SUFFIX) -shared $@
 
 # generate win9x compatible ddraw import library
 libddraw.a: ddraw.def

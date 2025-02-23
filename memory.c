@@ -23,31 +23,107 @@
  * OTHER DEALINGS IN THE SOFTWARE.                                            *
  *                                                                            *
  ******************************************************************************/
-#ifndef __SURFACE_H__INCLUDED__
-#define __SURFACE_H__INCLUDED__
+#include <Windows.h>
+#include "memory.h"
+#include "nocrt.h"
 
-typedef struct surface_info surface_info_t;
+#define MEM_ALIGN 16
 
-#define DDSURF_ATTACH_MAX (6*16)
+#ifndef HEAP_SHARED
+/* undocumented heap behaviour for shared DLL (from D3_DD32.C) */
+#define HEAP_SHARED      0x04000000
+#endif
 
-typedef struct _DDSURF
+/* heaps */
+HANDLE hSharedHeap = NULL;
+HANDLE hSharedLargeHeap = NULL;
+
+BOOL hal_memory_init()
 {
-	FLATPTR fpVidMem;
-	LPDDRAWI_DDRAWSURFACE_GBL lpGbl;
-	LPDDRAWI_DDRAWSURFACE_LCL lpLclDX7; // DX7 and older only!
-	DWORD dwFlags;
-	DWORD dwCaps;
-	DWORD dwCaps2;
-	DWORD dwSurfaceHandle;
-	DWORD dwColorKeyLow;
-	DWORD dwColorKeyHigh;
-	DWORD attachments_cnt;
-	surface_id attachments[DDSURF_ATTACH_MAX];
-} DDSURF;
+	hSharedHeap = HeapCreate(HEAP_SHARED, 0x2000, 0);
+	hSharedLargeHeap = HeapCreate(HEAP_SHARED, 0x10000, 0);
+	
+	return hSharedHeap != NULL && hSharedLargeHeap != NULL;
+}
 
-LPDDRAWI_DDRAWSURFACE_LCL SurfaceDuplicate(LPDDRAWI_DDRAWSURFACE_LCL original);
+void hal_memory_destroy()
+{
+	HeapDestroy(hSharedHeap);
+	HeapDestroy(hSharedLargeHeap);
+	hSharedHeap = NULL;
+	hSharedLargeHeap = NULL;
+}
 
-DDSURF *SurfaceGetSURF(surface_id sid);
-void *SurfaceGetVidMem(surface_id sid);
+static HANDLE get_heap(int heap)
+{
+	switch(heap)
+	{
+		case HEAP_NORMAL: return hSharedHeap;
+		case HEAP_LARGE: return hSharedLargeHeap;
+	}
+	
+	return NULL;
+}
 
-#endif /* __SURFACE_H__INCLUDED__ */
+#define ALIGN_SIZE(_s) (((_s) + ((MEM_ALIGN)-1)) & (~((MEM_ALIGN)-1)))
+
+void *hal_alloc(int heap, size_t size, DWORD width)
+{
+	void *mem = NULL;
+	HANDLE h = get_heap(heap);
+	if(h != NULL)
+	{
+		size = ALIGN_SIZE(size);
+		mem = HeapAlloc(h, 0, size);
+	}
+	
+	return mem;
+}
+
+void *hal_calloc(int heap, size_t size, DWORD width)
+{
+	void *mem = NULL;
+	HANDLE h = get_heap(heap);
+	if(h != NULL)
+	{
+		size = ALIGN_SIZE(size);
+		mem = HeapAlloc(h, HEAP_ZERO_MEMORY, size);
+	}
+	return mem;
+}
+
+BOOL hal_realloc(int heap, void **block, size_t new_size, BOOL zero)
+{
+	BOOL rc = FALSE;
+	HANDLE h = get_heap(heap);
+	if(h != NULL && block != NULL)
+	{
+		new_size = ALIGN_SIZE(new_size);
+		if(*block == NULL)
+		{
+			*block = HeapAlloc(h, (zero == FALSE) ? 0 : HEAP_ZERO_MEMORY, new_size);
+			if(*block != NULL)
+				rc = TRUE;
+		}
+		else
+		{
+			void *mem = HeapReAlloc(h, (zero == FALSE) ? 0 : HEAP_ZERO_MEMORY, *block, new_size);
+			if(mem != NULL)
+			{
+				*block = mem;
+				rc = TRUE;
+			}
+		}
+	}
+	
+	return rc;
+}
+
+void hal_free(int heap, void *mem)
+{
+	HANDLE h = get_heap(heap);
+	if(h != NULL && mem != NULL)
+	{
+		HeapFree(h, 0, mem);
+	}
+}

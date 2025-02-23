@@ -23,31 +23,19 @@
  * OTHER DEALINGS IN THE SOFTWARE.                                            *
  *                                                                            *
  ******************************************************************************/
-#ifndef __SURFACE_H__INCLUDED__
-#define __SURFACE_H__INCLUDED__
+#ifndef __VMHAL9X__MEMORY_H__INCLUDED__
+#define __VMHAL9X__MEMORY_H__INCLUDED__
 
-typedef struct surface_info surface_info_t;
+#define HEAP_NORMAL 0
+#define HEAP_LARGE  1
+#define HEAP_VRAM   2 /* don't use yet! */
 
-#define DDSURF_ATTACH_MAX (6*16)
+BOOL  hal_memory_init();
+void hal_memory_destroy();
 
-typedef struct _DDSURF
-{
-	FLATPTR fpVidMem;
-	LPDDRAWI_DDRAWSURFACE_GBL lpGbl;
-	LPDDRAWI_DDRAWSURFACE_LCL lpLclDX7; // DX7 and older only!
-	DWORD dwFlags;
-	DWORD dwCaps;
-	DWORD dwCaps2;
-	DWORD dwSurfaceHandle;
-	DWORD dwColorKeyLow;
-	DWORD dwColorKeyHigh;
-	DWORD attachments_cnt;
-	surface_id attachments[DDSURF_ATTACH_MAX];
-} DDSURF;
+void *hal_alloc(int heap, size_t size, DWORD width);
+void *hal_calloc(int heap, size_t size, DWORD width);
+BOOL hal_realloc(int heap, void **block, size_t new_size, BOOL zero);
+void  hal_free(int heap, void *block);
 
-LPDDRAWI_DDRAWSURFACE_LCL SurfaceDuplicate(LPDDRAWI_DDRAWSURFACE_LCL original);
-
-DDSURF *SurfaceGetSURF(surface_id sid);
-void *SurfaceGetVidMem(surface_id sid);
-
-#endif /* __SURFACE_H__INCLUDED__ */
+#endif /* __VMHAL9X__MEMORY_H__INCLUDED__ */

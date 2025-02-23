@@ -31,7 +31,6 @@
 
 #include "vmdahal32.h"
 #include "vmhal9x.h"
-
 #include "nocrt.h"
 
 /* Display mode should by controled by system/HEL all time */
@@ -53,7 +52,7 @@ VMDAHAL_t *GetHAL(LPDDRAWI_DIRECTDRAW_GBL lpDD)
 
 /* surfaces */
 
-DWORD __stdcall CanCreateSurface(LPDDHAL_CANCREATESURFACEDATA pccsd)
+DDENTRY(CanCreateSurface32, LPDDHAL_CANCREATESURFACEDATA, pccsd)
 {
 	TRACE_ENTRY
 	
@@ -69,7 +68,7 @@ DWORD __stdcall CanCreateSurface(LPDDHAL_CANCREATESURFACEDATA pccsd)
 	}
 	
 	LPDDSURFACEDESC lpDDSurfaceDesc = pccsd->lpDDSurfaceDesc;
-		
+
 	if((lpDDSurfaceDesc->ddsCaps.dwCaps & 
 		(DDSCAPS_TEXTURE | DDSCAPS_EXECUTEBUFFER | DDSCAPS_ZBUFFER /*| DDSCAPS_OVERLAY*/)) != 0)
 	{
@@ -83,7 +82,7 @@ DWORD __stdcall CanCreateSurface(LPDDHAL_CANCREATESURFACEDATA pccsd)
 	return DDHAL_DRIVER_HANDLED;
 } /* CanCreateSurface */
 
-DWORD __stdcall CreateSurface(LPDDHAL_CREATESURFACEDATA pcsd)
+DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 {
 	TRACE_ENTRY
 
@@ -104,7 +103,7 @@ DWORD __stdcall CreateSurface(LPDDHAL_CREATESURFACEDATA pcsd)
 			if(lpSurf->lpGbl->ddpfSurface.dwFlags & DDPF_FOURCC)
 			{
 				DWORD pitch;
-				DWORD size = SurfaceDataSize(lpSurf, &pitch);
+				DWORD size = SurfaceDataSize(lpSurf->lpGbl, &pitch);
 
 				lpSurf->lpGbl->lPitch = pitch; // for FOURCC needs to be fill
 				if(i == 0)
@@ -176,7 +175,7 @@ DWORD __stdcall CreateSurface(LPDDHAL_CREATESURFACEDATA pcsd)
 	return DDHAL_DRIVER_NOTHANDLED;
 } /* CreateSurface32 */
 
-DWORD __stdcall DestroySurface(LPDDHAL_DESTROYSURFACEDATA lpd)
+DDENTRY_FPUSAVE(DestroySurface32, LPDDHAL_DESTROYSURFACEDATA, lpd)
 {
 	TRACE_ENTRY
 	
@@ -219,7 +218,7 @@ uint64_t GetTimeTMS()
 	return stamp.QuadPart / freq.QuadPart;
 }
 
-DWORD __stdcall WaitForVerticalBlank32(LPDDHAL_WAITFORVERTICALBLANKDATA pwd)
+DDENTRY_FPUSAVE(WaitForVerticalBlank32, LPDDHAL_WAITFORVERTICALBLANKDATA, pwd)
 {
 	TRACE_ENTRY
 	
@@ -260,7 +259,7 @@ DWORD __stdcall WaitForVerticalBlank32(LPDDHAL_WAITFORVERTICALBLANKDATA pwd)
 	return DDHAL_DRIVER_NOTHANDLED;
 }
 
-DWORD __stdcall Lock32(LPDDHAL_LOCKDATA pld)
+DDENTRY_FPUSAVE(Lock32, LPDDHAL_LOCKDATA, pld)
 {
 	TRACE_ENTRY
 	
@@ -302,7 +301,7 @@ DWORD __stdcall Lock32(LPDDHAL_LOCKDATA pld)
 	return DDHAL_DRIVER_NOTHANDLED; /* let the lock processed */
 }
 
-DWORD __stdcall Unlock32(LPDDHAL_UNLOCKDATA pld)
+DDENTRY_FPUSAVE(Unlock32, LPDDHAL_UNLOCKDATA, pld)
 {
 	TRACE_ENTRY
 	VMDAHAL_t *ddhal = GetHAL(pld->lpDD);
@@ -319,7 +318,7 @@ DWORD __stdcall Unlock32(LPDDHAL_UNLOCKDATA pld)
 	return DDHAL_DRIVER_NOTHANDLED; /* let the unlock processed */
 }
 
-DWORD __stdcall SetExclusiveMode32(LPDDHAL_SETEXCLUSIVEMODEDATA psem)
+DDENTRY(SetExclusiveMode32, LPDDHAL_SETEXCLUSIVEMODEDATA, psem)
 {
 	TRACE_ENTRY
 
@@ -338,7 +337,7 @@ DWORD __stdcall SetExclusiveMode32(LPDDHAL_SETEXCLUSIVEMODEDATA psem)
 	return DDHAL_DRIVER_HANDLED;
 }
 
-DWORD __stdcall SetMode32(LPDDHAL_SETMODEDATA psmod)
+DDENTRY(SetMode32, LPDDHAL_SETMODEDATA, psmod)
 {
 	TRACE_ENTRY
 	
@@ -381,7 +380,7 @@ DWORD __stdcall SetMode32(LPDDHAL_SETMODEDATA psmod)
 	return rc;
 }
 
-DWORD __stdcall DestroyDriver32(LPDDHAL_DESTROYDRIVERDATA pdstr)
+DDENTRY_FPUSAVE(DestroyDriver32, LPDDHAL_DESTROYDRIVERDATA, pdstr)
 {
 	TRACE_ENTRY
 	
@@ -407,7 +406,7 @@ DWORD __stdcall DestroyDriver32(LPDDHAL_DESTROYDRIVERDATA pdstr)
 	return DDHAL_DRIVER_HANDLED;
 }
 
-DWORD __stdcall SetColorKey32(LPDDHAL_SETCOLORKEYDATA lpSetColorKey)
+DDENTRY_FPUSAVE(SetColorKey32, LPDDHAL_SETCOLORKEYDATA, lpSetColorKey)
 {
 	TRACE_ENTRY
 
@@ -415,29 +414,36 @@ DWORD __stdcall SetColorKey32(LPDDHAL_SETCOLORKEYDATA lpSetColorKey)
 	
 	if(ddhal)
 	{
-		lpSetColorKey->lpDDSurface->dwFlags   |= DDRAWISURF_HASCKEYSRCBLT;
+		lpSetColorKey->lpDDSurface->dwFlags |= DDRAWISURF_HASCKEYSRCBLT;
 		DWORD c1 = lpSetColorKey->ckNew.dwColorSpaceLowValue;
 		DWORD c2 = lpSetColorKey->ckNew.dwColorSpaceHighValue;
+		DWORD c1_32 = 0;
+		DWORD c2_32 = 0;
 		
 		/* convert keys to 32bpp */
 		switch(ddhal->pFBHDA32->bpp)
 		{
+			case 15:
+				c1_32 = ((c1 & 0x001F) << 3) | ((c1 & 0x03E0) << 6) | ((c1 & 0x7C00) << 9);
+				c2_32 = ((c2 & 0x001F) << 3) | ((c2 & 0x03E0) << 6) | ((c2 & 0x7C00) << 9);
+				break;
 			case 16:
-				lpSetColorKey->lpDDSurface->ddckCKSrcBlt.dwColorSpaceLowValue =
-					((c1 & 0x001F) << 3) | ((c1 & 0x07E0) << 5) | ((c1 & 0xF800) << 8);
-				lpSetColorKey->lpDDSurface->ddckCKSrcBlt.dwColorSpaceHighValue = 
-					((c2 & 0x001F) << 3) | ((c2 & 0x07E0) << 5) | ((c2 & 0xF800) << 8);
+				c1_32 = ((c1 & 0x001F) << 3) | ((c1 & 0x07E0) << 5) | ((c1 & 0xF800) << 8);
+				c2_32 = ((c2 & 0x001F) << 3) | ((c2 & 0x07E0) << 5) | ((c2 & 0xF800) << 8);
 				break;
 			case 24:
 			case 32:
 			default:
-				lpSetColorKey->lpDDSurface->ddckCKSrcBlt.dwColorSpaceLowValue  = c1 & 0x00FFFFFFUL;
-				lpSetColorKey->lpDDSurface->ddckCKSrcBlt.dwColorSpaceHighValue = c2 & 0x00FFFFFFUL;
+				c1_32  = c1 & 0x00FFFFFFUL;
+				c2_32 = c2 & 0x00FFFFFFUL;
 				break;
 		}
+		
+		lpSetColorKey->lpDDSurface->ddckCKSrcBlt.dwColorSpaceLowValue  = c1_32;
+		lpSetColorKey->lpDDSurface->ddckCKSrcBlt.dwColorSpaceHighValue = c2_32;
+		SurfaceApplyColorKey(lpSetColorKey->lpDDSurface->dwReserved1, c1_32, c2_32);
 	}
 
 	lpSetColorKey->ddRVal = DD_OK;
 	return DDHAL_DRIVER_HANDLED;	
 }
-

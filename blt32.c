@@ -44,7 +44,7 @@
  *
  * 32-bit blit routine.
  */
-DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
+DDENTRY_FPUSAVE(Blt32, LPDDHAL_BLTDATA, pbd)
 {
 	TRACE_ENTRY
 	
@@ -337,7 +337,7 @@ DWORD __stdcall Blt32(LPDDHAL_BLTDATA pbd)
 	return DDHAL_DRIVER_HANDLED; // Blt successful, exit function
 } /* Blt32 */
 
-DWORD __stdcall GetBltStatus32(LPDDHAL_GETBLTSTATUSDATA pbd)
+DDENTRY(GetBltStatus32, LPDDHAL_GETBLTSTATUSDATA, pbd)
 {
 	TRACE_ENTRY
 	
