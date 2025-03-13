@@ -373,25 +373,63 @@ NUKED_INLINE void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx,
 			int coordnum = ctx->state.fvf.coords[coordindex];
 			if(ctx->state.fvf.pos_tmu[coordindex] && coordnum > 0)
 			{
-				switch(coordnum)
+				if(ctx->state.tmu[i].projected)
 				{
-					case 1:
-						entry->proc.pglMultiTexCoord1fv(GL_TEXTURE0 + i,
-							&fv[ctx->state.fvf.pos_tmu[coordindex]]);
-						break;
-					case 2:
-						entry->proc.pglMultiTexCoord2fv(GL_TEXTURE0 + i,
-							&fv[ctx->state.fvf.pos_tmu[coordindex]]);
-						break;
-					case 3:
-						entry->proc.pglMultiTexCoord3fv(GL_TEXTURE0 + i,
-							&fv[ctx->state.fvf.pos_tmu[coordindex]]);
-						break;
-					case 4:
-						entry->proc.pglMultiTexCoord4fv(GL_TEXTURE0 + i,
-							&fv[ctx->state.fvf.pos_tmu[coordindex]]);
-						break;
-				} // switch(coordnum)
+					GLfloat s, t, r, w;
+					int p = ctx->state.fvf.pos_tmu[coordindex];
+					switch(coordnum)
+					{
+						case 2:
+							s = fv[p];
+							w = fv[p+1];
+							if(w != 0.0)
+							{
+								entry->proc.pglMultiTexCoord1f(GL_TEXTURE0 + i, s/w);
+							}
+							break;
+						case 3:
+							s = fv[p];
+							t = fv[p+1];
+							w = fv[p+2];
+							if(w != 0.0)
+							{
+								entry->proc.pglMultiTexCoord2f(GL_TEXTURE0 + i, s/w, t/w);
+							}
+							break;
+						case 4:
+							s = fv[p];
+							t = fv[p+1];
+							r = fv[p+2];
+							w = fv[p+3];
+							if(w != 0.0)
+							{
+								entry->proc.pglMultiTexCoord3f(GL_TEXTURE0 + i, s/w, t/w, r/w);
+							}
+							break;
+					}
+				}
+				else
+				{
+					switch(coordnum)
+					{
+						case 1:
+							entry->proc.pglMultiTexCoord1fv(GL_TEXTURE0 + i,
+								&fv[ctx->state.fvf.pos_tmu[coordindex]]);
+							break;
+						case 2:
+							entry->proc.pglMultiTexCoord2fv(GL_TEXTURE0 + i,
+								&fv[ctx->state.fvf.pos_tmu[coordindex]]);
+							break;
+						case 3:
+							entry->proc.pglMultiTexCoord3fv(GL_TEXTURE0 + i,
+								&fv[ctx->state.fvf.pos_tmu[coordindex]]);
+							break;
+						case 4:
+							entry->proc.pglMultiTexCoord4fv(GL_TEXTURE0 + i,
+								&fv[ctx->state.fvf.pos_tmu[coordindex]]);
+							break;
+					} // switch(coordnum)
+				}
 			}
 		}
 	}

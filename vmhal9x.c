@@ -276,7 +276,7 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 	globalHal->cb32.SetExclusiveMode = SetExclusiveMode32;
 //	globalHal->cb32.SetMode = SetMode32;
 	globalHal->cb32.SetColorKey = SetColorKey32;
-
+	globalHal->cb32.AddAttachedSurface = AddAttachedSurface32;
 
 #ifdef D3DHAL
 	globalHal->cb32.GetDriverInfo = GetDriverInfo32;
@@ -408,6 +408,7 @@ BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpvReserved)
 			/* usually never calls */
 #ifdef D3DHAL
 			Mesa3DCleanProc();
+			hal_dump_allocs();
 #endif
 			FBHDA_free();
 			do

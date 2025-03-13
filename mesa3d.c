@@ -370,6 +370,8 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp, GLint *internalformat, GLen
 			switch(fmt.dwAlphaBitDepth)
 			{
 				case 8:
+					*internalformat = GL_ALPHA8;
+					*format = GL_ALPHA;
 					*type = GL_UNSIGNED_BYTE;
 					break;
 				case 15:
@@ -519,7 +521,27 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp, GLint *internalformat, GLen
 			}
 			return TRUE;
 		}
-	
+		else if(fmt.dwFlags & DDPF_LUMINANCE)
+		{
+			if(fmt.dwLuminanceBitCount == 8 && fmt.dwLuminanceBitMask == 0xFF)
+			{
+				*internalformat = GL_LUMINANCE8;
+				*format = GL_LUMINANCE;
+				*type = GL_UNSIGNED_BYTE;
+				*compressed = FALSE;
+				return TRUE;
+			}
+			else if(fmt.dwLuminanceBitCount == 16
+				&& fmt.dwLuminanceBitMask == 0xFF
+				&& fmt.dwLuminanceAlphaBitMask == 0xFF00)
+			{
+				*internalformat = GL_LUMINANCE8_ALPHA8;
+				*format = GL_LUMINANCE_ALPHA;
+				*type = GL_UNSIGNED_BYTE;
+				*compressed = FALSE;
+				return TRUE;
+			}
+		}
 		return FALSE;
 	} // HASPIXELFORMAT
 	else
@@ -605,38 +627,35 @@ NUKED_LOCAL void MesaStencilApply(mesa3d_ctx_t *ctx)
 	}
 }
 
-static void MesaDepthReeval(mesa3d_ctx_t *ctx)
+static void MesaDepthApply(mesa3d_ctx_t *ctx)
 {
 	TRACE_ENTRY
-	TOPIC("DEPTHCONV", "MesaDepthReeval");
-	
+
 	mesa3d_entry_t *entry = ctx->entry;
-	ctx->depth_stencil = FALSE;
-	ctx->state.stencil.enabled = FALSE;
-	
+	BOOL have_depth = FALSE;
+
 	if(ctx->depth_bpp)
 	{
-		DDSURF *surf = SurfaceGetSURF(ctx->depth);
-		GL_CHECK(entry->proc.pglEnable(GL_DEPTH_TEST));
-		GL_CHECK(entry->proc.pglDepthMask(GL_TRUE));
-		ctx->state.depth.enabled = TRUE;
-		ctx->state.depth.writable = TRUE;
+		have_depth = TRUE;
+	}
 
-		
-		if(surf->lpGbl->ddpfSurface.dwFlags & DDPF_STENCILBUFFER)
-		{
-			ctx->depth_stencil = TRUE;
-		}
+	if(have_depth && ctx->state.depth.enabled)
+	{
+		GL_CHECK(entry->proc.pglEnable(GL_DEPTH_TEST));
 	}
 	else
 	{
 		GL_CHECK(entry->proc.pglDisable(GL_DEPTH_TEST));
-		GL_CHECK(entry->proc.pglDepthMask(GL_FALSE));
-		ctx->state.depth.enabled = FALSE;
-		ctx->state.depth.writable = FALSE;
 	}
 	
-	MesaStencilApply(ctx);
+	if(have_depth && ctx->state.depth.writable)
+	{
+		GL_CHECK(entry->proc.pglDepthMask(GL_TRUE));
+	}
+	else
+	{
+		GL_CHECK(entry->proc.pglDepthMask(GL_FALSE));
+	}
 }
 
 NUKED_INLINE BOOL MesaBackbufferIsFront(mesa3d_ctx_t *ctx)
@@ -827,7 +846,6 @@ NUKED_LOCAL BOOL MesaSetTarget(mesa3d_ctx_t *ctx, surface_id dds_sid, surface_id
 	int height = dds->lpGbl->wHeight;
 	int bpp = DDSurf_GetBPP(dds);
 	int bpp_depth = 0;
-	BOOL depth_reeval = TRUE;
 	BOOL viewport_set = TRUE;
 	//dds->fpVidMem = dds->lpLcl->lpGbl->fpVidMem;
 	TOPIC("TARGET", "MesaSetTarget: target size(%d x %d x %d)", width, height, bpp);
@@ -835,18 +853,12 @@ NUKED_LOCAL BOOL MesaSetTarget(mesa3d_ctx_t *ctx, surface_id dds_sid, surface_id
 	if(ddz_sid)
 	{
 		DDSURF *ddz = SurfaceGetSURF(ddz_sid);
-		bpp_depth = DDSurf_GetBPP(ddz);
-		if(ctx->depth_bpp != 0 && bpp_depth != 0)
+		if(ddz)
 		{
-			depth_reeval = FALSE;
-		}
-		//ddz->fpVidMem = ddz->lpLcl->lpGbl->fpVidMem;
-	}
-	else
-	{
-		if(ctx->depth_bpp == 0)
-		{
-			depth_reeval = FALSE;
+			bpp_depth = DDSurf_GetBPP(ddz);
+
+			if(ddz->lpGbl->ddpfSurface.dwFlags & DDPF_STENCILBUFFER)
+				ctx->depth_stencil = TRUE;
 		}
 	}
 
@@ -873,8 +885,8 @@ NUKED_LOCAL BOOL MesaSetTarget(mesa3d_ctx_t *ctx, surface_id dds_sid, surface_id
 	if(viewport_set)
 		MesaApplyViewport(ctx, 0, 0, width, height);
 
-	if(depth_reeval)
-		MesaDepthReeval(ctx);
+	MesaDepthApply(ctx);
+	MesaStencilApply(ctx);
 
 	return TRUE;
 }
@@ -1101,8 +1113,9 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 	ctx->render.rop2 = R2_COPYPEN;
 	ctx->render.planemask = 0xFFFFFFFF;
 
-	MesaDepthReeval(ctx);
+	MesaDepthApply(ctx);
 	entry->proc.pglDepthFunc(GL_LESS);
+	MesaStencilApply(ctx);
 	
 	ctx->state.bind_vertices = -1;
 	ctx->state.bind_indices_sid = 0;
@@ -2144,28 +2157,23 @@ NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DHAL_DP2RENDERSTATE s
 			break;
 		RENDERSTATE(D3DRENDERSTATE_ZENABLE) /* TRUE to enable z test (DX7 = D3DZBUFFERTYPE) */
 			TOPIC("DEPTHCONV", "D3DRENDERSTATE_ZENABLE=%d", state->dwState);
-			if(ctx->depth_bpp)
+			switch(state->dwState)
 			{
-				switch(state->dwState)
-				{
-					case D3DZB_FALSE: /* disabled */
-						GL_CHECK(entry->proc.pglDisable(GL_DEPTH_TEST));
-						ctx->state.depth.enabled = FALSE;
-						ctx->state.depth.wbuffer = FALSE;
-						break;
-					case D3DZB_USEW: /* enabled W */
-						GL_CHECK(entry->proc.pglEnable(GL_DEPTH_TEST));
-						ctx->state.depth.enabled = TRUE;
-						ctx->state.depth.wbuffer = TRUE;
-						break;
-					case D3DZB_TRUE: /* enabled Z */
-					default: /* != FALSE */
-						GL_CHECK(entry->proc.pglEnable(GL_DEPTH_TEST));
-						ctx->state.depth.enabled = TRUE;
-						ctx->state.depth.wbuffer = FALSE;
-						break;
-				}
+				case D3DZB_FALSE: /* disabled */
+					ctx->state.depth.enabled = FALSE;
+					ctx->state.depth.wbuffer = FALSE;
+					break;
+				case D3DZB_USEW: /* enabled W */
+					ctx->state.depth.enabled = TRUE;
+					ctx->state.depth.wbuffer = TRUE;
+					break;
+				case D3DZB_TRUE: /* enabled Z */
+				default: /* != FALSE */
+					ctx->state.depth.enabled = TRUE;
+					ctx->state.depth.wbuffer = FALSE;
+					break;
 			}
+			MesaDepthApply(ctx);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_FILLMODE) /* D3DFILL_MODE	*/
 			switch((D3DFILLMODE)state->dwState)
@@ -2227,19 +2235,15 @@ NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DHAL_DP2RENDERSTATE s
 			break;
 		RENDERSTATE(D3DRENDERSTATE_ZWRITEENABLE) /* TRUE to enable z writes */
 			TOPIC("DEPTHCONV", "D3DRENDERSTATE_ZWRITEENABLE=%d", state->dwState);
-			if(ctx->depth_bpp)
+			if(state->dwState != 0)
 			{
-				if(state->dwState != 0)
-				{
-					GL_CHECK(entry->proc.pglDepthMask(GL_TRUE));
-					ctx->state.depth.writable = TRUE;
-				}
-				else
-				{
-					GL_CHECK(entry->proc.pglDepthMask(GL_FALSE));
-					ctx->state.depth.writable = FALSE;
-				}
+				ctx->state.depth.writable = TRUE;
 			}
+			else
+			{
+				ctx->state.depth.writable = FALSE;
+			}
+			MesaDepthApply(ctx);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_ALPHATESTENABLE) /* TRUE to enable alpha tests */
 			TOPIC("BLEND", "D3DRENDERSTATE_ALPHATESTENABLE = 0x%X", state->dwState);
@@ -3354,8 +3358,13 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 	}
 }
 
-NUKED_INLINE void setTexGen(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int num_coords)
+NUKED_INLINE void setTexGen(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int num_coords, BOOL projected)
 {
+	if(projected)
+	{
+		num_coords--;
+	}
+	
 	switch(num_coords)
 	{
 		case 4:
@@ -3451,7 +3460,7 @@ NUKED_LOCAL void MesaDrawRefreshState(mesa3d_ctx_t *ctx)
 					GL_CHECK(entry->proc.pglTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_NORMAL_MAP));
 					GL_CHECK(entry->proc.pglTexGeni(GL_R, GL_TEXTURE_GEN_MODE, GL_NORMAL_MAP));
 
-					setTexGen(entry, ctx, ctx->state.tmu[i].coordscalc);
+					setTexGen(entry, ctx, ctx->state.tmu[i].coordscalc, ctx->state.tmu[i].projected);
 					break;
 				case D3DTSS_TCI_CAMERASPACEPOSITION:
 					TOPIC("MAPPING", "(%d)D3DTSS_TCI_CAMERASPACEPOSITION: %d", i, ctx->state.tmu[i].coordscalc);
@@ -3467,7 +3476,7 @@ NUKED_LOCAL void MesaDrawRefreshState(mesa3d_ctx_t *ctx)
 					GL_CHECK(entry->proc.pglTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_EYE_LINEAR));
 					GL_CHECK(entry->proc.pglTexGeni(GL_R, GL_TEXTURE_GEN_MODE, GL_EYE_LINEAR));
 
-					setTexGen(entry, ctx, ctx->state.tmu[i].coordscalc);
+					setTexGen(entry, ctx, ctx->state.tmu[i].coordscalc, ctx->state.tmu[i].projected);
 					break;
 				case D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR:
 					TOPIC("MAPPING", "(%d)D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR: %d", i, ctx->state.tmu[i].coordscalc);
@@ -3483,7 +3492,7 @@ NUKED_LOCAL void MesaDrawRefreshState(mesa3d_ctx_t *ctx)
 					GL_CHECK(entry->proc.pglTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_REFLECTION_MAP));
 					GL_CHECK(entry->proc.pglTexGeni(GL_R, GL_TEXTURE_GEN_MODE, GL_REFLECTION_MAP));
 
-					setTexGen(entry, ctx, ctx->state.tmu[i].coordscalc);
+					setTexGen(entry, ctx, ctx->state.tmu[i].coordscalc, ctx->state.tmu[i].projected);
 					break;
 				case D3DTSS_TCI_SPHEREMAP:
 					TOPIC("MAPPING", "(%d)D3DTSS_TCI_SPHEREMAP: %d", i, ctx->state.tmu[i].coordscalc);
@@ -3491,12 +3500,12 @@ NUKED_LOCAL void MesaDrawRefreshState(mesa3d_ctx_t *ctx)
 					GL_CHECK(entry->proc.pglTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP));
 					GL_CHECK(entry->proc.pglTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP));
 
-					setTexGen(entry, ctx, 2);
+					setTexGen(entry, ctx, 2, ctx->state.tmu[i].projected);
 					break;
 				case D3DTSS_TCI_PASSTHRU:
 				default:
 					TOPIC("MAPPING", "(%d)D3DTSS_TCI_PASSTHRU: %d", i, ctx->state.tmu[i].coordscalc);
-					setTexGen(entry, ctx, 0);
+					setTexGen(entry, ctx, 0, FALSE);
 					break;
 			}
 			
@@ -3807,7 +3816,6 @@ NUKED_LOCAL void MesaSceneEnd(mesa3d_ctx_t *ctx)
 		
 		if(ctx->state.textarget)
 		{
-			
 			TOPIC("TEXTARGET", "Render to texture");
 			SurfaceToMesaTex(ctx->backbuffer);
 			//DDSURF *surf = SurfaceGetSURF(ctx->backbuffer);

@@ -166,13 +166,13 @@
 	| D3DPSHADECAPS_FOGGOURAUD,           \
 	/* textureCaps */                     \
 	D3DPTEXTURECAPS_PERSPECTIVE           \
-	| D3DPTEXTURECAPS_POW2                \
-	| D3DPTEXTURECAPS_NONPOW2CONDITIONAL  \
+	/*| D3DPTEXTURECAPS_POW2*/                \
+	/*| D3DPTEXTURECAPS_NONPOW2CONDITIONAL*/  \
 	| D3DPTEXTURECAPS_TRANSPARENCY        \
 	| D3DPTEXTURECAPS_ALPHA               \
 	| D3DPTEXTURECAPS_BORDER              \
 	| D3DPTEXTURECAPS_TEXREPEATNOTSCALEDBYSIZE \
-	/* | D3DPTEXTURECAPS_PROJECTED */      \
+	| D3DPTEXTURECAPS_PROJECTED           \
 	| D3DPTEXTURECAPS_CUBEMAP              \
 	/* | D3DPTEXTURECAPS_MIPCUBEMAP (dx9) */    \
 	/*| D3DPTEXTURECAPS_CUBEMAP_POW2 (dx9) */         \
@@ -250,6 +250,7 @@ static D3DDEVICEDESC_V1 myCaps6 = {
 	D3DDD_COLORMODEL
 	| D3DDD_DEVCAPS
 	| D3DDD_TRICAPS
+	| D3DDD_LINECAPS
 	| D3DDD_DEVICERENDERBITDEPTH
 	| D3DDD_DEVICEZBUFFERBITDEPTH
 	| D3DDD_BCLIPPING,
@@ -267,13 +268,12 @@ static D3DDEVICEDESC_V1 myCaps6 = {
 	| D3DDEVCAPS_SORTINCREASINGZ
 	| D3DDEVCAPS_SORTEXACT
 	| D3DDEVCAPS_HWVERTEXBUFFER
-	| D3DDEVCAPS_CANRENDERAFTERFLIP
-	| D3DDEVCAPS_SEPARATETEXTUREMEMORIES /* DX8 support */
+	| D3DDEVCAPS_CANRENDERAFTERFLIP /* must be set on 2k driver */
 	| D3DDEVCAPS_HWINDEXBUFFER, /* DX8 */
 	{sizeof(D3DTRANSFORMCAPS), 0},		/* dtcTransformCaps */
 	TRUE,                      /* bClipping */
 	{sizeof(D3DLIGHTINGCAPS), 0},  /* dlcLightingCaps */
-	nullPrimCaps,               /* lineCaps */
+	triCaps6,               /* lineCaps */
 	triCaps6,                   /* triCaps */
 	DDBD_16 | DDBD_32,	/* dwDeviceRenderBitDepth */
 	DDBD_16 | DDBD_24 | DDBD_32, /* dwDeviceZBufferBitDepth */
@@ -368,25 +368,78 @@ D3DDEVCAPS_HWRASTERIZATION
 	}, {DDSCAPS_TEXTURE}                /* ddscaps.dwCaps */ \
 }
 
+#define TEXFORMAT_LA_mask(_ddpf_flags, _lbits, _lmask, _abits, _amask) \
+{ sizeof(DDSURFACEDESC),              /* dwSize */ \
+	DDSD_CAPS | DDSD_PIXELFORMAT,       /* dwFlags */ \
+	0,                                  /* dwHeight */ \
+	0,                                  /* dwWidth */ \
+	{0},                                /* lPitch */ \
+	0,                                  /* dwBackBufferCount */ \
+	{0},                                /* dwZBufferBitDepth */ \
+	_abits,                             /* dwAlphaBitDepth */ \
+	0,                                  /* dwReserved */ \
+	NULL,                               /* lpSurface */ \
+	{ 0, 0 },                           /* ddckCKDestOverlay */ \
+	{ 0, 0 },                           /* ddckCKDestBlt */ \
+	{ 0, 0 },                           /* ddckCKSrcOverlay */ \
+	{ 0, 0 },                           /* ddckCKSrcBlt */ \
+	{ sizeof(DDPIXELFORMAT),            /* ddpfPixelFormat.dwSize */ \
+		_ddpf_flags,                      /* ddpfPixelFormat.dwFlags */ \
+		0,				                        /* FOURCC code */ \
+		{_lbits + _abits},                /* ddpfPixelFormat.dwRGBBitCount */ \
+		{_lmask}, \
+		{0}, \
+		{0}, \
+		{_amask} \
+	}, {DDSCAPS_TEXTURE}                     /* ddscaps.dwCaps */ \
+}
+
+#define TEXFORMAT_ALPHA(_abits, _amask) \
+{ sizeof(DDSURFACEDESC),              /* dwSize */ \
+	DDSD_CAPS | DDSD_PIXELFORMAT,       /* dwFlags */ \
+	0,                                  /* dwHeight */ \
+	0,                                  /* dwWidth */ \
+	{0},                                /* lPitch */ \
+	0,                                  /* dwBackBufferCount */ \
+	{0},                                /* dwZBufferBitDepth */ \
+	0,                             /* dwAlphaBitDepth */ \
+	0,                                  /* dwReserved */ \
+	NULL,                               /* lpSurface */ \
+	{ 0, 0 },                           /* ddckCKDestOverlay */ \
+	{ 0, 0 },                           /* ddckCKDestBlt */ \
+	{ 0, 0 },                           /* ddckCKSrcOverlay */ \
+	{ 0, 0 },                           /* ddckCKSrcBlt */ \
+	{ sizeof(DDPIXELFORMAT),            /* ddpfPixelFormat.dwSize */ \
+		DDPF_ALPHA,                       /* ddpfPixelFormat.dwFlags */ \
+		0,				                        /* FOURCC code */ \
+		{_abits},                         /* ddpfPixelFormat.dwRGBBitCount */ \
+		{0}, \
+		{0}, \
+		{0}, \
+		{/*_amask*/0} \
+	}, {DDSCAPS_TEXTURE}                     /* ddscaps.dwCaps */ \
+}
 
 #define TEXFORMAT_RGB(_bpp, _r, _g, _b) TEXFORMAT_RGB_mask(0, _bpp, _r, _g, _b, 0)
 #define TEXFORMAT_RGBA(_bpp, _r, _g, _b, _a) TEXFORMAT_RGB_mask(DDPF_ALPHAPIXELS, _bpp, _r, _g, _b, _a)
 
+#define TEXFORMAT_LUMINANCE(_bits, _mask) TEXFORMAT_LA_mask(DDPF_LUMINANCE, _bits, _mask, 0, 0)
+#define TEXFORMAT_LA(_lbits, _lmask, _abits, _amask) TEXFORMAT_LA_mask(DDPF_ALPHAPIXELS | DDPF_LUMINANCE, _lbits, _lmask, _abits, _amask)
+//#define TEXFORMAT_ALPHA(_bits, _mask) TEXFORMAT_LA_mask(DDPF_ALPHA, 0, 0, _bits, /*_mask*/0) /* !not works */
+
 static DDSURFACEDESC myTextureFormats[] = {
 	TEXFORMAT_RGB(32, 0x00FF0000, 0x0000FF00, 0x000000FF), /* BGRX 8888 */
 	TEXFORMAT_RGB(16, 0xF800, 0x07E0, 0x001F), /* RGB 565 */
-	TEXFORMAT_RGB(24, 0x00FF0000, 0x0000FF00, 0x000000FF), /* BGR 888 */
+//	TEXFORMAT_RGB(24, 0x00FF0000, 0x0000FF00, 0x000000FF), /* BGR 888 */ - not needed
 	TEXFORMAT_RGBA(32, 0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000), /* BGRA 8888 */
 	TEXFORMAT_RGBA(16, 0x7C00, 0x03E0, 0x001F, 0x8000), /* BGRA 5551 */
 	TEXFORMAT_RGBA(16, 0x0F00, 0x00F0, 0x000F, 0xF000), /* BGRA 4444 */
 	TEXFORMAT_RGB(16, 0x7C00, 0x03E0, 0x001F), /* BGRX 5551 */
 	TEXFORMAT_RGB(16, 0x0F00, 0x00F0, 0x000F), /* RGBX 4444 */
 	TEXFORMAT_RGB( 8, 0xE0, 0x1C, 0x03),       /* RGB 332 */
-	TEXFORMAT_ZBUF(16, 0x0000FFFF),
-	TEXFORMAT_ZBUF(24, 0x00FFFFFF),
-	TEXFORMAT_ZBUF(32, 0x00FFFFFF),
-//	TEXFORMAT_ZBUF(32, 0xFFFFFF00),
-//	TEXFORMAT_ZBUF(32, 0xFFFFFFFF),
+//	TEXFORMAT_ZBUF(16, 0x0000FFFF),
+//	TEXFORMAT_ZBUF(24, 0x00FFFFFF),
+//	TEXFORMAT_ZBUF(32, 0x00FFFFFF),
 	TEXFORMAT_FOURCC('D', 'X', 'T', '1'),
 	TEXFORMAT_FOURCC('D', 'X', 'T', '2'),
 	TEXFORMAT_FOURCC('D', 'X', 'T', '3'),
@@ -398,6 +451,9 @@ static DDSURFACEDESC myTextureFormats[] = {
 	TEXFORMAT_RGBA(32, 0x000000FF, 0x0000FF00, 0x00FF0000, 0x000000FF), /* RGBA 8888 */
 	TEXFORMAT_RGBA(16, 0x001F, 0x03E0, 0x7C00, 0x0001), /* RGBA 5551 */
 	TEXFORMAT_RGBA(16, 0x000F, 0x00F0, 0x0F00, 0x000F), /* RGBA 4444 */
+	TEXFORMAT_ALPHA(8, 0xFF),
+	TEXFORMAT_LUMINANCE(8, 0xFF),
+	TEXFORMAT_LA(8, 0x00FF, 8, 0xFF00),
 //	TEXFORMAT_RGB(16, 0x001F, 0x03E0, 0x7C00), /* RGBX 5551 */
 //	TEXFORMAT_RGB(16, 0x000F, 0x00F0, 0x0F00), /* RGBX 4444 */
 //	TEXFORMAT_RGB( 8, 0x03, 0x1C, 0xE0)        /* RGB 332 */

@@ -59,7 +59,7 @@ DDENTRY(CanCreateSurface32, LPDDHAL_CANCREATESURFACEDATA, pccsd)
 	VMDAHAL_t *hal = GetHAL(pccsd->lpDD);
 	if(!hal) return DDHAL_DRIVER_HANDLED;
 	
-	TOPIC("GL", "CanCreateSurface: 0x%X", pccsd->lpDDSurfaceDesc->ddsCaps.dwCaps);
+	TOPIC("TARGET", "CanCreateSurface: 0x%X", pccsd->lpDDSurfaceDesc->ddsCaps.dwCaps);
 
 	if(!pccsd->bIsDifferentPixelFormat)
 	{
@@ -99,6 +99,8 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 		for(i = 0; i < (int)pcsd->dwSCnt; i++)
 		{
 			LPDDRAWI_DDRAWSURFACE_LCL lpSurf = lplpSList[i];
+
+			TOPIC("TARGET", "CreateSurface32 dwFlags=0x%X", lpSurf->lpGbl->ddpfSurface.dwFlags);
 
 			if(lpSurf->lpGbl->ddpfSurface.dwFlags & DDPF_FOURCC)
 			{
@@ -155,6 +157,7 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 			}
 			
 			SurfaceCreate(lpSurf);
+			TOPIC("TARGET", "Created sid=%d", lpSurf->dwReserved1);
 			
 			TOPIC("GL", "Mipmam %d/%d created", i+1, pcsd->dwSCnt);
 		}
@@ -178,6 +181,7 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 DDENTRY_FPUSAVE(DestroySurface32, LPDDHAL_DESTROYSURFACEDATA, lpd)
 {
 	TRACE_ENTRY
+	TOPIC("TARGET", "%s", __FUNCTION__);
 	
  	VMDAHAL_t *hal = GetHAL(lpd->lpDD);
   if(!hal) return DDHAL_DRIVER_NOTHANDLED;
@@ -446,4 +450,20 @@ DDENTRY_FPUSAVE(SetColorKey32, LPDDHAL_SETCOLORKEYDATA, lpSetColorKey)
 
 	lpSetColorKey->ddRVal = DD_OK;
 	return DDHAL_DRIVER_HANDLED;	
+}
+
+/*
+	DdAddAttachedSurface can be optionally implemented in DirectDraw drivers.
+	The driver should update any internal surface state it keeps to reflect the attachment.
+*/
+DDENTRY_FPUSAVE(AddAttachedSurface32, LPDDHAL_ADDATTACHEDSURFACEDATA, lpAddSurfData)
+{
+	TRACE_ENTRY
+
+	TOPIC("TEXTARGET", "AddAttachedSurface (sid %d) => (sid %d)",
+		lpAddSurfData->lpSurfAttached->dwReserved1,
+		lpAddSurfData->lpDDSurface->dwReserved1);
+
+	lpAddSurfData->ddRVal = DD_OK;
+	return DDHAL_DRIVER_NOTHANDLED;
 }

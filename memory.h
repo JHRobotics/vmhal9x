@@ -33,9 +33,27 @@
 BOOL  hal_memory_init();
 void hal_memory_destroy();
 
+#ifndef DEBUG_MEMORY
 void *hal_alloc(int heap, size_t size, DWORD width);
 void *hal_calloc(int heap, size_t size, DWORD width);
 BOOL hal_realloc(int heap, void **block, size_t new_size, BOOL zero);
 void  hal_free(int heap, void *block);
+
+#define hal_dump_allocs()
+
+#else
+void *hal_alloc_debug(const char *file, int line, int heap, size_t size, DWORD width);
+void *hal_calloc_debug(const char *file, int line, int heap, size_t size, DWORD width);
+BOOL hal_realloc_debug(const char *file, int line, int heap, void **block, size_t new_size, BOOL zero);
+void  hal_free_debug(const char *file, int line, int heap, void *block);
+
+void hal_dump_allocs();
+
+#define hal_alloc(h, s, w) hal_alloc_debug(__FILE__, __LINE__, h, s, w)
+#define hal_calloc(h, s, w) hal_calloc_debug(__FILE__, __LINE__, h, s, w)
+#define hal_realloc(h, b, s, z) hal_realloc_debug(__FILE__, __LINE__, h, b, s, z)
+#define hal_free(h, m) hal_free_debug(__FILE__, __LINE__, h, m)
+
+#endif
 
 #endif /* __VMHAL9X__MEMORY_H__INCLUDED__ */

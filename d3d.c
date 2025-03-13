@@ -432,6 +432,8 @@ DWORD __stdcall GetDriverState32(LPDDHAL_GETDRIVERSTATEDATA pGDSData)
 {
 	TRACE_ENTRY
 	
+	TOPIC("TARGET", "GetDriverState32(dwFlags=%d)", pGDSData->dwFlags);
+	
 	// Example:
 	// D3DDEVINFOID_TEXTUREMANAGER
 	// D3DDEVINFO_TEXTUREMANAGER
@@ -512,7 +514,7 @@ DWORD __stdcall GetDriverState32(LPDDHAL_GETDRIVERSTATEDATA pGDSData)
 DDENTRY_FPUSAVE(CreateSurfaceEx32, LPDDHAL_CREATESURFACEEXDATA, lpcsxd)
 {
 	TRACE_ENTRY
-
+	
 	lpcsxd->ddRVal = DD_OK;
 
 	if(lpcsxd->lpDDSLcl == NULL || lpcsxd->lpDDLcl == NULL)
@@ -524,16 +526,18 @@ DDENTRY_FPUSAVE(CreateSurfaceEx32, LPDDHAL_CREATESURFACEEXDATA, lpcsxd)
 
 	if(entry == NULL)
 	{
+		ERR("Mesa3DGet() failed");
 		return DDHAL_DRIVER_HANDLED;
 	}
 
 	LPDDRAWI_DDRAWSURFACE_LCL surf = lpcsxd->lpDDSLcl;
 
-	TRACE("CreateSurfaceEx32 lpDDLcl=0x%X vidmem=0x%X", lpcsxd->lpDDLcl, surf->lpGbl->fpVidMem);
+	TOPIC("TARGET", "CreateSurfaceEx32 lpDDLcl=0x%X vidmem=0x%X handle=%d sid=%d", lpcsxd->lpDDLcl, surf->lpGbl->fpVidMem, surf->lpSurfMore->dwSurfaceHandle, surf->dwReserved1);
 
 	/* this is from 3dlabs driver... */
 	if(surf->lpGbl->fpVidMem == 0)
 	{
+		TOPIC("MEMORY", "Free surface handle=%d, caps=0x%X", surf->lpSurfMore->dwSurfaceHandle, surf->ddsCaps.dwCaps);
 		if(surf->ddsCaps.dwCaps & DDSCAPS_SYSTEMMEMORY)
 		{
 			// this is a system memory destroy notification
@@ -545,10 +549,14 @@ DDENTRY_FPUSAVE(CreateSurfaceEx32, LPDDHAL_CREATESURFACEEXDATA, lpcsxd)
 		return DDHAL_DRIVER_HANDLED;
 	}
 	
+	TOPIC("TARGET", "CreateSurfaceEx32 dwCaps=0x%X dwCaps2=0x%X", surf->ddsCaps.dwCaps,
+		surf->lpSurfMore->ddsCapsEx.dwCaps2
+	);
+	
 	if(surf->ddsCaps.dwCaps & DX7_SURFACE_NEST_TYPES)
 	{
 		SurfaceExInsert(entry, lpcsxd->lpDDLcl, surf);
-	
+#if 0
 		if(!((surf->ddsCaps.dwCaps & DDSCAPS_MIPMAP) || (surf->lpSurfMore->ddsCapsEx.dwCaps2 & DDSCAPS2_CUBEMAP)))
 		{
 			/* 
@@ -585,10 +593,12 @@ DDENTRY_FPUSAVE(CreateSurfaceEx32, LPDDHAL_CREATESURFACEEXDATA, lpcsxd)
 				
 			}
 		}
+#endif
 	}
 	else
 	{
-		if(surf->ddsCaps.dwCaps & DDSCAPS_RESERVED2)
+		/* is exec buffer */
+		if((surf->ddsCaps.dwCaps & (DDSCAPS_RESERVED2 | DDSCAPS_VIDEOMEMORY)) == (DDSCAPS_RESERVED2 | DDSCAPS_VIDEOMEMORY))
 		{
 			TOPIC("EXEBUF", "surface 0x%X, vram=0x%X", surf->lpSurfMore->dwSurfaceHandle, surf->lpGbl->fpVidMem);
 			/* DX8+ need register buffer too for usage with streams */
@@ -596,7 +606,7 @@ DDENTRY_FPUSAVE(CreateSurfaceEx32, LPDDHAL_CREATESURFACEEXDATA, lpcsxd)
 		}
 		else
 		{
-			WARN("CreateSurfaceEx32: ignoring type 0x%X, id %d", surf->ddsCaps.dwCaps, surf->lpSurfMore->dwSurfaceHandle);
+			WARN("CreateSurfaceEx32: ignoring type 0x%X, handle=%d", surf->ddsCaps.dwCaps, surf->lpSurfMore->dwSurfaceHandle);
 		}
 	}
 	
@@ -738,7 +748,7 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 				DDCAPS_CANBLTSYSMEM | /* from to sysmem blt */
 				DDCAPS_3D           |
 			0;
-			caps.Caps2 = DDSCAPS2_CUBEMAP | DDCAPS2_WIDESURFACES | D3DCAPS2_CANRENDERWINDOWED; // D3DCAPS2_FULLSCREENGAMMA | D3DCAPS2_NO2DDURING3DSCENE
+			caps.Caps2 = DDCAPS2_WIDESURFACES | D3DCAPS2_CANRENDERWINDOWED; // D3DCAPS2_FULLSCREENGAMMA | D3DCAPS2_NO2DDURING3DSCENE
 			caps.Caps3 = 0;
 			/* JH: ^should we copy here DDCAPS_* flags or use only D3DCAPS_* flags?
 			 * permedia driver do first one, from DX8 SDK doc say's the second...
@@ -1006,6 +1016,8 @@ DDENTRY_FPUSAVE(GetDriverInfo32, LPDDHAL_GETDRIVERINFODATA, lpInput)
 
 		DWORD extra_heaps = (lpInput->dwExpectedSize - sizeof(DDMORESURFACECAPS)) / (sizeof(DDSCAPSEX)*2);
 		DDMoreSurfaceCaps.dwSize = sizeof(DDMORESURFACECAPS) + extra_heaps * sizeof(DDSCAPSEX) * 2;
+		/* OK, DDS dwCaps is passed by 16bit driver, but DDS dwCaps2 is passed here... */
+		DDMoreSurfaceCaps.ddsCapsMore.dwCaps2 = DDSCAPS2_CUBEMAP /* | DDSCAPS2_VERTEXBUFFER | DDSCAPS2_COMMANDBUFFER*/;
 
 		memcpy(ptr, &DDMoreSurfaceCaps, sizeof(DDMORESURFACECAPS));
 		ptr += sizeof(DDMORESURFACECAPS);
@@ -1040,7 +1052,8 @@ DDENTRY_FPUSAVE(GetDriverInfo32, LPDDHAL_GETDRIVERINFODATA, lpInput)
 		dxcaps.dwFVFCaps                   = MESA_TMU_CNT(); /* low 4 bits: 0 implies TLVERTEX only, 1..8 imply FVF aware */
     dxcaps.wMaxTextureBlendStages      = MESA_TMU_CNT();
     dxcaps.wMaxSimultaneousTextures    = MESA_TMU_CNT();
-    dxcaps.dwMaxTextureRepeat          = 2048;
+    dxcaps.dwMaxTextureRepeat          = VMHALenv.texture_max_width;
+    dxcaps.dwMaxTextureAspectRatio     = VMHALenv.texture_max_width;
     dxcaps.dwTextureOpCaps = MYTEXOPCAPS;
   	dxcaps.wMaxTextureBlendStages      = MESA_TMU_CNT();
     dxcaps.wMaxSimultaneousTextures    = MESA_TMU_CNT();
@@ -1128,7 +1141,7 @@ DDENTRY_FPUSAVE(GetDriverInfo32, LPDDHAL_GETDRIVERINFODATA, lpInput)
 		zformats.pixfmt[i].dwSize             = sizeof(DDPIXELFORMAT);
 		zformats.pixfmt[i].dwFlags            = DDPF_ZBUFFER;
 		zformats.pixfmt[i].dwFourCC           = 0;
-		zformats.pixfmt[i].dwZBufferBitDepth  = 24;
+		zformats.pixfmt[i].dwZBufferBitDepth  = 32;
 		zformats.pixfmt[i].dwStencilBitDepth  = 0;
 		zformats.pixfmt[i].dwZBitMask         = 0x00FFFFFF;
 		zformats.pixfmt[i].dwStencilBitMask   = 0;
@@ -1150,8 +1163,10 @@ DDENTRY_FPUSAVE(GetDriverInfo32, LPDDHAL_GETDRIVERINFODATA, lpInput)
 		zformats.pixfmt[i].dwFourCC           = 0;
 		zformats.pixfmt[i].dwZBufferBitDepth  = 32; // The sum of the z buffer bit depth AND the stencil depth 
 		zformats.pixfmt[i].dwStencilBitDepth  = 8;
-		zformats.pixfmt[i].dwZBitMask         = 0xFFFFFF00;
-		zformats.pixfmt[i].dwStencilBitMask   = 0x000000FF;
+		/*zformats.pixfmt[i].dwZBitMask         = 0xFFFFFF00;
+		zformats.pixfmt[i].dwStencilBitMask   = 0x000000FF;*/
+		zformats.pixfmt[i].dwZBitMask         = 0x00FFFFFF;
+		zformats.pixfmt[i].dwStencilBitMask   = 0xFF000000;
 		zformats.pixfmt[i].dwRGBZBitMask      = 0;
 		i++;
 
@@ -1750,6 +1765,7 @@ DDENTRY_FPUSAVE(CreateExecuteBuffer32, LPDDHAL_CREATESURFACEDATA, csd)
 		}
 		
 		SurfaceCreate(surf);
+		TOPIC("MEMORY", "new exec buffer sid=%d, mem=0x%08X, caps=0x%X", surf->dwReserved1, surf->lpGbl->fpVidMem, surf->ddsCaps.dwCaps);
 	}
 
 	csd->ddRVal = DD_OK;
@@ -1766,6 +1782,8 @@ DDENTRY_FPUSAVE(DestroyExecuteBuffer32, LPDDHAL_DESTROYSURFACEDATA, dsd)
 		hal_free(HEAP_LARGE, (void*)dsd->lpDDSurface->lpGbl->fpVidMem);
 		dsd->lpDDSurface->lpGbl->fpVidMem = 0;
 	}
+	
+	SurfaceDelete(dsd->lpDDSurface->dwReserved1);
 
 	dsd->ddRVal = DD_OK;
 	return DDHAL_DRIVER_HANDLED;
@@ -1912,10 +1930,23 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, LP
 
 	memcpy(lpHALExeBufCallbacks, &myD3DHALExeBufCallbacks, sizeof(DDHAL_DDEXEBUFCALLBACKS));
 
-	lpHALFlags->ddscaps = DDSCAPS_3DDEVICE | DDSCAPS_TEXTURE | DDSCAPS_ZBUFFER | DDSCAPS_MIPMAP;
+	lpHALFlags->ddscaps =
+		DDSCAPS_3DDEVICE |
+		DDSCAPS_TEXTURE |
+		DDSCAPS_ZBUFFER |
+		DDSCAPS_MIPMAP |
+		DDSCAPS_FRONTBUFFER |
+		DDSCAPS_BACKBUFFER |
+		DDSCAPS_COMPLEX |
+		DDSCAPS_FLIP |
+		DDSCAPS_LOCALVIDMEM |
+		DDSCAPS_OFFSCREENPLAIN |
+		DDSCAPS_PRIMARYSURFACE |
+		DDSCAPS_VIDEOMEMORY |
+	0;
  	lpHALFlags->zcaps = DDBD_16 | DDBD_24 | DDBD_32;
- 	lpHALFlags->caps2 = DDSCAPS2_CUBEMAP | DDCAPS2_WIDESURFACES;
-//	lpHALFlags->caps2 = DDCAPS2_NO2DDURING3DSCENE;
+ 	lpHALFlags->caps2 =  DDCAPS2_WIDESURFACES;
+//	lpHALFlags->caps2 = DDCAPS2_NO2DDURING3DSCENE | DDCAPS2_CANMANAGETEXTURE;
 
 	/* buffer allocation is done in driver only when this flag is set */
 	lpHALFlags->ddscaps |= DDSCAPS_EXECUTEBUFFER;

@@ -180,6 +180,8 @@ static surface_info_t *SurfaceCreateInfo(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL re
 		DWORD id = SurfaceNextId();
 		if(id)
 		{
+			TOPIC("MEMORY", "created surface info for sid = %d", id);
+
 			infos.table[id] = info;
 			surf->dwReserved1 = id;
 	
@@ -192,6 +194,38 @@ static surface_info_t *SurfaceCreateInfo(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL re
 	}
 	
 	return NULL;
+}
+
+static void SurfaceCopyLCLLoop(LPDDRAWI_DDRAWSURFACE_LCL base, LPDDRAWI_DDRAWSURFACE_LCL target, DDSURF *ddsurf)
+{
+	LPATTACHLIST item = target->lpAttachList;
+	while(item != NULL)
+	{
+		if(item->lpAttached == base)
+			break;
+
+		if(item->lpAttached)
+		{
+			int k = ddsurf->attachments_cnt;
+			if(k < DDSURF_ATTACH_MAX)
+			{
+				if(item->lpAttached->dwReserved1 == 0)
+				{
+					SurfaceCreateInfo(item->lpAttached, FALSE);
+				}
+				
+				if(item->lpAttached->dwReserved1 != 0)
+				{
+					ddsurf->attachments[k] = item->lpAttached->dwReserved1;
+					ddsurf->attachments_cnt++;
+				}
+			}
+
+			SurfaceCopyLCLLoop(base, item->lpAttached, ddsurf);
+		}
+
+		item = item->lpLink;
+	}
 }
 
 static void SurfaceCopyLCL(LPDDRAWI_DDRAWSURFACE_LCL surf, DDSURF *dest, BOOL recursion)
@@ -215,6 +249,8 @@ static void SurfaceCopyLCL(LPDDRAWI_DDRAWSURFACE_LCL surf, DDSURF *dest, BOOL re
 
 	if(recursion)
 	{
+		SurfaceCopyLCLLoop(surf, surf, dest);
+#if 0
 		LPATTACHLIST item = surf->lpAttachList;
 		for(;;)
 		{
@@ -235,6 +271,7 @@ static void SurfaceCopyLCL(LPDDRAWI_DDRAWSURFACE_LCL surf, DDSURF *dest, BOOL re
 	
 			item = item->lpAttached->lpAttachList;
 		}
+#endif
 	}
 }
 
@@ -556,6 +593,8 @@ BOOL SurfaceDelete(surface_id sid)
 	
 	if(info)
 	{
+		TOPIC("MEMORY", "Deleting surface sid=%d", sid);
+		
 		surface_attachment_t *item = info->first;
 		while(item)
 		{
@@ -802,7 +841,8 @@ NUKED_LOCAL BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL 
 				info->flags &= ~SURF_FLAG_EMPTY;
 				info->flags |=  SURF_FLAG_COPY;
 				SurfaceLoopDuplicate(surface, surface, info);
-				
+				TOPIC("MEMORY", "Duplicate handle=%d, sid=%d", scopy->lpSurfMore->dwSurfaceHandle, scopy->dwReserved1);
+
 				MesaSurfacesTableInsertHandle(entry, lpDDLcl, scopy->lpSurfMore->dwSurfaceHandle, scopy->dwReserved1);
 
 				DWORD i;
@@ -834,11 +874,14 @@ NUKED_LOCAL BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL 
 		return FALSE;
 	}
 
+	/* video memory */
 	surface_info_t *info = SurfaceGetInfoFromLcl(surface);
 	if(info)
 	{
 		info->surf.dwSurfaceHandle = surface->lpSurfMore->dwSurfaceHandle; /* update handle */
+		
 		MesaSurfacesTableInsertHandle(entry, lpDDLcl, surface->lpSurfMore->dwSurfaceHandle, surface->dwReserved1);
+		TOPIC("TEXTARGET", "sid=%d (handle=%d) has %d atachments", surface->dwReserved1, surface->lpSurfMore->dwSurfaceHandle,  info->surf.attachments_cnt);
 
 		DWORD i;
 		for(i = 0; i < info->surf.attachments_cnt; i++)
@@ -849,6 +892,7 @@ NUKED_LOCAL BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL 
 			{
 				if((sub_surf->dwCaps2 & DDSCAPS2_MIPMAPSUBLEVEL) == 0)
 				{
+					TOPIC("TEXTARGET", "Insert sid=%d handle=%d", info->surf.attachments[i], sub_surf->dwSurfaceHandle);
 					if(sub_surf->dwSurfaceHandle)
 					{
 						MesaSurfacesTableInsertHandle(entry, lpDDLcl, sub_surf->dwSurfaceHandle, info->surf.attachments[i]);
@@ -861,8 +905,8 @@ NUKED_LOCAL BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL 
 	}
 	else
 	{
-		WARN("Failed get info for surface id=%d, type=0x%X", surface->lpSurfMore->dwSurfaceHandle, 
-			surface->ddsCaps.dwCaps
+		WARN("Failed get info for surface handle=%d, type=0x%X, surface id=%d", surface->lpSurfMore->dwSurfaceHandle, 
+			surface->ddsCaps.dwCaps, surface->dwReserved1
 		);
 	}
 

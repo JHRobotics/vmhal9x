@@ -97,7 +97,7 @@ typedef struct _DDMORESURFACECAPS
         DDSCAPSEX   ddsCapsEx;
         DDSCAPSEX   ddsCapsExAlt;
     } ddsExtendedHeapRestrictions[1];
-} DDMORESURFACECAPS, FAR * LPDDMORESURFACECAPS;
+} DDMORESURFACECAPS, *LPDDMORESURFACECAPS;
 
 typedef struct _DDHAL_CREATESURFACEEXDATA {
     DWORD                       dwFlags;    // Currently always 0 and not used
@@ -144,6 +144,18 @@ typedef struct _DDHAL_SETCOLORKEYDATA
     HRESULT			ddRVal;		// return value
     LPDDHALSURFCB_SETCOLORKEY	SetColorKey;	// PRIVATE: ptr to callback
 } DDHAL_SETCOLORKEYDATA;
+
+/*
+ * structure for passing information to DDHAL AddAttachedSurface fn
+ */
+typedef struct _DDHAL_ADDATTACHEDSURFACEDATA
+{
+    LPDDRAWI_DIRECTDRAW_GBL         lpDD;       // driver struct
+    LPDDRAWI_DDRAWSURFACE_LCL       lpDDSurface;    // surface struct
+    LPDDRAWI_DDRAWSURFACE_LCL       lpSurfAttached; // surface to attach
+    HRESULT                         ddRVal;     // return value
+    LPDDHALSURFCB_ADDATTACHEDSURFACE    AddAttachedSurface; // PRIVATE: ptr to callback
+} DDHAL_ADDATTACHEDSURFACEDATA;
 
 /*
  * structure for passing information to DDHAL CanCreateVideoPort fn

@@ -357,7 +357,8 @@ static const int Mesa2GLSide[MESA3D_CUBE_SIDES] = {
 	GL_TEXTURE_CUBE_MAP_NEGATIVE_Z
 };
 
-#include "mesa3d_flip.h"
+// not needed
+//#include "mesa3d_flip.h"
 
 NUKED_LOCAL void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level, int side, int tmu)
 {
@@ -409,51 +410,18 @@ NUKED_LOCAL void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *te
 		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, 0));
 		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_CUBE_MAP, tex->gltex));
 
-		void *flipped = NULL;
-		void *dst = ptr;
-
-		switch(side)
+		TOPIC("CUBE", "glTexImage2D(0x%X, %d, ...)", Mesa2GLSide[side], level);
+		if(!tex->compressed)
 		{
-			case MESA_POSITIVEX:
-				dst = flipped = flip_xy(ctx, ptr, w, h, tex->bpp);
-				break;
-			case MESA_NEGATIVEX:
-				dst = flipped = flip_y(ctx, ptr, w, h, tex->bpp);
-				break;
-			case MESA_POSITIVEY:
-				// nop
-				break;
-			case MESA_NEGATIVEY:
-				dst = flipped = flip_y(ctx, ptr, w, h, tex->bpp);
-				break;
-			case MESA_POSITIVEZ:
-				dst = flipped = flip_y(ctx, ptr, w, h, tex->bpp);
-				break;
-			case MESA_NEGATIVEZ:
-				dst = flipped = flip_xy(ctx, ptr, w, h, tex->bpp);
-				break;
+			GL_CHECK(entry->proc.pglTexImage2D(Mesa2GLSide[side], level, tex->internalformat,
+				w, h, 0, tex->format, tex->type, ptr));
 		}
-
-		if(dst)
+		else
 		{
-			TOPIC("CUBE", "glTexImage2D(0x%X, %d, ...)", Mesa2GLSide[side], level);
-			if(!tex->compressed)
-			{
-				GL_CHECK(entry->proc.pglTexImage2D(Mesa2GLSide[side], level, tex->internalformat,
-					w, h, 0, tex->format, tex->type, dst));
-			}
-			else
-			{
-				GL_CHECK(entry->proc.pglPixelStorei(GL_UNPACK_ALIGNMENT, 1));
-				GL_CHECK(entry->proc.pglCompressedTexImage2D(Mesa2GLSide[side], level, tex->internalformat,
-					w, h, 0, compressed_size(tex->internalformat, w, h), dst));
-				GL_CHECK(entry->proc.pglPixelStorei(GL_UNPACK_ALIGNMENT, FBHDA_ROW_ALIGN));
-			}
-
-			if(flipped)
-			{
-				MesaTempFree(ctx, flipped);
-			}
+			GL_CHECK(entry->proc.pglPixelStorei(GL_UNPACK_ALIGNMENT, 1));
+			GL_CHECK(entry->proc.pglCompressedTexImage2D(Mesa2GLSide[side], level, tex->internalformat,
+				w, h, 0, compressed_size(tex->internalformat, w, h), ptr));
+			GL_CHECK(entry->proc.pglPixelStorei(GL_UNPACK_ALIGNMENT, FBHDA_ROW_ALIGN));
 		}
 	}
 	else

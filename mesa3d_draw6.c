@@ -1024,13 +1024,15 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				// Map a new rendering target surface and depth buffer in
 				// the current context.  This replaces the old D3dSetRenderTarget
 				// callback.
-				for(i = 0; i < inst->wStateCount; i++)
-				{
+				/*for(i = 0; i < inst->wStateCount; i++)
+				{*/
 					if(entry->runtime_ver >= 7)
 					{
 						D3DHAL_DP2SETRENDERTARGET *pSRTData = (D3DHAL_DP2SETRENDERTARGET*)prim;
 						
 						TOPIC("TARGET", "hRenderTarget=%d, hZBuffer=%d", pSRTData->hRenderTarget, pSRTData->hZBuffer);
+						TOPIC("TEXTARGET", "hRenderTarget=%d, hZBuffer=%d", pSRTData->hRenderTarget, pSRTData->hZBuffer);
+						
 						
 						surface_id dds_sid = ctx->surfaces->table[pSRTData->hRenderTarget];
 						surface_id ddz_sid = ctx->surfaces->table[pSRTData->hZBuffer];
@@ -1044,9 +1046,10 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 							WARN("render target (%d) is NULL", pSRTData->hRenderTarget);
 						}
 					}
-					prim += sizeof(D3DHAL_DP2SETRENDERTARGET);
-				}
-				NEXT_INST(0);
+					//prim += sizeof(D3DHAL_DP2SETRENDERTARGET);
+				//}
+				//NEXT_INST(0);
+				NEXT_INST(sizeof(D3DHAL_DP2SETRENDERTARGET));
 				break;
 			COMMAND(D3DDP2OP_CLEAR)
 				// Perform hardware-assisted clearing on the rendering target,
