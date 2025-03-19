@@ -61,6 +61,7 @@ typedef void (__cdecl *FBHDA_access_begin_t)(DWORD flags);
 typedef void (__cdecl *FBHDA_access_end_t)(DWORD flags);
 typedef void (__cdecl *FBHDA_access_rect_t)(DWORD left, DWORD top, DWORD right, DWORD bottom);
 typedef BOOL (__cdecl *FBHDA_swap_t)(DWORD offset);
+typedef BOOL (__cdecl *FBHDA_page_modify_t)(DWORD flat_address, DWORD size, BYTE *new_data);
 
 #define VMDISP9X_LIB "vmdisp9x.dll"
 
@@ -73,6 +74,7 @@ static struct
 	FBHDA_access_end_t pFBHDA_access_end;
 	FBHDA_access_rect_t pFBHDA_access_rect;
 	FBHDA_swap_t pFBHDA_swap;
+	FBHDA_page_modify_t pFBHDA_page_modify;
 } fbhda_lib = {NULL, 0};
 
 static void FBHDA_call_lock()
@@ -126,6 +128,7 @@ static BOOL FBHDA_handle()
 			LoadAddress(FBHDA_access_end);
 			LoadAddress(FBHDA_access_rect);
 			LoadAddress(FBHDA_swap);
+			LoadAddress(FBHDA_page_modify);
 		}
 		
 		//TRACE("FBHDA_handle() = TRUE");
@@ -210,6 +213,21 @@ BOOL FBHDA_swap(DWORD offset)
 	if(FBHDA_handle())
 	{
 		rc = fbhda_lib.pFBHDA_swap(offset);
+	}
+	FBHDA_call_unlock();
+	
+	return rc;
+}
+
+BOOL FBHDA_page_modify(DWORD flat_address, DWORD size, BYTE *new_data)
+{
+	TRACE_ENTRY
+	BOOL rc = FALSE;
+	
+	FBHDA_call_lock();
+	if(FBHDA_handle())
+	{
+		rc = fbhda_lib.pFBHDA_page_modify(flat_address, size, new_data);
 	}
 	FBHDA_call_unlock();
 	

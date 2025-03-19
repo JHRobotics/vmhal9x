@@ -4,4 +4,4 @@ EXPORTS
 	FBHDA_access_end
 	FBHDA_access_rect
 	FBHDA_swap
-
+	FBHDA_page_modify

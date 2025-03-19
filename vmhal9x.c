@@ -31,6 +31,7 @@
 #include "vmdahal32.h"
 
 #include "vmhal9x.h"
+#include "wine.h"
 
 #include "nocrt.h"
 

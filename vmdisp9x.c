@@ -121,6 +121,29 @@ BOOL FBHDA_swap(DWORD offset)
 	return FALSE;
 }
 
+BOOL FBHDA_page_modify(DWORD flat_address, DWORD size, BYTE *new_data)
+{
+	DWORD buffer[1024 + 2];
+	
+	if(size > 4096) return FALSE;
+	
+	if(!FBHDA_valid()) return FALSE;
+
+	buffer[0] = flat_address;
+	buffer[1] = size;
+	memcpy(&buffer[2], new_data, size);
+
+	if(DeviceIoControl(hda_vxd, OP_FBHDA_PAGE_MOD,
+		&buffer[0], sizeof(DWORD)*2+size, NULL, 0,
+		NULL, NULL))
+	{
+		return TRUE;
+	}
+	
+	return FALSE;
+}
+
+
 BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpvReserved)
 {
 	switch( dwReason )
