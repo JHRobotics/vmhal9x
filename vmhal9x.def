@@ -2,3 +2,4 @@ EXPORTS
 	DriverInit = DriverInit@4
 	InstallWineHook = InstallWineHook@0
 	UninstallWineHook = UninstallWineHook@0
+	CheckWineHook = CheckWineHook@0

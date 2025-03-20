@@ -121,7 +121,7 @@ BOOL FBHDA_swap(DWORD offset)
 	return FALSE;
 }
 
-BOOL FBHDA_page_modify(DWORD flat_address, DWORD size, BYTE *new_data)
+BOOL FBHDA_page_modify(DWORD flat_address, DWORD size, const BYTE *new_data)
 {
 	DWORD buffer[1024 + 2];
 	

@@ -217,7 +217,7 @@ void mouse_erase();
 #define MOUSE_BUFFER_SIZE 65535
 
 /* helper for some hacks */
-BOOL FBHDA_page_modify(DWORD flat_address, DWORD size, BYTE *new_data);
+BOOL FBHDA_page_modify(DWORD flat_address, DWORD size, const BYTE *new_data);
 
 /*
  * VMWare SVGA-II API

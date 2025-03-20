@@ -55,6 +55,9 @@ static char winelib_dd[] = "winedd.dll";
 static char winelib_d8[] = "wined8.dll";
 static char winelib_d9[] = "wined9.dll";
 
+static char ninelib_d8[] = "mesa89.dll";
+static char ninelib_d9[] = "mesa99.dll";
+
 static char *GetExeName(char *buffer)
 {
 	char pathbuf[MAX_PATH];
@@ -71,9 +74,25 @@ static char *GetExeName(char *buffer)
 	return NULL;
 }
 
-static const char reg_baseDD[] = "Software\\DDSwitcher";
+static const char reg_baseDD[]  = "Software\\DDSwitcher";
 static const char reg_baseDX8[] = "Software\\D8Switcher";
 static const char reg_baseDX9[] = "Software\\D9Switcher";
+
+static BOOL CheckNine()
+{
+	FBHDA_t *hda = FBHDA_setup();
+	if(!hda)
+	{
+		if((hda->flags & (FB_ACCEL_VMSVGA10 | FB_ACCEL_VMSVGA | FB_ACCEL_VMSVGA3D | FB_FORCE_SOFTWARE))
+			 == (FB_ACCEL_VMSVGA | FB_ACCEL_VMSVGA3D))
+		{
+			/* vGPU9 not support NINE */
+			return FALSE;
+		}
+		return TRUE;
+	}
+	return TRUE; /* not VMDISP */
+}
 
 static char *GetLibName(const char *reg_base, char *wine_libname, char *nine_libname)
 {
@@ -110,9 +129,22 @@ static char *GetLibName(const char *reg_base, char *wine_libname, char *nine_lib
 					{
 						result = wine_libname;
 					}
+					else if(
+						nine_libname != NULL &&
+						(stricmp(buffer, "nine") == 0 || stricmp(buffer, "ninemore") == 0)
+					){
+						if(CheckNine())
+						{
+							result = nine_libname;
+						}
+					}
+					else if(nine_libname != NULL && stricmp(buffer, "nineforce") == 0)
+					{
+						result = nine_libname;
+					}
 					else
 					{
-						return buffer;
+						result = buffer;
 					}
 					break;
 				}
@@ -137,9 +169,22 @@ static char *GetLibName(const char *reg_base, char *wine_libname, char *nine_lib
 						{
 							result = wine_libname;
 						}
+						else if(
+							nine_libname != NULL &&
+							(stricmp(buffer, "nine") == 0 || stricmp(buffer, "ninemore") == 0)
+						){
+							if(CheckNine())
+							{
+								result = nine_libname;
+							}
+						}
+						else if(nine_libname != NULL && stricmp(buffer, "nineforce") == 0)
+						{
+							result = nine_libname;
+						}
 						else
 						{
-							return buffer;
+							result = buffer;
 						}
 						break;
 					}
@@ -159,12 +204,12 @@ static char *GetLibNameDD()
 
 static char *GetLibNameD8()
 {
-	return GetLibName(reg_baseDX8, winelib_d8, NULL);
+	return GetLibName(reg_baseDX8, winelib_d8, ninelib_d8);
 }
 
 static char *GetLibNameD9()
 {
-	return GetLibName(reg_baseDX9, winelib_d9, NULL);
+	return GetLibName(reg_baseDX9, winelib_d9, ninelib_d9);
 }
 
 BOOL CheckTrace(BYTE *returnaddress)
@@ -222,6 +267,9 @@ static struct {
 
 #define INSTALL_TP(_l, _f) patch_install(_l, #_f, wine_trampolines.TP ## _f)
 #define INSTALL_TP_DllMain(_l, _f) patch_install(_l, NULL, wine_trampolines.TP ## _f)
+
+#define UNINSTALL_TP(_l, _f) patch_uninstall(_l, #_f, wine_trampolines.TP ## _f)
+#define UNINSTALL_TP_DllMain(_l, _f) patch_uninstall(_l, NULL, wine_trampolines.TP ## _f)
 
 /* DirectDraw/DX7 functions */
 void *__stdcall ddraw_entry(const char *libname, const char *procname, DWORD *stack)
@@ -398,5 +446,36 @@ BOOL __stdcall InstallWineHook()
 
 BOOL __stdcall UninstallWineHook()
 {
+	if(wine_trampolines.init != FALSE)
+	{
+		UNINSTALL_TP("ddraw.dll", DirectDrawCreate);
+		UNINSTALL_TP("ddraw.dll", DirectDrawCreateClipper);
+		UNINSTALL_TP("ddraw.dll", DirectDrawCreateEx);
+		UNINSTALL_TP("ddraw.dll", DirectDrawEnumerateA);
+		UNINSTALL_TP("ddraw.dll", DirectDrawEnumerateExA);
+		UNINSTALL_TP("ddraw.dll", DirectDrawEnumerateExW);
+		UNINSTALL_TP("ddraw.dll", DirectDrawEnumerateW);
+		UNINSTALL_TP_DllMain("ddraw.dll", DirectDrawDllMain);
+
+		return TRUE;
+	}
+	
 	return TRUE;
+}
+
+int __stdcall CheckWineHook()
+{
+	if(wine_trampolines.init != FALSE)
+	{
+		int rc = patch_validate("ddraw.dll", NULL, wine_trampolines.TPDirectDrawDllMain);
+		
+		switch(rc)
+		{
+			case PATCH_PATCHABLE: return 0;
+			case PATCH_PATCHED: return 1;
+			case PATCH_NOTAPPLICABLE: return -1;
+		}
+	}
+	
+	return 0;
 }

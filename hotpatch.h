@@ -34,4 +34,10 @@ BOOL patch_uninstall(const char *libname, const char *procname, void *trampoline
 
 void *patch_make_trampoline(const char *libname, const char *procname, patchedAddProc_h proc);
 
+#define PATCH_PATCHABLE 0
+#define PATCH_PATCHED   1
+#define PATCH_NOTAPPLICABLE 2
+
+int patch_validate(const char *libname, const char *procname, void *trampoline);
+
 #endif

@@ -61,7 +61,7 @@ typedef void (__cdecl *FBHDA_access_begin_t)(DWORD flags);
 typedef void (__cdecl *FBHDA_access_end_t)(DWORD flags);
 typedef void (__cdecl *FBHDA_access_rect_t)(DWORD left, DWORD top, DWORD right, DWORD bottom);
 typedef BOOL (__cdecl *FBHDA_swap_t)(DWORD offset);
-typedef BOOL (__cdecl *FBHDA_page_modify_t)(DWORD flat_address, DWORD size, BYTE *new_data);
+typedef BOOL (__cdecl *FBHDA_page_modify_t)(DWORD flat_address, DWORD size, const BYTE *new_data);
 
 #define VMDISP9X_LIB "vmdisp9x.dll"
 
@@ -219,7 +219,7 @@ BOOL FBHDA_swap(DWORD offset)
 	return rc;
 }
 
-BOOL FBHDA_page_modify(DWORD flat_address, DWORD size, BYTE *new_data)
+BOOL FBHDA_page_modify(DWORD flat_address, DWORD size, const BYTE *new_data)
 {
 	TRACE_ENTRY
 	BOOL rc = FALSE;

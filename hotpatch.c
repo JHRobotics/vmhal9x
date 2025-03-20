@@ -46,7 +46,7 @@
 #endif
 
 static int codepos = 0;
-static const char patchablecode[] = {0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0x8B, 0xFF};
+static const BYTE patchablecode[] = {0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0x8B, 0xFF};
 static BYTE codejmp[P_SIZE] __attribute__ ((aligned (P_SIZE))) = {0};
 
 #define PATCHABLE_POS (-5)
@@ -98,6 +98,12 @@ void *patch_make_trampoline(const char *libname, const char *procname, patchedAd
 	return patch_code;
 }
 
+#define BUILD_PATCH(_buf, _trampoline, _original) \
+	(_buf)[0] = 0xE8; /* call */ \
+	*((DWORD*)&(_buf)[1]) = ((DWORD)_trampoline) - ((DWORD)_original); /* (+ PATCHABLE_POS + 5) */ \
+	(_buf)[5] = 0xEB; /* jmp near */ \
+	(_buf)[6] = 0xF9; /* -7 */
+
 static BOOL patch_install_address(BYTE *original, void *trampoline)
 {
 	BOOL rc = FALSE;
@@ -112,11 +118,7 @@ static BOOL patch_install_address(BYTE *original, void *trampoline)
 	{
 		BYTE patch[PATCH_SIZE];
 
-		/* patch procedure */
-		patch[0] = 0xE8; // call
-		*((DWORD*)&patch[1]) = ((DWORD)trampoline) - ((DWORD)original); // (+ PATCHABLE_POS + 5)
-		patch[5] = 0xEB; // jmp near
-		patch[6] = 0xF9; // -7
+		BUILD_PATCH(patch, trampoline, original);
 
 		if((DWORD)original >= 0x80000000)
 		{
@@ -145,6 +147,71 @@ static BOOL patch_install_address(BYTE *original, void *trampoline)
 	}
 
 	return FALSE;
+}
+
+static BOOL patch_uninstall_address(BYTE *original, void *trampoline)
+{
+	BOOL rc = FALSE;
+	
+	if(trampoline == NULL)
+	{
+		TOPIC("PATCH", "trampoline is NULL");
+		return FALSE;
+	}
+	
+	BYTE patch[PATCH_SIZE];
+	BUILD_PATCH(patch, trampoline, original);
+
+	if(memcmp(original+PATCHABLE_POS, patch, PATCH_SIZE) == 0)
+	{
+		if((DWORD)original >= 0x80000000)
+		{
+			TOPIC("PATCH", "patch shared=0x%X", original);
+			FBHDA_page_modify((DWORD)(original+PATCHABLE_POS), PATCH_SIZE, patchablecode);
+			rc = TRUE;
+		}
+		else
+		{
+			TOPIC("PATCH", "patch local=0x%X", original);
+			DWORD oldp;
+			if(VirtualProtect(original+PATCHABLE_POS, PATCH_SIZE, PAGE_EXECUTE_READWRITE, &oldp))
+			{
+				memcpy(original+PATCHABLE_POS, &patchablecode[0], PATCH_SIZE);
+				rc = TRUE;
+				VirtualProtect(original+PATCHABLE_POS, PATCH_SIZE, oldp, &oldp);
+			}
+		}
+
+		if(rc)
+		{
+			HANDLE hProc = GetCurrentProcess();
+			FlushInstructionCache(hProc, original+PATCHABLE_POS, 0);
+		}
+		return rc;
+	}
+
+	return FALSE;
+}
+
+static int patch_validate_address(BYTE *original, void *trampoline)
+{
+	if(memcmp(original+PATCHABLE_POS, patchablecode, PATCH_SIZE) == 0)
+	{
+		return PATCH_PATCHABLE;
+	}
+
+	if(trampoline != NULL)
+	{
+		BYTE patch[PATCH_SIZE];
+		BUILD_PATCH(patch, trampoline, original);
+		
+		if(memcmp(original+PATCHABLE_POS, patch, PATCH_SIZE) == 0)
+		{
+			return PATCH_PATCHED;
+		}
+	}
+
+	return PATCH_NOTAPPLICABLE;
 }
 
 #pragma pack(push)
@@ -346,6 +413,70 @@ BOOL patch_install(const char *libname, const char *procname, void *trampoline)
 
 BOOL patch_uninstall(const char *libname, const char *procname, void *trampoline)
 {
-	return FALSE;
+	HMODULE dll = GetModuleHandleA(libname);
+	BOOL rc = FALSE;
+	
+	if(dll != NULL)
+	{
+		void *addr = NULL;
+		
+		if(procname != NULL)
+		{
+			addr = GetProcAddress(dll, procname);
+		}
+		else
+		{
+			DWORD base = GetBaseAddress(dll);
+			DWORD entry = GetEntryPoint(dll);
+			
+			if(base != -1 && entry != -1)
+			{
+				addr = (void*)(base + entry);
+			}
+		}
+		
+		if(addr)
+		{
+			rc = patch_uninstall_address(addr, trampoline);
+		}
+		else
+		{
+			TRACE("PATCH", "addr is NULL!");
+		}
+	}
+	
+	return rc;
 }
 
+int patch_validate(const char *libname, const char *procname, void *trampoline)
+{
+	HMODULE dll = GetModuleHandleA(libname);
+	int rc = PATCH_NOTAPPLICABLE;
+	
+	if(dll != NULL)
+	{
+		void *addr = NULL;
+		
+		if(procname != NULL)
+		{
+			addr = GetProcAddress(dll, procname);
+		}
+		else
+		{
+			DWORD base = GetBaseAddress(dll);
+			DWORD entry = GetEntryPoint(dll);
+			
+			if(base != -1 && entry != -1)
+			{
+				addr = (void*)(base + entry);
+			}
+		}
+		
+		if(addr)
+		{
+			rc = patch_validate_address(addr, trampoline);
+		}
+	}
+
+	return rc;
+}
