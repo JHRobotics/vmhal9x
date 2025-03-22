@@ -294,7 +294,6 @@ static void LightActive(mesa3d_ctx_t *ctx, DWORD id, BOOL activate)
 static void PlaneApply(mesa3d_ctx_t *ctx, DWORD id)
 {
 	mesa3d_entry_t *entry = ctx->entry;
-
 	GL_CHECK(entry->proc.pglClipPlane(GL_CLIP_PLANE0 + id,
 		&ctx->state.clipping.plane[id][0]));
 }
@@ -304,7 +303,7 @@ NUKED_LOCAL void MesaTLRecalcModelview(mesa3d_ctx_t *ctx)
 	int i;
 
 	/* recal clips */
-	for(i = 0; i < MESA_CLIPS_MAX; i++)
+	for(i = 0; i < VMHALenv.num_clips; i++)
 	{
 		PlaneApply(ctx, i);
 	}
@@ -1089,17 +1088,21 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 						plane->plane[3]
 					);
 
-					if(plane->dwIndex < MESA_CLIPS_MAX)
+					if(plane->dwIndex < VMHALenv.num_clips)
 					{
 						ctx->state.clipping.plane[plane->dwIndex][0] = plane->plane[0];
 						ctx->state.clipping.plane[plane->dwIndex][1] = plane->plane[1];
 						ctx->state.clipping.plane[plane->dwIndex][2] = plane->plane[2];
 						ctx->state.clipping.plane[plane->dwIndex][3] = plane->plane[3];
-					}
 
-					MesaSpaceModelviewSet(ctx);
-					PlaneApply(ctx, plane->dwIndex);
-					MesaSpaceModelviewReset(ctx);
+						MesaSpaceModelviewSet(ctx);
+						PlaneApply(ctx, plane->dwIndex);
+						MesaSpaceModelviewReset(ctx);
+					}
+					else
+					{
+						WARN("CLIPPLANE out of range plane->dwIndex=%u", plane->dwIndex);
+					}
 				}
 				NEXT_INST(0);
 				break;

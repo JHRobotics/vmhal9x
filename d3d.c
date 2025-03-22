@@ -342,6 +342,7 @@ DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 			MesaSpaceIdentitySet(ctx);
 		}
 		MesaApplyLighting(ctx);
+		MesaApplyMaterial(ctx);
 		if(!ctx->state.recording)
 		{
 			rc = MesaDraw6(ctx, cmdBufferStart, cmdBufferEnd, vertices, &pd->dwErrorOffset, RStates);
@@ -1758,6 +1759,7 @@ DDENTRY_FPUSAVE(CreateExecuteBuffer32, LPDDHAL_CREATESURFACEDATA, csd)
 */
 
 		surf->lpGbl->fpVidMem = (DWORD)hal_calloc(HEAP_LARGE, surf->lpGbl->dwLinearSize, surf->lpGbl->dwLinearSize);
+		surf->lpGbl->lpVidMemHeap = (LPVMEMHEAP)4;
 		if(surf->lpGbl->fpVidMem == 0)
 		{
 			csd->ddRVal = DDERR_OUTOFVIDEOMEMORY;

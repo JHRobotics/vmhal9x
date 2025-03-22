@@ -33,6 +33,9 @@
 BOOL  hal_memory_init();
 void hal_memory_destroy();
 
+BOOL hal_valloc(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf);
+void hal_vfree(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf);
+
 #ifndef DEBUG_MEMORY
 void *hal_alloc(int heap, size_t size, DWORD width);
 void *hal_calloc(int heap, size_t size, DWORD width);

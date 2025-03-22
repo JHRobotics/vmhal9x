@@ -136,7 +136,8 @@ static void LoadColor2(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, DWORD color)
 
 		if(ctx->state.specular_vertex)
 		{
-			entry->proc.pglSecondaryColor3fv(&cv[0]);
+			entry->proc.pglMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, &cv[0]);
+			//entry->proc.pglSecondaryColor3fv(&cv[0]);
 		}
 	}
 }
@@ -446,7 +447,7 @@ NUKED_INLINE void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx,
 	else
 	{
 		// FIXME: optimize for load black
-		LoadColor2(entry, ctx, 0x00000000);
+		//LoadColor2(entry, ctx, 0x00000000);
 	}
 
 	if((ctx->state.fvf.type & D3DFVF_POSITION_MASK) == D3DFVF_XYZRHW)

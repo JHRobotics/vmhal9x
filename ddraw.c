@@ -95,6 +95,8 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 	{
 		LPDDRAWI_DDRAWSURFACE_LCL *lplpSList = pcsd->lplpSList;
 		int i;
+		
+		pcsd->ddRVal = DD_OK;
 
 		for(i = 0; i < (int)pcsd->dwSCnt; i++)
 		{
@@ -115,19 +117,31 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 				
 				lpSurf->lpGbl->dwBlockSizeX = size;
 				lpSurf->lpGbl->dwBlockSizeY = 1;
-				lpSurf->lpGbl->fpVidMem     = DDHAL_PLEASEALLOC_BLOCKSIZE;
+				//lpSurf->lpGbl->fpVidMem     = DDHAL_PLEASEALLOC_BLOCKSIZE;
 				
 				TOPIC("ALLOC", "FourCC %d x %d = %d", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX);
+				
+				if(!hal_valloc(pcsd->lpDD, lpSurf))
+				{
+					pcsd->ddRVal = DDERR_OUTOFVIDEOMEMORY;
+					break;
+				}
 			}
 			else if(lpSurf->lpGbl->ddpfSurface.dwFlags & DDPF_RGB)
 			{
 				lpSurf->lpGbl->dwBlockSizeX = (DWORD)lpSurf->lpGbl->wHeight * lpSurf->lpGbl->lPitch;
 				lpSurf->lpGbl->dwBlockSizeY = 1;
-				lpSurf->lpGbl->fpVidMem     = DDHAL_PLEASEALLOC_BLOCKSIZE;
+				//lpSurf->lpGbl->fpVidMem     = DDHAL_PLEASEALLOC_BLOCKSIZE;
 
 				TOPIC("CUBE", "Alloc RGB %d x %d = %d (pitch %d)", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->lPitch);
 				TOPIC("MIPMAP", "Alloc RGB %d x %d = %d (pitch %d)", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->lPitch);
 				TOPIC("ALLOC", "RGB %d x %d = %d (pitch %d)", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->lPitch);
+				
+				if(!hal_valloc(pcsd->lpDD, lpSurf))
+				{
+					pcsd->ddRVal = DDERR_OUTOFVIDEOMEMORY;
+					break;
+				}
 			}
 			else if(lpSurf->lpGbl->ddpfSurface.dwFlags & DDPF_ZBUFFER)
 			{
@@ -138,30 +152,35 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 				
 				lpSurf->lpGbl->dwBlockSizeX = (DWORD)lpSurf->lpGbl->wHeight * lpSurf->lpGbl->lPitch;
 				lpSurf->lpGbl->dwBlockSizeY = 1;
-				lpSurf->lpGbl->fpVidMem     = DDHAL_PLEASEALLOC_BLOCKSIZE;
-
+				//lpSurf->lpGbl->fpVidMem     = DDHAL_PLEASEALLOC_BLOCKSIZE;
 				TOPIC("ALLOC", "ZBUF %d x %d = %d (pitch %d)", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->lPitch);
+				
+				if(!hal_valloc(pcsd->lpDD, lpSurf))
+				{
+					pcsd->ddRVal = DDERR_OUTOFVIDEOMEMORY;
+					break;
+				}
 			}
 			else
 			{
 				DWORD s = (DWORD)lpSurf->lpGbl->wHeight * lpSurf->lpGbl->lPitch;
 
-				lpSurf->lpGbl->dwBlockSizeX = s;
-				lpSurf->lpGbl->dwBlockSizeY = 1;
-				lpSurf->lpGbl->fpVidMem     = DDHAL_PLEASEALLOC_BLOCKSIZE;
-
-				TOPIC("ALLOC", "Unknown format %X, allocated primary surface (%d x %d) = %d",
+				TOPIC("ALLOC", "Unknown format %X, allocated primary surface (%d x %d) = %d, fpVidMem=%X",
 					lpSurf->lpGbl->ddpfSurface.dwFlags,
 					lpSurf->lpGbl->wWidth,
-					lpSurf->lpGbl->wHeight, s);
+					lpSurf->lpGbl->wHeight, s, lpSurf->lpGbl->fpVidMem);
+
+				lpSurf->lpGbl->dwBlockSizeX = s;
+				lpSurf->lpGbl->dwBlockSizeY = 1;
+				lpSurf->lpGbl->fpVidMem     = DDHAL_PLEASEALLOC_BLOCKSIZE; /* required for this type of surface */
 			}
-			
+
 			SurfaceCreate(lpSurf);
 			TOPIC("TARGET", "Created sid=%d", lpSurf->dwReserved1);
 			
 			TOPIC("GL", "Mipmam %d/%d created", i+1, pcsd->dwSCnt);
-		}
-		pcsd->ddRVal = DD_OK;
+		} // for
+		
 		TOPIC("GL", "Texture created");
 		return DDHAL_DRIVER_HANDLED;
 	}
@@ -197,9 +216,11 @@ DDENTRY_FPUSAVE(DestroySurface32, LPDDHAL_DESTROYSURFACEDATA, lpd)
 
 	TOPIC("GARBAGE", "destroy surface vram=%X", lpd->lpDDSurface->lpGbl->fpVidMem);
 
+#ifdef D3DHAL
 	SurfaceDelete(lpd->lpDDSurface->dwReserved1);
-	
-	
+	hal_vfree(lpd->lpDD, lpd->lpDDSurface);
+#endif
+
 	TOPIC("GARBAGE", "SurfaceDelete() success");
 	lpd->ddRVal = DD_OK;
 	return DDHAL_DRIVER_NOTHANDLED;
@@ -290,7 +311,8 @@ DDENTRY_FPUSAVE(Lock32, LPDDHAL_LOCKDATA, pld)
 	{
 		TOPIC("READBACK", "LOCK %X (non primary)", pld->lpDDSurface->lpGbl->fpVidMem);
 	}
-	
+
+#ifdef D3DHAL
 	surface_id sid = pld->lpDDSurface->dwReserved1;
 	if(sid)
 	{
@@ -301,6 +323,7 @@ DDENTRY_FPUSAVE(Lock32, LPDDHAL_LOCKDATA, pld)
 		}
 		SurfaceFromMesa(pld->lpDDSurface, FALSE);
 	}
+#endif
 
 	return DDHAL_DRIVER_NOTHANDLED; /* let the lock processed */
 }
@@ -314,10 +337,12 @@ DDENTRY_FPUSAVE(Unlock32, LPDDHAL_UNLOCKDATA, pld)
 	{
 		FBHDA_access_end(0);
 	}
-	
+
+#ifdef D3DHAL
 	TOPIC("READBACK", "UNLOCK %X", pld->lpDDSurface->lpGbl->fpVidMem);
 	TOPIC("DEPTHCONV", "Unlock32");
 	SurfaceToMesa(pld->lpDDSurface, FALSE);
+#endif
 
 	return DDHAL_DRIVER_NOTHANDLED; /* let the unlock processed */
 }
@@ -445,7 +470,9 @@ DDENTRY_FPUSAVE(SetColorKey32, LPDDHAL_SETCOLORKEYDATA, lpSetColorKey)
 		
 		lpSetColorKey->lpDDSurface->ddckCKSrcBlt.dwColorSpaceLowValue  = c1_32;
 		lpSetColorKey->lpDDSurface->ddckCKSrcBlt.dwColorSpaceHighValue = c2_32;
+#ifdef D3DHAL
 		SurfaceApplyColorKey(lpSetColorKey->lpDDSurface->dwReserved1, c1_32, c2_32);
+#endif
 	}
 
 	lpSetColorKey->ddRVal = DD_OK;

@@ -770,6 +770,50 @@ NUKED_LOCAL mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DWORD dds_sid, DW
 					entry->proc.pDrvSetContext(ctx->dc, ctx->glrc, NULL);
 				}
 
+				char *ver_minor = NULL;
+				const char *gl_ver = (const char *)entry->proc.pglGetString(GL_VERSION);
+				if(gl_ver == NULL)
+					break;
+				
+				long gl_minor = 0;
+				long gl_major = strtol(gl_ver, &ver_minor, 10);
+				if(ver_minor)
+				{
+					if(ver_minor[0] == '.')
+					{
+						gl_minor = strtol(ver_minor+1, NULL, 10);
+					}
+				}
+
+				TOPIC("GLVER", "GL version %d.%d - %s", gl_major, gl_minor, gl_ver);
+
+				if(!VMHALenv.scanned)
+				{
+					if(gl_major < 3)
+					{
+						VMHALenv.zfloat = FALSE;
+					}
+
+					GLint max_tex_size = 0;
+					GLint max_clips = 0;
+
+					entry->proc.pglGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_tex_size);
+					entry->proc.pglGetIntegerv(GL_MAX_CLIP_PLANES, &max_clips);
+
+					if(max_tex_size > 16384)
+					{
+						max_tex_size = 16384;
+					}
+					VMHALenv.texture_max_width  = max_tex_size;
+					VMHALenv.texture_max_height = max_tex_size;
+					VMHALenv.num_clips = max_clips;
+
+					TOPIC("GLVER", "VMHALenv.texture_max_width=%d", VMHALenv.texture_max_width);
+					TOPIC("GLVER", "VMHALenv.num_clips=%d", VMHALenv.num_clips);
+
+					VMHALenv.scanned = TRUE;
+				}
+
 				MesaSetTarget(ctx, dds_sid, ddz_sid, TRUE);
 //				MesaBufferFBOSetup(ctx, width, height);
 
@@ -989,7 +1033,7 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 	mesa3d_entry_t *entry = ctx->entry;
 	int i = 0;
 	
-	entry->proc.pglClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+	GL_CHECK(entry->proc.pglClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT));
 	
 	ctx->tmu_count = MESA_TMU_CNT();
 	if(VMHALenv.texture_num_units > MESA_TMU_MAX)
@@ -1003,15 +1047,15 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 
 	ctx->state.tmu[0].active = 1;
 
-	entry->proc.pglPixelStorei(GL_UNPACK_ALIGNMENT, FBHDA_ROW_ALIGN);
-	entry->proc.pglPixelStorei(GL_PACK_ALIGNMENT, FBHDA_ROW_ALIGN);
+	GL_CHECK(entry->proc.pglPixelStorei(GL_UNPACK_ALIGNMENT, FBHDA_ROW_ALIGN));
+	GL_CHECK(entry->proc.pglPixelStorei(GL_PACK_ALIGNMENT, FBHDA_ROW_ALIGN));
 
-	entry->proc.pglFrontFace(GL_CCW);
+	GL_CHECK(entry->proc.pglFrontFace(GL_CCW));
 
-	entry->proc.pglMatrixMode(GL_MODELVIEW);
-	entry->proc.pglLoadIdentity();
-	entry->proc.pglMatrixMode(GL_PROJECTION);
-	entry->proc.pglLoadIdentity();
+	GL_CHECK(entry->proc.pglMatrixMode(GL_MODELVIEW));
+	GL_CHECK(entry->proc.pglLoadIdentity());
+	GL_CHECK(entry->proc.pglMatrixMode(GL_PROJECTION));
+	GL_CHECK(entry->proc.pglLoadIdentity());
 	
 	entry->proc.pglDepthRange(0.0f, 1.0f);
 
@@ -1033,7 +1077,9 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 	//GL_CHECK(entry->proc.pglDisable(GL_MULTISAMPLE));
 	GL_CHECK(entry->proc.pglDisable(GL_LIGHTING));
 	//GL_CHECK(entry->proc.pglLightModeli(GL_LIGHT_MODEL_TWO_SIDE, GL_TRUE));
-	GL_CHECK(entry->proc.pglLightModeli(GL_LIGHT_MODEL_COLOR_CONTROL, GL_SEPARATE_SPECULAR_COLOR));
+	
+	//GL_CHECK(entry->proc.pglLightModeli(GL_LIGHT_MODEL_COLOR_CONTROL, GL_SEPARATE_SPECULAR_COLOR));
+	GL_CHECK(entry->proc.pglLightModeli(GL_LIGHT_MODEL_COLOR_CONTROL, GL_SINGLE_COLOR));
 	
 	// extends clamp over z-depth range
 	//GL_CHECK(entry->proc.pglEnable(GL_DEPTH_CLAMP_NV));
@@ -1043,14 +1089,14 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 
 	for(i = 0; i < ctx->tmu_count; i++)
 	{
-		entry->proc.pglActiveTexture(GL_TEXTURE0 + i);
+		GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0 + i));
 		
 		if(ctx->state.tmu[i].active)
 		{
 			entry->proc.pglEnable(GL_TEXTURE_2D);
 		}
 		
-		entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+		GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE));
 		
 		ctx->state.tmu[i].reload = TRUE;
 		ctx->state.tmu[i].update = TRUE;
@@ -2581,6 +2627,7 @@ NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DHAL_DP2RENDERSTATE s
 			break;
 		RENDERSTATE(D3DRENDERSTATE_DIFFUSEMATERIALSOURCE)
 			ctx->state.material.diffuse_source = state->dwState;
+			TOPIC("DIFFUSE", "ctx->state.material.diffuse_source=%d", state->dwState);
 			MesaApplyColorMaterial(ctx);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_SPECULARMATERIALSOURCE)

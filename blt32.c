@@ -151,9 +151,11 @@ DDENTRY_FPUSAVE(Blt32, LPDDHAL_BLTDATA, pbd)
 			FBHDA_access_begin(0);
 			isInFront = TRUE;
 		}
-		
+
+#ifdef D3DHAL
 		SurfaceFromMesa(srcx, FALSE);
-		
+#endif
+
 		/* check if need stretch */
 		if(dwDstWidth != dwSrcWidth ||
 			dwDstHeight != dwSrcHeight ||
@@ -238,7 +240,6 @@ DDENTRY_FPUSAVE(Blt32, LPDDHAL_BLTDATA, pbd)
 					(void*)src->fpVidMem, (void*)dst->fpVidMem, dwColorKey, &srect);
 			}
 			TOPIC("DEPTHCONV", "Blt32 - ROP stretch");
-			SurfaceToMesa(dstx, FALSE);
 		}
 		else /* ROP 1:1 pixels */
 		{
@@ -276,9 +277,11 @@ DDENTRY_FPUSAVE(Blt32, LPDDHAL_BLTDATA, pbd)
 				rop3(ddhal->pFBHDA32->bpp, rop3_code, (void*)src->fpVidMem, (void*)dst->fpVidMem, dwColorKey,
 							pbd->rSrc.left, pbd->rSrc.top, pbd->rDest.left, pbd->rDest.top, dwSrcWidth, dwSrcHeight, spitch, dpitch);
 			}
-		}
+		} /* nostrech copy */
 		TOPIC("DEPTHCONV", "Blt32 - ROP 1:1");
+#ifdef D3DHAL
 		SurfaceToMesa(dstx, FALSE);
+#endif
 	}
 	else if (dwFlags & (DDBLT_COLORFILL | DDBLT_DEPTHFILL))
 	{
@@ -311,7 +314,9 @@ DDENTRY_FPUSAVE(Blt32, LPDDHAL_BLTDATA, pbd)
 				pbd->rDest.left, pbd->rDest.top, pbd->rDest.left, pbd->rDest.top, dwDstWidth, dwDstHeight, dst->lPitch, dst->lPitch);
 		}
 		TOPIC("DEPTHCONV", "Blt32 - DDBLT_COLORFILL | DDBLT_DEPTHFILL");
+#ifdef D3DHAL
 		SurfaceToMesa(dstx, FALSE);
+#endif
 	}
 	else
 	{
