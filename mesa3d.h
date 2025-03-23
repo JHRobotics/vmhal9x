@@ -99,6 +99,7 @@ typedef struct mesa3d_light
 struct mesa3d_tmustate
 {
 	BOOL active;
+	BOOL nocoords; /* when no coords for this TMU */
 	
 	mesa3d_texture_t *image;
 	// texture address DX5 DX6 DX7
@@ -241,11 +242,14 @@ typedef struct mesa3d_ctx
 		BOOL specular; // specular enable (DX state)
 		BOOL specular_vertex; // use glSecondaryColor
 		struct {
-			BOOL alpha;
+			BOOL alphablend;
 			GLenum srcRGB;
 			GLenum dstRGB;
+			BOOL edgeantialias;
+			/* not in use */
 			GLenum srcAlpha;
 			GLenum dstAlpha;
+			BOOL lineantialias;
 		} blend;
 		DWORD overrides[8]; // 256 bit set
 		DWORD stipple[32];

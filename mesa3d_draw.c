@@ -238,6 +238,11 @@ NUKED_LOCAL void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD type, DWORD size)
 	ctx->state.fvf.type = type;
 	MesaFVFRecalc(ctx);
 	
+	if(size != ctx->state.fvf.stride)
+	{
+		WARN("WRONG fvf calculation real size=%d, calculated=%d", size, ctx->state.fvf.stride);
+	}
+	
 	TOPIC("MATRIX", "MesaFVFSet type=0x%X, size=%d, realsize=%d",
 		type, size, ctx->state.fvf.stride
 	);
@@ -247,6 +252,7 @@ NUKED_LOCAL void MesaFVFRecalc(mesa3d_ctx_t *ctx)
 {
 	int offset = 0; // in DW
 	int i;
+	BOOL refresh = FALSE;
 	
 	DWORD type = ctx->state.fvf.type;
 	
@@ -349,12 +355,46 @@ NUKED_LOCAL void MesaFVFRecalc(mesa3d_ctx_t *ctx)
 			}
 			
 			offset += ctx->state.fvf.coords[i];
+			
+			if(ctx->state.tmu[i].nocoords)
+			{
+				ctx->state.tmu[i].nocoords = FALSE;
+				ctx->state.tmu[i].update = TRUE;
+				refresh = TRUE;
+			}
 		}
 		else
 		{
-			ctx->state.fvf.pos_tmu[i] = 0;
-			ctx->state.fvf.coords[i]  = 0;
+			#if 0
+			if(tc >= 1)
+			{
+				/* JH: OK, there is 2 ways, how handle state when have coords for less TMU,
+				   than has texture attached:
+				   - first come from 3dlab (reference) driver and use coord index 0
+				   - second is stochastic (from testing) and disable these TMUs
+				 */
+				ctx->state.fvf.pos_tmu[i] = ctx->state.fvf.pos_tmu[0];
+				ctx->state.fvf.coords[i]  = ctx->state.fvf.coords[0];
+			}
+			else
+			#endif
+			{
+				if(!ctx->state.tmu[i].nocoords)
+				{
+					ctx->state.tmu[i].nocoords = TRUE;
+					ctx->state.tmu[i].update = TRUE;
+					refresh = TRUE;
+				}
+				
+				ctx->state.fvf.pos_tmu[i] = 0;
+				ctx->state.fvf.coords[i]  = 0;
+			}
 		}
+	}
+	
+	if(refresh)
+	{
+		MesaDrawRefreshState(ctx);
 	}
 
 	ctx->state.fvf.stride = offset * sizeof(D3DVALUE);
@@ -368,7 +408,8 @@ NUKED_INLINE void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx,
 
 	for(i = 0; i < ctx->tmu_count; i++)
 	{
-		if(ctx->state.tmu[i].image)
+		//if(ctx->state.tmu[i].image)
+		if(ctx->state.tmu[i].active)
 		{
 			int coordindex = ctx->state.tmu[i].coordindex;
 			int coordnum = ctx->state.fvf.coords[coordindex];
@@ -432,7 +473,7 @@ NUKED_INLINE void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx,
 					} // switch(coordnum)
 				}
 			}
-		}
+		} // image
 	}
 
 	if(ctx->state.fvf.pos_diffuse)

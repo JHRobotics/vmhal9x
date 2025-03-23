@@ -1012,19 +1012,36 @@ NUKED_LOCAL void MesaDestroyAllCtx(mesa3d_entry_t *entry)
 static void ApplyBlend(mesa3d_ctx_t *ctx)
 {
 	mesa3d_entry_t *entry = ctx->entry;
-	if(ctx->state.blend.alpha)
+	if(ctx->state.blend.alphablend || ctx->state.blend.edgeantialias)
 	{
-		GL_CHECK(entry->proc.pglBlendFunc(
-			ctx->state.blend.srcRGB,
-			ctx->state.blend.dstRGB
-		));
-	}
-	else
-	{
+		GL_CHECK(entry->proc.pglEnable(GL_BLEND));
+		
+		if(ctx->state.blend.edgeantialias)
+		{
+			GL_CHECK(entry->proc.pglEnable(GL_LINE_SMOOTH));
+		}
+		else
+		{
+			GL_CHECK(entry->proc.pglEnable(GL_LINE_SMOOTH));
+		}
+		
+		if(!(ctx->state.blend.srcRGB == GL_SRC_COLOR && ctx->state.blend.dstRGB == GL_SRC_ALPHA)) /* from wine9x */
+		{
+			GL_CHECK(entry->proc.pglBlendFunc(
+				ctx->state.blend.srcRGB,
+				ctx->state.blend.dstRGB
+			));
+		}
+		
+		/*
 		GL_CHECK(entry->proc.pglBlendFunc(
 			GL_ONE,
 			GL_ZERO
-		));
+		));*/
+	}
+	else
+	{
+		GL_CHECK(entry->proc.pglDisable(GL_BLEND));
 	}
 }
 
@@ -1132,13 +1149,16 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 		MesaIdentity(ctx->state.tmu[i].matrix);
 	}
 
-	entry->proc.pglEnable(GL_BLEND);
+//	entry->proc.pglEnable(GL_BLEND);
 //	entry->proc.pglBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	ctx->state.blend.alpha     = FALSE;
-	ctx->state.blend.srcRGB    = GL_SRC_ALPHA;
-	ctx->state.blend.srcAlpha  = GL_ONE;
-	ctx->state.blend.dstRGB    = GL_ONE_MINUS_SRC_ALPHA;
-	ctx->state.blend.dstAlpha  = GL_ZERO;
+	ctx->state.blend.alphablend = FALSE;
+	ctx->state.blend.srcRGB     = GL_SRC_ALPHA;
+	ctx->state.blend.dstRGB     = GL_ONE_MINUS_SRC_ALPHA;
+	ctx->state.blend.edgeantialias = FALSE;
+	
+	ctx->state.blend.srcAlpha   = GL_ONE;
+	ctx->state.blend.dstAlpha   = GL_ZERO;
+	ctx->state.blend.lineantialias = FALSE;
 	ApplyBlend(ctx);
 
 	ctx->state.texperspective  = TRUE;
@@ -1153,8 +1173,8 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 	ctx->state.stencil.dppass    = GL_KEEP;
 	ctx->state.stencil.func      = GL_ALWAYS;
 	ctx->state.stencil.ref       = 0;
-	ctx->state.stencil.mask      = 0xFF;
-	ctx->state.stencil.writemask = 0xFF;
+	ctx->state.stencil.mask      = 0xFFFFFFFF;
+	ctx->state.stencil.writemask = 0xFFFFFFFF;
 
 	ctx->render.rop2 = R2_COPYPEN;
 	ctx->render.planemask = 0xFFFFFFFF;
@@ -1565,11 +1585,11 @@ NUKED_INLINE GLenum GetBlendFactor(D3DBLEND dxfactor)
     case D3DBLEND_INVSRCALPHA:
     	return GL_ONE_MINUS_SRC_ALPHA;
     case D3DBLEND_DESTALPHA:
-    	//return GL_DST_ALPHA;
-    	return GL_ONE;
+    	return GL_DST_ALPHA;
+    	//return GL_ONE;
     case D3DBLEND_INVDESTALPHA:
-    	//return GL_ONE_MINUS_DST_ALPHA;
-    	return GL_ZERO;
+    	return GL_ONE_MINUS_DST_ALPHA;
+    	//return GL_ZERO;
     case D3DBLEND_DESTCOLOR:
     	return GL_DST_COLOR;
     case D3DBLEND_INVDESTCOLOR:
@@ -2383,7 +2403,7 @@ NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DHAL_DP2RENDERSTATE s
 			break;
 		RENDERSTATE(D3DRENDERSTATE_ALPHABLENDENABLE) /* TRUE to enable alpha blending */
 			TOPIC("BLEND", "D3DRENDERSTATE_ALPHABLENDENABLE = 0x%X", state->dwState);
-			ctx->state.blend.alpha = (state->dwState != 0) ? TRUE : FALSE;
+			ctx->state.blend.alphablend = (state->dwState != 0) ? TRUE : FALSE;
 			ApplyBlend(ctx);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_FOGENABLE) /* TRUE to enable fog */
@@ -2466,7 +2486,8 @@ NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DHAL_DP2RENDERSTATE s
 			}
 			break;
 		RENDERSTATE(D3DRENDERSTATE_EDGEANTIALIAS) /* TRUE to enable edge antialiasing */
-			// !
+			ctx->state.blend.edgeantialias = (state->dwState == 0) ? FALSE : TRUE;
+			ApplyBlend(ctx);
 			break;
 		RENDERSTATE(D3DRENDERSTATE_COLORKEYENABLE) /* TRUE to enable source colorkeyed textures */
 			ctx->state.tmu[0].colorkey = (state->dwState == 0) ? FALSE : TRUE;
@@ -2854,28 +2875,37 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 	struct mesa3d_tmustate *ts = &ctx->state.tmu[tmu];
 	BOOL color_key = FALSE;
 	GLenum target = GL_TEXTURE_2D;
-
+	
+	ts->active = FALSE;
 	if(ts->image)
 	{
-		GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
-		GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_CUBE_MAP));
-		ts->active = TRUE;
-		
-		if(ts->image->colorkey && tmu == 0)
-		{
-			color_key = TRUE;
-		}
-		
 		if(!ts->image->cube)
 		{
-			GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ts->image->gltex));
-			GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_CUBE_MAP, 0));
+			if(!ts->nocoords)
+			{
+				GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
+				GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_CUBE_MAP));
+				GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ts->image->gltex));
+				GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_CUBE_MAP, 0));	
+				ts->active = TRUE;
+			}
 		}
 		else
 		{
+			GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
+			GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_CUBE_MAP));
 			GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, 0));
 			GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_CUBE_MAP, ts->image->gltex));
 			target = GL_TEXTURE_CUBE_MAP;
+			ts->active = TRUE;
+		}
+	}
+
+	if(ts->active)
+	{
+		if(ts->image->colorkey && tmu == 0)
+		{
+			color_key = TRUE;
 		}
 
 		/*
@@ -2998,7 +3028,6 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 	{
 		GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_2D));
 		GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_CUBE_MAP));
-		ts->active = FALSE;
 		//GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, 0));
 	}
 	
@@ -3309,7 +3338,7 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 			GL_CHECK(entry->proc.pglTexParameterfv(target,
 				GL_TEXTURE_BORDER_COLOR, &(ts->border[0])));
 		}
-	
+		
 		switch(ts->texaddr_u)
 		{
 			case D3DTADDRESS_MIRROR:
@@ -3321,6 +3350,9 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 			case D3DTADDRESS_BORDER:
 				GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER));
 				break;
+/*			case TADDRESS_MIRROR_ONCE:
+				GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_WRAP_S, GL_MIRROR_CLAMP_TO_EDGE));
+				break;*/
 			case D3DTADDRESS_WRAP:
 			default:
 				if(ts->wrap & D3DWRAPCOORD_0)
@@ -3488,8 +3520,8 @@ NUKED_LOCAL void MesaDrawRefreshState(mesa3d_ctx_t *ctx)
 			mesa3d_entry_t *entry = ctx->entry;
 			
 			GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0 + i));
-//			GL_CHECK(entry->proc.pglMatrixMode(GL_TEXTURE));
-//			GL_CHECK(entry->proc.pglLoadMatrixf(&ctx->state.tmu[i].matrix[0]));
+			GL_CHECK(entry->proc.pglMatrixMode(GL_TEXTURE));
+			GL_CHECK(entry->proc.pglLoadMatrixf(&ctx->state.tmu[i].matrix[0]));
 
 			switch(ctx->state.tmu[i].mapping)
 			{
@@ -3945,46 +3977,14 @@ NUKED_LOCAL void MesaSetTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *mat
 			MesaApplyTransform(ctx, MESA_TF_WORLD);
 			break;
 #if 0 /* disabled for now */
-		case D3DTRANSFORMSTATE_TEXTURE0:
-			memcpy(ctx->state.tmu[0].matrix, m, sizeof(m));
-			ctx->state.tmu[0].move = TRUE;
+		case D3DTRANSFORMSTATE_TEXTURE0...D3DTRANSFORMSTATE_TEXTURE7:
+		{
+			DWORD tmu = state-D3DTRANSFORMSTATE_TEXTURE0;
+			memcpy(ctx->state.tmu[tmu].matrix, m, sizeof(m));
+			ctx->state.tmu[tmu].move = TRUE;
 			MesaDrawRefreshState(ctx);
 			break;
-		case D3DTRANSFORMSTATE_TEXTURE1:
-			memcpy(ctx->state.tmu[1].matrix, m, sizeof(m));
-			ctx->state.tmu[1].move = TRUE;
-			MesaDrawRefreshState(ctx);
-			break;
-		case D3DTRANSFORMSTATE_TEXTURE2:
-			memcpy(ctx->state.tmu[2].matrix, m, sizeof(m));
-			ctx->state.tmu[2].move = TRUE;
-			MesaDrawRefreshState(ctx);
-			break;
-		case D3DTRANSFORMSTATE_TEXTURE3:
-			memcpy(ctx->state.tmu[3].matrix, m, sizeof(m));
-			ctx->state.tmu[3].move = TRUE;
-			MesaDrawRefreshState(ctx);
-			break;
-		case D3DTRANSFORMSTATE_TEXTURE4:
-			memcpy(ctx->state.tmu[4].matrix, m, sizeof(m));
-			ctx->state.tmu[4].move = TRUE;
-			MesaDrawRefreshState(ctx);
-			break;
-		case D3DTRANSFORMSTATE_TEXTURE5:
-			memcpy(ctx->state.tmu[5].matrix, m, sizeof(m));
-			ctx->state.tmu[5].move = TRUE;
-			MesaDrawRefreshState(ctx);
-			break;
-		case D3DTRANSFORMSTATE_TEXTURE6:
-			memcpy(ctx->state.tmu[6].matrix, m, sizeof(m));
-			ctx->state.tmu[6].move = TRUE;
-			MesaDrawRefreshState(ctx);
-			break;
-		case D3DTRANSFORMSTATE_TEXTURE7:
-			memcpy(ctx->state.tmu[7].matrix, m, sizeof(m));
-			ctx->state.tmu[7].move = TRUE;
-			MesaDrawRefreshState(ctx);
-			break;
+		}
 #else
 		case D3DTRANSFORMSTATE_TEXTURE0...D3DTRANSFORMSTATE_TEXTURE7:
 			break;
