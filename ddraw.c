@@ -471,7 +471,7 @@ DDENTRY_FPUSAVE(SetColorKey32, LPDDHAL_SETCOLORKEYDATA, lpSetColorKey)
 		lpSetColorKey->lpDDSurface->ddckCKSrcBlt.dwColorSpaceLowValue  = c1_32;
 		lpSetColorKey->lpDDSurface->ddckCKSrcBlt.dwColorSpaceHighValue = c2_32;
 #ifdef D3DHAL
-		SurfaceApplyColorKey(lpSetColorKey->lpDDSurface->dwReserved1, c1_32, c2_32);
+		SurfaceApplyColorKey(lpSetColorKey->lpDDSurface->dwReserved1, c1_32, c2_32, c1, c2);
 #endif
 	}
 

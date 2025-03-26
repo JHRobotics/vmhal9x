@@ -420,6 +420,8 @@ D3DDEVCAPS_HWRASTERIZATION
 	}, {DDSCAPS_TEXTURE}                     /* ddscaps.dwCaps */ \
 }
 
+#define TEXFORMAT_PAL8 TEXFORMAT_RGB_mask(DDPF_PALETTEINDEXED8, 8, 0, 0, 0, 0)
+
 #define TEXFORMAT_RGB(_bpp, _r, _g, _b) TEXFORMAT_RGB_mask(0, _bpp, _r, _g, _b, 0)
 #define TEXFORMAT_RGBA(_bpp, _r, _g, _b, _a) TEXFORMAT_RGB_mask(DDPF_ALPHAPIXELS, _bpp, _r, _g, _b, _a)
 
@@ -454,6 +456,7 @@ static DDSURFACEDESC myTextureFormats[] = {
 	TEXFORMAT_ALPHA(8, 0xFF),
 	TEXFORMAT_LUMINANCE(8, 0xFF),
 	TEXFORMAT_LA(8, 0x00FF, 8, 0xFF00),
+	TEXFORMAT_PAL8,
 //	TEXFORMAT_RGB(16, 0x001F, 0x03E0, 0x7C00), /* RGBX 5551 */
 //	TEXFORMAT_RGB(16, 0x000F, 0x00F0, 0x0F00), /* RGBX 4444 */
 //	TEXFORMAT_RGB( 8, 0x03, 0x1C, 0xE0)        /* RGB 332 */

@@ -827,13 +827,28 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				// the characteristics of the palette. The number of
 				// D3DNTHAL_DP2SETPALETTE structures to follow is specified by
 				// the wStateCount member of the D3DNTHAL_DP2COMMAND structure
-				
-				// D3DHAL_DP2SETPALETTE* lpSetPal = (D3DHAL_DP2SETPALETTE*)(prim);
-				
+				TOPIC("PAL", "D3DDP2OP_SETPALETTE cnt=%d", inst->wStateCount);
+				for(i = 0; i < inst->wStateCount; i++)
+				{
+					D3DHAL_DP2SETPALETTE* lpSetPal = (D3DHAL_DP2SETPALETTE*)(prim);
+					prim += sizeof(D3DHAL_DP2SETPALETTE);
+					
+					surface_id sid = ctx->surfaces->table[lpSetPal->dwSurfaceHandle];
+					if(sid)
+					{
+						DDSURF *dds = SurfaceGetSURF(sid);
+						if(dds)
+						{
+							dds->dwPaletteFlags  = lpSetPal->dwPaletteFlags;
+							dds->dwPaletteHandle = lpSetPal->dwPaletteHandle;
+						}
+					}
+				}
 				// skipped
-				NEXT_INST(sizeof(D3DHAL_DP2SETPALETTE));
+				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_UPDATEPALETTE)
+			{
 				// Perform modifications to the palette that is used for palettized
 				// textures. The palette handle attached to a surface is updated
 				// with wNumEntries PALETTEENTRYs starting at a specific wStartIndex
@@ -845,10 +860,28 @@ NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdB
 				// D3DNTHAL_DP2UPDATEPALETTE structure (plus palette data) following
 				// the D3DNTHAL_DP2COMMAND structure regardless of the value of
 				// wStateCount.
+				D3DHAL_DP2UPDATEPALETTE *lpPalUpdate = (D3DHAL_DP2UPDATEPALETTE*)(prim);
+				prim += sizeof(D3DHAL_DP2UPDATEPALETTE);
+
+				DWORD *colors = (DWORD*)prim;
+				prim += lpPalUpdate->wNumEntries * sizeof(DWORD);
+
+				mesa_pal8_t *pal = MesaGetPal(ctx, lpPalUpdate->dwPaletteHandle);
 				
-				// skipped
-				NEXT_INST(sizeof(D3DHAL_DP2UPDATEPALETTE));
+				TOPIC("PAL", "D3DHAL_DP2UPDATEPALETTE: wNumEntries=%d, wStartIndex=%d, dwPaletteHandle=%d",
+					lpPalUpdate->wNumEntries, lpPalUpdate->wStartIndex, lpPalUpdate->dwPaletteHandle);
+				if(pal)
+				{
+					for(i = lpPalUpdate->wStartIndex; i < NOCRT_MIN(lpPalUpdate->wStartIndex + lpPalUpdate->wNumEntries, 256); i++)
+					{
+						pal->colors[i] = *colors;
+						colors++;
+					}
+					pal->stamp++;
+				}
+				NEXT_INST(0);
 				break;
+			}
 			// New for DX7
 			COMMAND(D3DDP2OP_ZRANGE)
 				for(i = 0; i < inst->wStateCount; i++)
@@ -1485,8 +1518,13 @@ NUKED_LOCAL BOOL MesaRecord6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cm
 				NEXT_INST_TC(D3DHAL_DP2SETPALETTE, inst->wStateCount);
 				break;
 			COMMAND(D3DDP2OP_UPDATEPALETTE)
-				NEXT_INST_TC(D3DHAL_DP2UPDATEPALETTE, inst->wStateCount);
+			{
+				D3DHAL_DP2UPDATEPALETTE *lpPalUpdate = (D3DHAL_DP2UPDATEPALETTE*)(prim);
+				prim += sizeof(D3DHAL_DP2UPDATEPALETTE);
+				prim += lpPalUpdate->wNumEntries * sizeof(DWORD);
+				NEXT_INST(0);
 				break;
+			}
 			COMMAND(D3DDP2OP_ZRANGE)
 				NEXT_INST_TC(D3DHAL_DP2ZRANGE, inst->wStateCount);
 				break;

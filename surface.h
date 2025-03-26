@@ -28,6 +28,17 @@
 
 typedef struct surface_info surface_info_t;
 
+typedef struct _DDSURF_cache
+{
+	BOOL color_key;
+	DWORD dwColorKeyLow;
+	DWORD dwColorKeyHigh;
+	DWORD dwColorKeyLowPal;
+	DWORD dwColorKeyHighPal;
+	DWORD pal_stamp;
+	DWORD *data;
+} DDSURF_cache_t;
+
 #define DDSURF_ATTACH_MAX (6*16)
 
 typedef struct _DDSURF
@@ -41,7 +52,12 @@ typedef struct _DDSURF
 	DWORD dwSurfaceHandle;
 	DWORD dwColorKeyLow;
 	DWORD dwColorKeyHigh;
+	DWORD dwPaletteHandle;
+	DWORD dwPaletteFlags;
+	DWORD dwColorKeyLowPal;
+	DWORD dwColorKeyHighPal;
 	DWORD attachments_cnt;
+	DDSURF_cache_t *cache;
 	surface_id attachments[DDSURF_ATTACH_MAX];
 } DDSURF;
 

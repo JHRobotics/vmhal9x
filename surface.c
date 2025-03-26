@@ -639,6 +639,12 @@ BOOL SurfaceDelete(surface_id sid)
 		}
 
 		infos.table[sid] = NULL;
+		if(info->surf.cache != NULL)
+		{
+			hal_free(HEAP_LARGE, info->surf.cache);
+			info->surf.cache = NULL;
+		}
+		
 		hal_free(HEAP_NORMAL, info);
 //		surf->dwReserved1 = 0;
 	}
@@ -1081,7 +1087,7 @@ LPDDRAWI_DDRAWSURFACE_LCL SurfaceDuplicate(LPDDRAWI_DDRAWSURFACE_LCL original)
 	return NULL;
 }
 
-void SurfaceApplyColorKey(surface_id sid, DWORD low, DWORD hi)
+void SurfaceApplyColorKey(surface_id sid, DWORD low, DWORD hi, DWORD low_pal, DWORD hi_pal)
 {
 	TRACE("SurfaceApplyColorKey: sid=%d, low=%X, hi=%X", sid, low, hi);
 	if(sid)
@@ -1092,6 +1098,8 @@ void SurfaceApplyColorKey(surface_id sid, DWORD low, DWORD hi)
 			info->surf.dwFlags |= DDRAWISURF_HASCKEYSRCBLT;
 			info->surf.dwColorKeyLow = low;
 			info->surf.dwColorKeyHigh = hi;
+			info->surf.dwColorKeyLowPal = low_pal;
+			info->surf.dwColorKeyHighPal = hi_pal;
 		}
 	}
 }

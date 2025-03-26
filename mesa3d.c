@@ -251,8 +251,12 @@ void Mesa3DCleanProc()
 	Mesa3DFree(pid);
 }
 
-static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp, GLint *internalformat, GLenum *format, GLenum *type, BOOL *compressed)
+static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
+	GLint *internalformat, GLenum *format, GLenum *type,
+	BOOL *compressed, BOOL *palette)
 {
+	*palette = FALSE;
+	
 	if((surf->dwFlags & DDRAWISURF_HASPIXELFORMAT) != 0)
 	{
 		DDPIXELFORMAT fmt = surf->lpGbl->ddpfSurface;
@@ -388,7 +392,20 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp, GLint *internalformat, GLen
 		else if(fmt.dwFlags & DDPF_RGB)
 		{
 			*compressed = FALSE;
-			if(fmt.dwFlags & DDPF_ALPHAPIXELS)
+			if(fmt.dwFlags & DDPF_PALETTEINDEXED8)
+			{
+				if(fmt.dwRGBBitCount == 8)
+				{
+					*bpp = 32;
+					*palette = TRUE;
+					*internalformat = GL_RGBA;
+					*format = GL_BGRA;
+					*type = GL_UNSIGNED_BYTE;
+					return TRUE;
+				}
+				return FALSE;
+			}
+			else if(fmt.dwFlags & DDPF_ALPHAPIXELS)
 			{
 				TOPIC("FORMAT", "case DDPF_ALPHAPIXELS (RGBA(%d): %08X %08X %08X %08X)",
 					fmt.dwRGBBitCount, fmt.dwRBitMask, fmt.dwGBitMask, fmt.dwBBitMask, fmt.dwRGBAlphaBitMask
@@ -993,6 +1010,7 @@ NUKED_LOCAL void MesaDestroyCtx(mesa3d_ctx_t *ctx)
 	}
 	
 	MesaLightDestroyAll(ctx);
+	MesaFreePals(ctx);
 	hal_free(HEAP_NORMAL, ctx);
 }
 
@@ -1362,7 +1380,7 @@ NUKED_LOCAL mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, surface_id si
 			tex->sides = MESA3D_CUBE_SIDES;
 		}
 
-		if(DDSurfaceToGL(surf, &tex->bpp, &tex->internalformat, &tex->format, &tex->type, &tex->compressed))
+		if(DDSurfaceToGL(surf, &tex->bpp, &tex->internalformat, &tex->format, &tex->type, &tex->compressed, &tex->palette))
 		{
 			tex->width  = surf->lpGbl->wWidth;
 			tex->height = surf->lpGbl->wHeight;
@@ -1489,7 +1507,13 @@ NUKED_LOCAL void MesaReloadTexture(mesa3d_texture_t *tex, int tmu)
 			if(reload || tex->data_dirty[side][level])
 			{
 				DDSURF *primary = SurfaceGetSURF(tex->data_sid[0][0]);
-				if(tex->ctx->state.tmu[tmu].colorkey && (primary->dwFlags & DDRAWISURF_HASCKEYSRCBLT))
+				BOOL has_color_key = tex->ctx->state.tmu[tmu].colorkey && (primary->dwFlags & DDRAWISURF_HASCKEYSRCBLT);
+				if(tex->palette)
+				{
+					MesaBufferUploadTexturePalette(tex->ctx, tex, level, side, tmu,
+						has_color_key, primary->dwColorKeyLowPal, primary->dwColorKeyHighPal);
+				}
+				else if(has_color_key)
 				{
 					if(tex->compressed)
 					{
@@ -4181,5 +4205,41 @@ NUKED_LOCAL void MesaReverseCull(mesa3d_ctx_t *ctx)
 			ctx->entry->proc.pglEnable(GL_CULL_FACE);
 			ctx->entry->proc.pglCullFace(GL_BACK);
 			break;
+	}
+}
+
+NUKED_LOCAL mesa_pal8_t *MesaGetPal(mesa3d_ctx_t *ctx, DWORD palette_handle)
+{
+	mesa_pal8_t **ppal = &ctx->first_pal;
+	while((*ppal) != NULL)
+	{
+		if((*ppal)->palette_handle == palette_handle)
+		{
+			return *ppal;
+		}
+		
+		ppal = &((*ppal)->next);
+	}
+	
+	*ppal = hal_calloc(HEAP_NORMAL, sizeof(mesa_pal8_t), 0);
+	if(*ppal != NULL)
+	{
+		(*ppal)->next = NULL;
+		(*ppal)->stamp = 0;
+		(*ppal)->palette_handle = palette_handle;
+		return *ppal;
+	}
+	
+	return NULL;
+}
+
+NUKED_LOCAL void MesaFreePals(mesa3d_ctx_t *ctx)
+{
+	mesa_pal8_t *ptr;
+	while(ctx->first_pal != NULL)
+	{
+		ptr = ctx->first_pal;
+		ctx->first_pal = ptr->next;
+		hal_free(HEAP_NORMAL, ptr);
 	}
 }

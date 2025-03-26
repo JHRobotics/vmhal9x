@@ -201,7 +201,7 @@ NUKED_FAST void *MesaChroma12(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD
 				px |= (spx & 0x00F0) << 8;
 				px |= (spx & 0x0F00) << 12;
 				
-				if(px >= lwkey && px <= hikey)
+				if(!(px >= lwkey && px <= hikey))
 				{
 					px |= 0xFF000000;
 				}

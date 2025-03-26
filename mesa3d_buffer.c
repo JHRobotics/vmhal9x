@@ -520,11 +520,9 @@ NUKED_LOCAL void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture
 		return;
 	}
 
-	// TODO: cube map!
-
 	GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0+tmu));
+	GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_CUBE_MAP));
 	GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
-	GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, tex->gltex));
 
 	TOPIC("CHROMA", "MesaBufferUploadTextureChroma - level=%d", level);
 
@@ -535,10 +533,17 @@ NUKED_LOCAL void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture
 	{
 		if(tex->cube)
 		{
-			// ...
+			GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, 0));
+			GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_CUBE_MAP, tex->gltex));
+			
+			GL_CHECK(entry->proc.pglTexImage2D(Mesa2GLSide[side], level, GL_RGBA,
+				w, h, 0, GL_BGRA, GL_UNSIGNED_BYTE, data));
 		}
 		else
 		{
+			GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, tex->gltex));
+			GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_CUBE_MAP, 0));
+			
 			GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, level, GL_RGBA,
 				w, h, 0, GL_BGRA, GL_UNSIGNED_BYTE, data));
 		}
@@ -599,16 +604,7 @@ NUKED_LOCAL BOOL MesaBufferFBOSetup(mesa3d_ctx_t *ctx, int width, int height)
 		GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST));
 		GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
 		GL_CHECK(entry->proc.pglFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fbo->plane_color_tex, 0));
-		
-/*		GLenum depth_format = GL_DEPTH24_STENCIL8;
-		if(VMHALenv.zfloat)
-		{
-			depth_format = GL_DEPTH32F_STENCIL8;
-		}*/
 
-		//GL_CHECK(entry->proc.pglBindRenderbuffer(GL_RENDERBUFFER, fbo->plane_depth_tex));
-		//GL_CHECK(entry->proc.pglRenderbufferStorage(GL_RENDERBUFFER, depth_format, width, height));
-		//GL_CHECK(entry->proc.pglFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, fbo->plane_depth_tex));
 		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, fbo->plane_depth_tex));
 		GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0,
 			VMHALenv.zfloat ? GL_DEPTH32F_STENCIL8 : GL_DEPTH24_STENCIL8,
@@ -634,4 +630,163 @@ NUKED_LOCAL BOOL MesaBufferFBOSetup(mesa3d_ctx_t *ctx, int width, int height)
 	}
 	
 	return TRUE;
+}
+
+
+NUKED_LOCAL void MesaBufferUploadTexturePalette(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level, int side, int tmu, BOOL chroma_key, DWORD chroma_lw, DWORD chroma_hi)
+{
+	TRACE_ENTRY
+	
+	GLuint w = tex->width;
+	GLuint h = tex->height;
+	
+	w >>= level;
+	h >>= level;
+	
+	if(w == 0) w = 1;
+	if(h == 0) h = 1;
+
+	mesa3d_entry_t *entry = ctx->entry;
+
+	surface_id sid = tex->data_sid[side][level];
+	if(sid == 0)
+	{
+		ERR("sid == 0");
+		return;
+	}
+
+	DDSURF *dds = SurfaceGetSURF(sid);
+	if(dds == NULL || dds->fpVidMem == 0)
+	{
+		ERR("vidmem == NULL");
+		return;
+	}
+	
+	mesa_pal8_t *pal = MesaGetPal(ctx, dds->dwPaletteHandle);
+	if(pal == NULL)
+	{
+		ERR("missing palette dwPaletteHandle=%d", dds->dwPaletteHandle);
+		return;
+	}
+	DWORD pal_flags = dds->dwPaletteFlags;
+
+	GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0+tmu));
+	GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_CUBE_MAP));
+	GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
+
+	DWORD pitch4 = SurfacePitch(w, 32)/4;
+	
+	BYTE *src = (BYTE*)dds->fpVidMem;
+	DWORD src_pitch = SurfacePitch(w, 8);
+	
+	void *data = NULL;
+#if 0
+	data = MesaTempAlloc(ctx, w, pitch4*4*h);
+#endif
+	if(!dds->cache)
+	{
+		dds->cache = hal_alloc(HEAP_LARGE, sizeof(DDSURF_cache_t)+pitch4*4*h, w);
+		if(dds->cache == NULL)
+		{
+			ERR("Malloc fail");
+			return;
+		}
+		dds->cache->pal_stamp = 0xFFFFFFFF;
+		dds->cache->color_key = TRUE;
+		dds->cache->dwColorKeyLowPal  = 0xFFFFFFFF;
+		dds->cache->dwColorKeyHighPal = 0xFFFFFFFF;
+		
+		dds->cache->data = (DWORD*)(dds->cache+1);
+	}
+	data = dds->cache->data;
+
+/*
+	P = pal->stamp == dds->cache->pal_stamp
+	S = chroma_key
+	C = dds->cache->color_key
+	L = dds->cache->dwColorKeyLowPal == chroma_lw
+	H = dds->cache->dwColorKeyHighPal == chroma_hi
+
+	P S C L H   update
+	---------
+	0 X X X X = 1
+	1 0 0 0 0 = 0
+	1 0 0 0 1 = 0
+	1 0 0 1 0 = 0
+	1 0 0 1 1 = 0
+	1 0 1 0 0 = 1
+	1 0 1 0 1 = 1
+	1 0 1 1 0 = 1
+	1 0 1 1 1 = 1
+	1 1 0 0 0 = 1
+	1 1 0 0 1 = 1
+	1 1 0 1 0 = 1
+	1 1 0 1 1 = 1
+	1 1 1 0 0 = 1
+	1 1 1 0 1 = 1
+	1 1 1 1 0 = 1
+	1 1 1 1 1 = 0
+
+	minimal form:
+	~bc + b~c + ~a + c~e + c~d
+	~SC + S~C + ~P + C~H + C~L
+*/
+	if(
+		((!chroma_key) &&  dds->cache->color_key  ) ||
+	 	(  chroma_key  && (!dds->cache->color_key)) ||
+	 	(pal->stamp != dds->cache->pal_stamp)	||
+		(dds->cache->color_key && (dds->cache->dwColorKeyHighPal != chroma_hi)) ||
+		(dds->cache->color_key && (dds->cache->dwColorKeyLowPal != chroma_lw))
+	)
+	{
+		dds->cache->color_key = chroma_key;
+		dds->cache->dwColorKeyLowPal  = chroma_lw;
+		dds->cache->dwColorKeyHighPal = chroma_hi;
+
+		DWORD *ptr = data;
+		GLuint x, y;
+		for(y = 0; y < h; y++)
+		{
+			for(x = 0; x < w; x++)
+			{
+				ptr[x] = pal->colors[src[x]];
+				if((pal_flags & DDRAWIPAL_ALPHA) == 0)
+				{
+					ptr[x] |= 0xFF000000; // set alpha to 1.0, when is not valid on palette
+				}
+
+				if(chroma_key)
+				{
+					if(src[x] >= chroma_lw && src[x] <= chroma_hi)
+					{
+						ptr[x] = 0x00000000;
+					}
+				}
+			}
+			src += src_pitch;
+			ptr += pitch4;
+		}
+	}
+
+	if(tex->cube)
+	{
+		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, 0));
+		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_CUBE_MAP, tex->gltex));
+		
+		GL_CHECK(entry->proc.pglTexImage2D(Mesa2GLSide[side], level, GL_RGBA,
+			w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data));
+	}
+	else
+	{
+		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, tex->gltex));
+		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_CUBE_MAP, 0));
+		
+		GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, level, GL_RGBA,
+			w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data));
+	}
+
+#if 0
+	MesaTempFree(ctx, data);
+#endif
+	ctx->state.tmu[tmu].update = TRUE;
 }

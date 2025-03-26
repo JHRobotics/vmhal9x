@@ -160,7 +160,7 @@ void SurfaceToMesaTex(surface_id sid);
 void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly);
 void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly);
 BOOL SurfaceIsEmpty(surface_id sid);
-void SurfaceApplyColorKey(surface_id sid, DWORD low, DWORD hi);
+void SurfaceApplyColorKey(surface_id sid, DWORD low, DWORD hi, DWORD low_pal, DWORD hi_pal);
 void SurfaceClearEmpty(surface_id sid);
 void SurfaceClearData(surface_id sid);
 DWORD SurfaceDataSize(LPDDRAWI_DDRAWSURFACE_GBL gbl, DWORD *outPitch);

@@ -74,6 +74,7 @@ typedef struct mesa3d_texture
 	int sides; // 1 or 6
 	BOOL colorkey;
 	BOOL compressed;
+	BOOL palette;
 	BOOL tmu[MESA_TMU_MAX];
 } mesa3d_texture_t;
 
@@ -203,6 +204,14 @@ typedef struct mesa_rec_state
 } mesa_rec_state_t;
 
 #define SURFACE_TABLES_PER_ENTRY 8 /* in theory there should by only 1 */
+
+typedef struct mesa_pal8
+{
+	DWORD palette_handle;
+	DWORD colors[256];
+	DWORD stamp;
+	struct mesa_pal8 *next;
+} mesa_pal8_t;
 
 typedef struct mesa3d_ctx
 {
@@ -371,6 +380,8 @@ typedef struct mesa3d_ctx
 		void *buf;
 		DWORD lock;
 	} temp;
+	
+	mesa_pal8_t *first_pal;
 } mesa3d_ctx_t;
 
 /* maximum for 24bit signed zbuff = (1<<23) - 1 */
@@ -514,6 +525,7 @@ NUKED_LOCAL void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src);
 NUKED_LOCAL void MesaBufferDownloadDepth(mesa3d_ctx_t *ctx, void *dst);
 NUKED_LOCAL void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level, int side, int tmu);
 NUKED_LOCAL void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level, int side, int tmu, DWORD chroma_lw, DWORD chroma_hi);
+NUKED_LOCAL void MesaBufferUploadTexturePalette(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level, int side, int tmu, BOOL chroma_key, DWORD chroma_lw, DWORD chroma_hi);
 NUKED_LOCAL BOOL MesaBufferFBOSetup(mesa3d_ctx_t *ctx, int width, int height);
 
 /* calculation */
@@ -608,6 +620,9 @@ NUKED_LOCAL void MesaRecTMUState(mesa3d_ctx_t *ctx, DWORD tmu, DWORD state, DWOR
 #define MESA_TMU_CNT() ((VMHALenv.texture_num_units > MESA_TMU_MAX) ? MESA_TMU_MAX : VMHALenv.texture_num_units)
 
 #define SURFACES_TABLE_POOL 1024
+
+NUKED_LOCAL mesa_pal8_t *MesaGetPal(mesa3d_ctx_t *ctx, DWORD palette_handle);
+NUKED_LOCAL void MesaFreePals(mesa3d_ctx_t *ctx);
 
 /* heavy debug */
 #define MESA_KEY_DUMP 1
