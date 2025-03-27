@@ -77,14 +77,6 @@ typedef struct surface_attachment
 	} texture;
 } surface_attachment_t;
 
-typedef struct surface_info
-{
-	DWORD magic;
-	surface_attachment_t *first;
-	DDSURF surf;
-	DWORD flags;
-} surface_info_t;
-
 typedef struct context_attachment
 {
 	struct context_attachment *next;
@@ -102,6 +94,7 @@ typedef struct surface_info_table
 	surface_info_t **table;
 	DWORD tablesize;
 	DWORD next_id;
+	DWORD count;
 } surface_info_table_t;
 
 static context_info_t contexts = {NULL};
@@ -183,7 +176,11 @@ static surface_info_t *SurfaceCreateInfo(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL re
 			TOPIC("MEMORY", "created surface info for sid = %d", id);
 
 			infos.table[id] = info;
+			infos.count++;
 			surf->dwReserved1 = id;
+#ifdef DEBUG_MEMORY
+			info->id = id;
+#endif
 	
 			return info;
 		}
@@ -582,6 +579,17 @@ void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 	}
 }
 
+static void SurfaceTableReduce()
+{
+	if(infos.count == 0)
+	{
+		infos.next_id = 1;
+		infos.tablesize = 0;
+		hal_free(HEAP_NORMAL, infos.table);
+		infos.table = NULL;
+	}	
+}
+
 BOOL SurfaceDelete(surface_id sid)
 {
 	TRACE_ENTRY
@@ -639,11 +647,14 @@ BOOL SurfaceDelete(surface_id sid)
 		}
 
 		infos.table[sid] = NULL;
+		infos.count--;
 		if(info->surf.cache != NULL)
 		{
 			hal_free(HEAP_LARGE, info->surf.cache);
 			info->surf.cache = NULL;
 		}
+		
+		SurfaceTableReduce();
 		
 		hal_free(HEAP_NORMAL, info);
 //		surf->dwReserved1 = 0;
@@ -666,7 +677,7 @@ NUKED_LOCAL void SurfaceFree(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDD
 			surface_info_t *info = SurfaceGetInfo(sid);
 			if(info)
 			{
-				is_sys = (info->flags & SURF_FLAG_COPY) == 0 ? TRUE : FALSE;
+				is_sys = (info->flags & SURF_FLAG_COPY) ? TRUE : FALSE;
 			}
 
 			if(is_sys)
@@ -847,7 +858,11 @@ NUKED_LOCAL BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL 
 				info->flags &= ~SURF_FLAG_EMPTY;
 				info->flags |=  SURF_FLAG_COPY;
 				SurfaceLoopDuplicate(surface, surface, info);
-				TOPIC("MEMORY", "Duplicate handle=%d, sid=%d", scopy->lpSurfMore->dwSurfaceHandle, scopy->dwReserved1);
+				TOPIC("MEMORY", "Duplicate handle=%d, sid=%d (original)dwCaps=0x%X",
+					scopy->lpSurfMore->dwSurfaceHandle,
+					scopy->dwReserved1,
+					surface->ddsCaps.dwCaps
+				);
 
 				MesaSurfacesTableInsertHandle(entry, lpDDLcl, scopy->lpSurfMore->dwSurfaceHandle, scopy->dwReserved1);
 
@@ -1101,5 +1116,19 @@ void SurfaceApplyColorKey(surface_id sid, DWORD low, DWORD hi, DWORD low_pal, DW
 			info->surf.dwColorKeyLowPal = low_pal;
 			info->surf.dwColorKeyHighPal = hi_pal;
 		}
+	}
+}
+
+void SurfaceDeleteAll()
+{
+	DWORD sid = 1;
+	while(sid < infos.tablesize)
+	{
+		if(infos.table[sid] != NULL)
+		{
+			TOPIC("MEMORY", "Abandoned surface: %u", sid);
+			SurfaceDelete(sid);
+		}
+		sid++;
 	}
 }

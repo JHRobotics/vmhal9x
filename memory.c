@@ -25,14 +25,17 @@
  ******************************************************************************/
 #include <Windows.h>
 
-//#ifdef DEBUG_MEMORY
+
 #include <stdint.h>
 #include <ddraw.h>
 #include <ddrawi.h>
 #include "ddrawi_ddk.h"
 #include "vmdahal32.h"
 #include "vmhal9x.h"
-//#endif
+
+#ifdef DEBUG_MEMORY
+#include "surface.h"
+#endif
 
 #include "memory.h"
 
@@ -455,8 +458,17 @@ void hal_dump_allocs()
 	while(item != NULL)
 	{
 		TOPIC("MEMORY", "%s:%d = %d", item->src_file, item->src_line, item->size);
+#if 0
+		/* WARN: before use this, make sure, that files and lines match! */
+		if(strcmp(item->src_file, "surface.c") == 0 && item->src_line == 152)
+		{
+			surface_info_t *info = (surface_info_t *)(item+1);
+			TOPIC("MEMORY", "Lost surface sid=%d", info->id);
+		}
+#endif
 		item = item->next;
 	}
+
 	TOPIC("MEMORY", "--- leak table end ---");
 }
 

@@ -173,6 +173,11 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 				lpSurf->lpGbl->dwBlockSizeX = s;
 				lpSurf->lpGbl->dwBlockSizeY = 1;
 				lpSurf->lpGbl->fpVidMem     = DDHAL_PLEASEALLOC_BLOCKSIZE; /* required for this type of surface */
+				
+				TOPIC("MEMORY", "HAL allocated surface, flags=0x%X, caps=0x%X",
+				lpSurf->lpGbl->ddpfSurface.dwFlags,
+				lpSurf->ddsCaps.dwCaps
+				);
 			}
 
 			SurfaceCreate(lpSurf);
@@ -427,6 +432,7 @@ DDENTRY_FPUSAVE(DestroyDriver32, LPDDHAL_DESTROYDRIVERDATA, pdstr)
 
 #ifdef D3DHAL
 		Mesa3DCleanProc();
+		SurfaceDeleteAll();
 #endif
 		//FBHDA_free();
 	}

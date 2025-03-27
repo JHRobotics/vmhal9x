@@ -66,4 +66,18 @@ LPDDRAWI_DDRAWSURFACE_LCL SurfaceDuplicate(LPDDRAWI_DDRAWSURFACE_LCL original);
 DDSURF *SurfaceGetSURF(surface_id sid);
 void *SurfaceGetVidMem(surface_id sid);
 
+/* private, but for debuging sometimes needed in other files */
+struct surface_attachment;
+
+typedef struct surface_info
+{
+	DWORD magic;
+	struct surface_attachment *first;
+	DDSURF surf;
+	DWORD flags;
+#ifdef DEBUG_MEMORY
+	DWORD id;
+#endif
+} surface_info_t;
+
 #endif /* __SURFACE_H__INCLUDED__ */

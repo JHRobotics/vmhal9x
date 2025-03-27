@@ -152,6 +152,7 @@ typedef DWORD surface_id;
 
 DWORD SurfaceCreate(LPDDRAWI_DDRAWSURFACE_LCL surf);
 BOOL SurfaceDelete(surface_id sid);
+void SurfaceDeleteAll();
 void SurfaceAttachTexture(surface_id sid, void *mesa_tex, int level, int side);
 void SurfaceAttachCtx(void *mesa_ctx);
 void SurfaceDeattachTexture(surface_id sid, void *mesa_tex, int level, int side);
