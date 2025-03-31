@@ -1705,7 +1705,7 @@ DDENTRY(GetState32, LPD3DHAL_GETSTATEDATA, pgsd)
 DDENTRY(SceneCapture32, LPD3DHAL_SCENECAPTUREDATA, scdata)
 {
 	TRACE_ENTRY
-	
+
 	VALIDATE(scdata)
 	
 	TOPIC("GL", "SceneCapture32: %d", scdata->dwFlag);
@@ -1730,7 +1730,6 @@ DDENTRY(SceneCapture32, LPD3DHAL_SCENECAPTUREDATA, scdata)
 DDENTRY(CanCreateExecuteBuffer32, LPDDHAL_CANCREATESURFACEDATA, csd)
 {
 	TRACE_ENTRY
-	TOPIC("EXEBUF", "CanCreateExecuteBuffer32");
 
 	/* asume we can create the buffer every time */
 
@@ -1741,15 +1740,31 @@ DDENTRY(CanCreateExecuteBuffer32, LPDDHAL_CANCREATESURFACEDATA, csd)
 DDENTRY_FPUSAVE(CreateExecuteBuffer32, LPDDHAL_CREATESURFACEDATA, csd)
 {
 	TRACE_ENTRY
-	TOPIC("EXEBUF", "CreateExecuteBuffer32");
-	
+
 	int i;
 	LPDDRAWI_DDRAWSURFACE_LCL *lplpSList = csd->lplpSList;
 
 	for(i = 0; i < (int)csd->dwSCnt; i++)
 	{
 		LPDDRAWI_DDRAWSURFACE_LCL surf = lplpSList[i];
-		TOPIC("EXEBUF", "CreateExecuteBuffer32 dwLinearSize = %d", surf->lpGbl->dwLinearSize);
+		TOPIC("EXEBUF", "CreateExecuteBuffer32 dwLinearSize = %d, wWidth = %d, wHeight = %d", surf->lpGbl->dwLinearSize,
+		surf->lpGbl->wWidth,  surf->lpGbl->wHeight);
+
+		BOOL alloc_vram = FALSE;
+		if(surf->lpSurfMore->ddsCapsEx.dwCaps2 & DDSCAPS2_VERTEXBUFFER)
+		{
+			if(surf->ddsCaps.dwCaps & DDSCAPS_WRITEONLY)
+			{
+				/* DDK 2K3:
+				 * If neither flag is set, the driver should allocate an implicit
+				 * vertex buffer. Implicit vertex buffers should not be placed in
+				 * video memory since they are expected to be read/write. Only
+				 * explicit vertex buffers with the DDSCAPS_WRITEONLY flag set
+				 * can be safely placed in video memory
+				 */
+				alloc_vram = TRUE;
+			}
+		}
 
 /*	if(surf->lpGbl->dwLinearSize < 1*1024*1024)
 		{
@@ -1757,17 +1772,27 @@ DDENTRY_FPUSAVE(CreateExecuteBuffer32, LPDDHAL_CREATESURFACEDATA, csd)
 		}
 		^ This is wasn't good idea, beacuse this exhaust memory very quickly
 */
+		/* alloc buffer in video memory */
+		surf->lpGbl->dwBlockSizeX = surf->lpGbl->dwLinearSize;
+		surf->lpGbl->dwBlockSizeY = 1;
 
-		surf->lpGbl->fpVidMem = (DWORD)hal_calloc(HEAP_LARGE, surf->lpGbl->dwLinearSize, surf->lpGbl->dwLinearSize);
-		surf->lpGbl->lpVidMemHeap = (LPVMEMHEAP)4;
-		if(surf->lpGbl->fpVidMem == 0)
+		if(!hal_valloc(csd->lpDD, surf, !alloc_vram))
 		{
 			csd->ddRVal = DDERR_OUTOFVIDEOMEMORY;
 			return DDHAL_DRIVER_HANDLED;
 		}
-		
-		SurfaceCreate(surf);
-		TOPIC("MEMORY", "new exec buffer sid=%d, mem=0x%08X, caps=0x%X", surf->dwReserved1, surf->lpGbl->fpVidMem, surf->ddsCaps.dwCaps);
+
+		if(SurfaceCreate(surf) == 0)
+		{
+			csd->ddRVal = DDERR_OUTOFMEMORY;
+			return DDHAL_DRIVER_HANDLED;
+		}
+
+		TOPIC("MEMORY", "new exec buffer (VRAM=%d) sid=%d, mem=0x%08X, caps=0x%X, caps2=0x%X, size=%d",
+			alloc_vram,
+			surf->dwReserved1, surf->lpGbl->fpVidMem,
+			surf->ddsCaps.dwCaps, surf->lpSurfMore->ddsCapsEx.dwCaps2,
+			surf->lpGbl->dwLinearSize);
 	}
 
 	csd->ddRVal = DD_OK;
@@ -1777,11 +1802,14 @@ DDENTRY_FPUSAVE(CreateExecuteBuffer32, LPDDHAL_CREATESURFACEDATA, csd)
 DDENTRY_FPUSAVE(DestroyExecuteBuffer32, LPDDHAL_DESTROYSURFACEDATA, dsd)
 {
 	TRACE_ENTRY
-	TOPIC("EXEBUF", "DestroyExecuteBuffer32");
+
+	TOPIC("MEMORY", "DestroyExecuteBuffer32 mem=0x%X", 
+		dsd->lpDDSurface->lpGbl->fpVidMem
+		);
 
 	if(dsd->lpDDSurface->lpGbl->fpVidMem != 0)
 	{
-		hal_free(HEAP_LARGE, (void*)dsd->lpDDSurface->lpGbl->fpVidMem);
+		hal_vfree(dsd->lpDD, dsd->lpDDSurface);
 		dsd->lpDDSurface->lpGbl->fpVidMem = 0;
 	}
 	
@@ -1794,7 +1822,6 @@ DDENTRY_FPUSAVE(DestroyExecuteBuffer32, LPDDHAL_DESTROYSURFACEDATA, dsd)
 DDENTRY(LockExecuteBuffer32, LPDDHAL_LOCKDATA, lock)
 {
 	TRACE_ENTRY
-	TOPIC("EXEBUF", "LockExecuteBuffer32");
 	/* nop */
 
 	return DDHAL_DRIVER_NOTHANDLED; /* let the lock processed */
@@ -1803,12 +1830,10 @@ DDENTRY(LockExecuteBuffer32, LPDDHAL_LOCKDATA, lock)
 DDENTRY(UnlockExecuteBuffer32, LPDDHAL_UNLOCKDATA, lock)
 {
 	TRACE_ENTRY
-	TOPIC("EXEBUF", "UnlockExecuteBuffer32");
 	/* nop */
 
 	return DDHAL_DRIVER_NOTHANDLED; /* let the unlock processed */
 }
-
 
 /* GLOBAL hal */
 static D3DHAL_GLOBALDRIVERDATA myGlobalD3DHal;
@@ -1918,7 +1943,7 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, LP
 
 	*lplpGlobal = (DWORD)&myGlobalD3DHal;
 	*lplpHALCallbacks = (DWORD)&myD3DHALCallbacks;
-	
+
 	if(VMHALenv.ddi >= 7)
 	{
 		memcpy(&myD3DHALCallbacks7, &myD3DHALCallbacks, sizeof(myD3DHALCallbacks));
@@ -1946,8 +1971,8 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, LP
 		DDSCAPS_PRIMARYSURFACE |
 		DDSCAPS_VIDEOMEMORY |
 	0;
- 	lpHALFlags->zcaps = DDBD_16 | DDBD_24 | DDBD_32;
- 	lpHALFlags->caps2 =  DDCAPS2_WIDESURFACES;
+	lpHALFlags->zcaps = DDBD_16 | DDBD_24 | DDBD_32;
+	lpHALFlags->caps2 = DDCAPS2_WIDESURFACES;
 //	lpHALFlags->caps2 = DDCAPS2_NO2DDURING3DSCENE | DDCAPS2_CANMANAGETEXTURE;
 
 	/* buffer allocation is done in driver only when this flag is set */

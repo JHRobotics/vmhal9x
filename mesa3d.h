@@ -109,10 +109,10 @@ struct mesa3d_tmustate
 	D3DTEXTUREADDRESS texaddr_w;
 
 	// blend DX5
-	D3DTEXTUREBLEND   texblend;
+	//D3DTEXTUREBLEND   texblend;
 	
 	// blend DX6 DX7
-	BOOL dx6_blend; // latch for DX6 and DX7 interface
+	//BOOL dx6_blend; // latch for DX6 and DX7 interface
 	DWORD color_op; // D3DTEXTUREOP
 	DWORD color_arg1; // D3DTA_*
 	DWORD color_arg2;
@@ -624,6 +624,11 @@ NUKED_LOCAL void MesaRecTMUState(mesa3d_ctx_t *ctx, DWORD tmu, DWORD state, DWOR
 NUKED_LOCAL mesa_pal8_t *MesaGetPal(mesa3d_ctx_t *ctx, DWORD palette_handle);
 NUKED_LOCAL void MesaFreePals(mesa3d_ctx_t *ctx);
 
+/* memory */
+NUKED_LOCAL void *MesaTempAlloc(mesa3d_ctx_t *ctx, DWORD w, DWORD size);
+NUKED_LOCAL void MesaTempFree(mesa3d_ctx_t *ctx, void *ptr);
+
+#ifdef DEBUG
 /* heavy debug */
 #define MESA_KEY_DUMP 1
 #define MESA_KEY_DUMP_MORE 2
@@ -631,9 +636,7 @@ NUKED_LOCAL void MesaFreePals(mesa3d_ctx_t *ctx);
 NUKED_LOCAL int mesa_dump_key();
 NUKED_LOCAL void mesa_dump(mesa3d_ctx_t *ctx);
 NUKED_LOCAL void mesa_dump_inc();
-
-/* memory */
-NUKED_LOCAL void *MesaTempAlloc(mesa3d_ctx_t *ctx, DWORD w, DWORD size);
-NUKED_LOCAL void MesaTempFree(mesa3d_ctx_t *ctx, void *ptr);
+NUKED_LOCAL void mesa_dump(mesa3d_ctx_t *ctx);
+#endif
 
 #endif /* __MESA3D_H__INCLUDED__ */

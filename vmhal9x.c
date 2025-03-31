@@ -374,6 +374,7 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 	return 0;
 }
 
+BOOL __stdcall UninstallWineHook();
 
 BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpvReserved)
 {
@@ -407,6 +408,10 @@ BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpvReserved)
 
 		case DLL_PROCESS_DETACH:
 			/* usually never calls */
+			/* Update: some utilities like 'KillHelp.exe' allows unload
+			 *         ddraw.dll (ddraw16.dll inc.) and all drivers 32-bit RING-3
+			 *         DLLs.
+			 */
 #ifdef D3DHAL
 			Mesa3DCleanProc();
 			hal_dump_allocs();
@@ -420,6 +425,7 @@ BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpvReserved)
 
 			if(tmp == 0)         // Last process?
 			{
+				UninstallWineHook();
 				hal_memory_destroy();
 				TRACE("--- vmhal9x destroyed ---");
 			}

@@ -44,6 +44,7 @@
 #define MEM_ALIGN 16
 
 #define VID_HEAP_COUNT 4
+#define VID_HEAP_SYSTEM VID_HEAP_COUNT
 
 typedef FLATPTR (WINAPI *DDHAL32_VidMemAlloc_h)(LPDDRAWI_DIRECTDRAW_GBL lpDD, int heap, DWORD dwWidth, DWORD dwHeight);
 typedef void (WINAPI *DDHAL32_VidMemFree_h)(LPDDRAWI_DIRECTDRAW_GBL lpDD, int heap, FLATPTR ptr);
@@ -94,65 +95,103 @@ static HANDLE get_heap(int heap)
 	return NULL;
 }
 
-BOOL hal_valloc(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf)
+typedef struct vram_info
 {
-	HMODULE ddraw = GetModuleHandle("ddraw.dll");
-	//HMODULE ddraw = NULL;
-	DDHAL32_VidMemAlloc_h vidmemalloc = NULL;
-	if(ddraw)
+	DWORD heap;
+	DWORD size;
+	DWORD res1;
+	DWORD res2;
+} vram_info_t;
+
+BOOL hal_valloc(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL systemram)
+{
+	if(systemram == FALSE)
 	{
-		vidmemalloc = (DDHAL32_VidMemAlloc_h)GetProcAddress(ddraw, "DDHAL32_VidMemAlloc");
-		/* when original ddraw is loaded it is above 2G, below is probably some wrapper */
-		if((DWORD)vidmemalloc < 0x80000000)
+		HMODULE ddraw = GetModuleHandle("ddraw.dll");
+		//HMODULE ddraw = NULL;
+		DDHAL32_VidMemAlloc_h vidmemalloc = NULL;
+		if(ddraw)
 		{
-			TOPIC("VMALLOC", "GetProcAddress=%p", vidmemalloc);
-			vidmemalloc = NULL;
-			
+			vidmemalloc = (DDHAL32_VidMemAlloc_h)GetProcAddress(ddraw, "DDHAL32_VidMemAlloc");
+			/* when original ddraw is loaded it is above 2G, below is probably some wrapper */
+			if((DWORD)vidmemalloc < 0x80000000)
+			{
+				TOPIC("VMALLOC", "GetProcAddress=%p", vidmemalloc);
+				vidmemalloc = NULL;
+				
+			}
 		}
+		else
+		{
+			TOPIC("VMALLOC", "GetModuleHandle failure");
+		}
+		
+		if(vidmemalloc)
+		{
+			int heap;
+			DWORD size = sizeof(vram_info_t) + surf->lpGbl->dwBlockSizeX;
+			DWORD width =  surf->lpGbl->lPitch; /* width in bytes */
+			DWORD height = (size + width - 1) / surf->lpGbl->lPitch;
+			
+			for(heap = 0; heap < VID_HEAP_COUNT; heap++)
+			{
+				
+				TOPIC("VMALLOC", "tries alloc %d x %d in heap=%d", width, height, heap);
+	
+				vram_info_t *mem = (vram_info_t*)vidmemalloc(lpDD, heap, width, height);
+				if(mem != NULL)
+				{
+#ifdef DEBUG
+					memset(mem, 0xCC, size);
+#endif
+					mem->heap = heap;
+					mem->size = size;
+					surf->lpGbl->lpVidMemHeap = NULL;
+					surf->lpGbl->fpVidMem = (FLATPTR)(mem+1);
+	
+					TOPIC("VMALLOC", "mem = %08X", mem);
+	
+					return TRUE;
+				}
+			}
+			return FALSE;
+		}
+		
+		/* let the alloc by HEL */
+		surf->lpGbl->fpVidMem = DDHAL_PLEASEALLOC_BLOCKSIZE;
 	}
 	else
 	{
-		TOPIC("VMALLOC", "GetModuleHandle failure");
-	}
-	
-	if(vidmemalloc)
-	{
-		int heap;
-		for(heap = 0; heap < VID_HEAP_COUNT; heap++)
+		DWORD size = sizeof(vram_info_t) + surf->lpGbl->dwBlockSizeX;
+		vram_info_t *mem = hal_alloc(HEAP_LARGE,size, surf->lpGbl->lPitch);
+		if(mem != NULL)
 		{
-			int height = (surf->lpGbl->dwBlockSizeX + (DWORD)surf->lpGbl->lPitch - 1) / surf->lpGbl->lPitch;
-			TOPIC("VMALLOC", "tries alloc %d x %d in heap=%d", surf->lpGbl->lPitch, height, heap);
-
-			FLATPTR mem = vidmemalloc(lpDD, heap, surf->lpGbl->lPitch, height);
-			if(mem > 0)
-			{
-				memset((void*)mem, 0, surf->lpGbl->dwBlockSizeX);
-				surf->lpGbl->lpVidMemHeap = (LPVMEMHEAP)heap;
-				surf->lpGbl->fpVidMem = mem;
-
-				TOPIC("VMALLOC", "mem = %08X", mem);
-
-				return TRUE;
-			}
+#ifdef DEBUG
+			memset(mem, 0xCC, size);
+#endif
+			mem->heap = VID_HEAP_SYSTEM;
+			mem->size = size;
+			surf->lpGbl->lpVidMemHeap = NULL;
+			surf->lpGbl->fpVidMem = (FLATPTR)(mem+1);
+			
+			return TRUE;
 		}
+		
 		return FALSE;
 	}
-	
-	/* let the alloc by HEL */
-	surf->lpGbl->fpVidMem = DDHAL_PLEASEALLOC_BLOCKSIZE;
 
 	return TRUE;
 }
 
 void hal_vfree(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf)
 {
-	int heap = (int)surf->lpGbl->lpVidMemHeap;
-	
-	TOPIC("VMALLOC", "free ptr=%08X in heap=%d", surf->lpGbl->fpVidMem, heap);
+	TOPIC("VMALLOC", "free ptr=%08X", surf->lpGbl->fpVidMem);
 	
 	if(surf->lpGbl->fpVidMem > 0)
 	{
-		if(heap >= 0 && heap < VID_HEAP_COUNT)
+		vram_info_t *mem = ((vram_info_t*)surf->lpGbl->fpVidMem) - 1;
+		
+		if(mem->heap >= 0 && mem->heap < VID_HEAP_COUNT)
 		{
 			HMODULE ddraw = GetModuleHandle("ddraw.dll");
 			//HMODULE ddraw = NULL;
@@ -168,10 +207,14 @@ void hal_vfree(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf)
 			
 			if(vidmemfree)
 			{
-				vidmemfree(lpDD, heap, surf->lpGbl->fpVidMem);
-				surf->lpGbl->fpVidMem     = 0;
-				surf->lpGbl->lpVidMemHeap = NULL;
+				vidmemfree(lpDD, mem->heap, (FLATPTR)mem);
+				surf->lpGbl->fpVidMem = 0;
 			}
+		}
+		else if(mem->heap == VID_HEAP_SYSTEM)
+		{
+			hal_free(HEAP_LARGE, mem);
+			surf->lpGbl->fpVidMem = 0;
 		}
 	}
 }

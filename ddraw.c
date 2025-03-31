@@ -61,6 +61,15 @@ DDENTRY(CanCreateSurface32, LPDDHAL_CANCREATESURFACEDATA, pccsd)
 	
 	TOPIC("TARGET", "CanCreateSurface: 0x%X", pccsd->lpDDSurfaceDesc->ddsCaps.dwCaps);
 
+/*
+	if((DWORD)pccsd->lpDDSurfaceDesc->lpGbl < 0x80000000)
+	{
+		WARN("lpGbl is not global 0x%X", pccsd->lpDDSurfaceDesc->lpGbl);
+				
+		pccsd->ddRVal = DDERR_INVALIDPIXELFORMAT;
+		return DDHAL_DRIVER_HANDLED;
+	}
+*/
 	if(!pccsd->bIsDifferentPixelFormat)
 	{
 		pccsd->ddRVal = DD_OK;
@@ -103,7 +112,15 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 			LPDDRAWI_DDRAWSURFACE_LCL lpSurf = lplpSList[i];
 
 			TOPIC("TARGET", "CreateSurface32 dwFlags=0x%X", lpSurf->lpGbl->ddpfSurface.dwFlags);
-
+			
+/*			if((DWORD)lpSurf->lpGbl < 0x80000000)
+			{
+				WARN("lpGbl is not global 0x%X", lpSurf->lpGbl);
+				
+				pcsd->ddRVal = DDERR_INVALIDPIXELFORMAT;
+				return DDHAL_DRIVER_HANDLED;
+			}
+			else */
 			if(lpSurf->lpGbl->ddpfSurface.dwFlags & DDPF_FOURCC)
 			{
 				DWORD pitch;
@@ -121,7 +138,7 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 				
 				TOPIC("ALLOC", "FourCC %d x %d = %d", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX);
 				
-				if(!hal_valloc(pcsd->lpDD, lpSurf))
+				if(!hal_valloc(pcsd->lpDD, lpSurf, FALSE))
 				{
 					pcsd->ddRVal = DDERR_OUTOFVIDEOMEMORY;
 					break;
@@ -137,7 +154,7 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 				TOPIC("MIPMAP", "Alloc RGB %d x %d = %d (pitch %d)", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->lPitch);
 				TOPIC("ALLOC", "RGB %d x %d = %d (pitch %d)", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->lPitch);
 				
-				if(!hal_valloc(pcsd->lpDD, lpSurf))
+				if(!hal_valloc(pcsd->lpDD, lpSurf, FALSE))
 				{
 					pcsd->ddRVal = DDERR_OUTOFVIDEOMEMORY;
 					break;
@@ -155,7 +172,7 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 				//lpSurf->lpGbl->fpVidMem     = DDHAL_PLEASEALLOC_BLOCKSIZE;
 				TOPIC("ALLOC", "ZBUF %d x %d = %d (pitch %d)", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->lPitch);
 				
-				if(!hal_valloc(pcsd->lpDD, lpSurf))
+				if(!hal_valloc(pcsd->lpDD, lpSurf, FALSE))
 				{
 					pcsd->ddRVal = DDERR_OUTOFVIDEOMEMORY;
 					break;
@@ -180,7 +197,11 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 				);
 			}
 
-			SurfaceCreate(lpSurf);
+			if(SurfaceCreate(lpSurf) == 0)
+			{
+				pcsd->ddRVal = DDERR_OUTOFMEMORY;
+				return DDHAL_DRIVER_HANDLED;
+			}
 			TOPIC("TARGET", "Created sid=%d", lpSurf->dwReserved1);
 			
 			TOPIC("GL", "Mipmam %d/%d created", i+1, pcsd->dwSCnt);

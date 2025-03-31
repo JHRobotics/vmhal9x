@@ -441,7 +441,7 @@ BOOL __stdcall InstallWineHook()
 	INSTALL_TP("ddraw.dll", DirectDrawEnumerateW);
 	INSTALL_TP_DllMain("ddraw.dll", DirectDrawDllMain);
 	
-	return FALSE;
+	return TRUE;
 }
 
 BOOL __stdcall UninstallWineHook()
@@ -467,7 +467,7 @@ int __stdcall CheckWineHook()
 {
 	if(wine_trampolines.init != FALSE)
 	{
-		int rc = patch_validate("ddraw.dll", NULL, wine_trampolines.TPDirectDrawDllMain);
+		int rc = patch_validate("ddraw.dll", "DirectDrawCreate", wine_trampolines.TPDirectDrawCreate);
 		
 		switch(rc)
 		{

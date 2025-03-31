@@ -40,6 +40,8 @@
 #include "nocrt.h"
 #endif
 
+#ifdef DEBUG
+
 static DWORD dump_id = 0;
 
 NUKED_LOCAL int mesa_dump_key()
@@ -86,7 +88,7 @@ NUKED_LOCAL void mesa_dump_inc()
 	fprintf(fw, " %f %f %f %f\r\n",  ctx->_n[8],  ctx->_n[9], ctx->_n[10], ctx->_n[11]); \
 	fprintf(fw, " %f %f %f %f\n]\r\n", ctx->_n[12], ctx->_n[13], ctx->_n[14], ctx->_n[15]);
 
-void mesa_dump(mesa3d_ctx_t *ctx)
+NUKED_LOCAL void mesa_dump(mesa3d_ctx_t *ctx)
 {
 	FILE *fw;
 	char fn[32];
@@ -100,3 +102,5 @@ void mesa_dump(mesa3d_ctx_t *ctx)
 		fclose(fw);
 	}
 }
+
+#endif /* DEBUG */
