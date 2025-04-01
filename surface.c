@@ -456,6 +456,9 @@ void SurfaceToMesaTex(surface_id sid)
 	surface_info_t *info = SurfaceGetInfo(sid);
 	if(info)
 	{
+		if(info->lock)
+			return;
+
 		// something was write to surface, remove empty flag
 		info->flags &= ~SURF_FLAG_EMPTY;
 
@@ -531,6 +534,39 @@ void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 	}
 }
 
+void SurfaceZToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, DWORD color)
+{
+	TRACE_ENTRY
+
+	if(VMHALenv.touchdepth)
+		return;
+
+	void *vidmem = (void*)surf->lpGbl->fpVidMem;
+	context_attachment_t *citem = contexts.first;
+	DWORD pid = GetCurrentProcessId();
+
+	while(citem)
+	{
+		if(citem->pid == pid)
+		{
+			if(SurfaceGetVidMem(citem->ctx->depth) == vidmem)
+			{
+				TOPIC("DEPTHCONV", "Clear Z, color=0x%X", color);
+				GL_BLOCK_BEGIN(citem->ctx)
+					D3DVALUE v = 0.0;
+					if(color > 0)
+					{
+						v = 1.0;
+					}
+					MesaClear(ctx, D3DCLEAR_ZBUFFER, 0, v, 0, 0, NULL);
+				GL_BLOCK_END
+			}
+		}
+
+		citem = citem->next;
+	}
+}
+
 void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 {
 	TRACE_ENTRY
@@ -538,6 +574,9 @@ void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 	surface_info_t *info = SurfaceGetInfoFromLcl(surf);
 	if(info)
 	{
+		if(info->lock)
+			return;
+
 		surface_attachment_t *item = info->first;
 		while(item)
 		{
@@ -895,9 +934,8 @@ NUKED_LOCAL BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL 
 	}
 
 	/* system memory */
-	/*if((surface->ddsCaps.dwCaps & (DDSCAPS_SYSTEMMEMORY | DDSCAPS_TEXTURE)) == 
-		(DDSCAPS_SYSTEMMEMORY | DDSCAPS_TEXTURE))*/
-	if(surface->lpGbl->fpVidMem < 0x80000000)
+	if(((surface->ddsCaps.dwCaps & (DDSCAPS_SYSTEMMEMORY | DDSCAPS_TEXTURE)) == 
+		(DDSCAPS_SYSTEMMEMORY | DDSCAPS_TEXTURE)) || surface->lpGbl->fpVidMem < 0x80000000)
 	{
 		LPDDRAWI_DDRAWSURFACE_LCL scopy = SurfaceDuplicate(surface);
 		if(scopy)
@@ -1184,5 +1222,26 @@ void SurfaceDeleteAll()
 			SurfaceDeleteGarbage(sid);
 		}
 		sid++;
+	}
+}
+
+void SurfaceLock(LPDDRAWI_DDRAWSURFACE_LCL surf)
+{
+	surface_info_t *info = SurfaceGetInfoFromLcl(surf);
+	if(info)
+	{
+		info->lock++;
+	}
+}
+
+void SurfaceUnlock(LPDDRAWI_DDRAWSURFACE_LCL surf)
+{
+	surface_info_t *info = SurfaceGetInfoFromLcl(surf);
+	if(info)
+	{
+		if(info->lock > 0)
+		{
+			info->lock--;
+		}
 	}
 }

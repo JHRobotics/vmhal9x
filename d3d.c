@@ -1972,11 +1972,11 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, LP
 		DDSCAPS_VIDEOMEMORY |
 	0;
 	lpHALFlags->zcaps = DDBD_16 | DDBD_24 | DDBD_32;
-	lpHALFlags->caps2 = DDCAPS2_WIDESURFACES;
+	lpHALFlags->caps2 = DDCAPS2_WIDESURFACES | DDCAPS2_NO2DDURING3DSCENE;
 //	lpHALFlags->caps2 = DDCAPS2_NO2DDURING3DSCENE | DDCAPS2_CANMANAGETEXTURE;
 
 	/* buffer allocation is done in driver only when this flag is set */
-	lpHALFlags->ddscaps |= DDSCAPS_EXECUTEBUFFER;
+	//lpHALFlags->ddscaps |= DDSCAPS_EXECUTEBUFFER;
 
 	return TRUE;
 }

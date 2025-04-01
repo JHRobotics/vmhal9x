@@ -40,6 +40,8 @@
 #include "nocrt.h"
 #endif
 
+#define D3DTOP_MODULATE_LEGACY 64
+
 #ifndef D3DTSS_TCI_SPHEREMAP
 #define D3DTSS_TCI_SPHEREMAP 0x40000
 #endif
@@ -1850,11 +1852,13 @@ static void MesaApplyDX5TexBlend(mesa3d_ctx_t *ctx, int tmu, D3DTEXTUREBLEND ble
 			/* TRU */
 		case D3DTBLEND_MODULATE:
 		{
-			BOOL tex_alpha = FALSE;
+#if 0
 			if(tex_alpha)
 				ctx->state.tmu[tmu].alpha_op = D3DTOP_SELECTARG1;
 			else
 				ctx->state.tmu[tmu].alpha_op = D3DTOP_SELECTARG2;
+#endif
+			ctx->state.tmu[tmu].alpha_op = D3DTOP_MODULATE_LEGACY;
 
 			ctx->state.tmu[tmu].alpha_arg1 = D3DTA_TEXTURE;
 			ctx->state.tmu[tmu].alpha_arg2 = D3DTA_CURRENT;
@@ -3256,6 +3260,12 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 			alpha_fn = GL_REPLACE;
 			alpha_arg1_source = alpha_arg2_source;
 			alpha_arg1_op = alpha_arg2_op;
+			break;
+		case D3DTOP_MODULATE_LEGACY:
+			/*alpha_fn = GL_REPLACE;
+			alpha_arg1_source = alpha_arg2_source;
+			alpha_arg1_op = alpha_arg2_op;*/
+			alpha_fn = GL_MODULATE;
 			break;
 		case D3DTOP_MODULATE:
 			TOPIC("TEXENV", "alpha D3DTOP_MODULATE");

@@ -159,6 +159,8 @@ void SurfaceDeattachTexture(surface_id sid, void *mesa_tex, int level, int side)
 void SurfaceDeattachCtx(void *mesa_ctx);
 void SurfaceToMesaTex(surface_id sid);
 void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly);
+void SurfaceZToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, DWORD color);
+
 void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly);
 BOOL SurfaceIsEmpty(surface_id sid);
 void SurfaceApplyColorKey(surface_id sid, DWORD low, DWORD hi, DWORD low_pal, DWORD hi_pal);
@@ -166,6 +168,9 @@ void SurfaceClearEmpty(surface_id sid);
 void SurfaceClearData(surface_id sid);
 DWORD SurfaceDataSize(LPDDRAWI_DDRAWSURFACE_GBL gbl, DWORD *outPitch);
 LPDDRAWI_DDRAWSURFACE_LCL SurfaceGetLCL_DX7(surface_id sid);
+
+void SurfaceLock(LPDDRAWI_DDRAWSURFACE_LCL surf);
+void SurfaceUnlock(LPDDRAWI_DDRAWSURFACE_LCL surf);
 
 inline static DWORD SurfacePitch(DWORD width, DWORD bpp)
 {

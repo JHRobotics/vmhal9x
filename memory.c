@@ -41,6 +41,8 @@
 
 #include "nocrt.h"
 
+//#define NODDRAW
+
 #define MEM_ALIGN 16
 
 #define VID_HEAP_COUNT 4
@@ -107,8 +109,11 @@ BOOL hal_valloc(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf, BO
 {
 	if(systemram == FALSE)
 	{
+#ifdef NODDRAW
+		HMODULE ddraw = NULL;
+#else
 		HMODULE ddraw = GetModuleHandle("ddraw.dll");
-		//HMODULE ddraw = NULL;
+#endif
 		DDHAL32_VidMemAlloc_h vidmemalloc = NULL;
 		if(ddraw)
 		{
@@ -186,6 +191,7 @@ BOOL hal_valloc(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf, BO
 void hal_vfree(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf)
 {
 	TOPIC("VMALLOC", "free ptr=%08X", surf->lpGbl->fpVidMem);
+	TOPIC("ALLOCTRACE", "hal_vfree");
 	
 	if(surf->lpGbl->fpVidMem > 0)
 	{
@@ -193,8 +199,12 @@ void hal_vfree(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf)
 		
 		if(mem->heap >= 0 && mem->heap < VID_HEAP_COUNT)
 		{
+#ifdef NODDRAW
+			HMODULE ddraw = NULL;
+#else
 			HMODULE ddraw = GetModuleHandle("ddraw.dll");
-			//HMODULE ddraw = NULL;
+#endif
+
 			DDHAL32_VidMemFree_h vidmemfree = NULL;
 			if(ddraw)
 			{
@@ -207,6 +217,7 @@ void hal_vfree(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf)
 			
 			if(vidmemfree)
 			{
+				TOPIC("ALLOCTRACE", "vidmemfree(0x%X, %d, 0x%X)", lpDD, mem->heap, mem);
 				vidmemfree(lpDD, mem->heap, (FLATPTR)mem);
 				surf->lpGbl->fpVidMem = 0;
 			}

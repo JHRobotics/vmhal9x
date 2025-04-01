@@ -75,6 +75,7 @@ typedef struct surface_info
 	struct surface_attachment *first;
 	DDSURF surf;
 	DWORD flags;
+	DWORD lock;
 #ifdef DEBUG_MEMORY
 	DWORD id;
 #endif

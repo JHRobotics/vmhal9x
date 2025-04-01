@@ -759,7 +759,7 @@ NUKED_LOCAL void MesaBufferUploadTexturePalette(mesa3d_ctx_t *ctx, mesa3d_textur
 				{
 					if(src[x] >= chroma_lw && src[x] <= chroma_hi)
 					{
-						ptr[x] = 0x00000000;
+						ptr[x] &= 0x00FFFFFF;
 					}
 				}
 			}
