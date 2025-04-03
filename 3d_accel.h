@@ -410,4 +410,28 @@ BOOL VESA_setmode(DWORD w, DWORD h, DWORD bpp);
 
 #pragma pack(pop)
 
+/* DLL handlers */
+#define VMDISP9X_LIB "vmdisp9x.dll"
+
+typedef FBHDA_t *(__cdecl *FBHDA_setup_t)();
+typedef void (__cdecl *FBHDA_access_begin_t)(DWORD flags);
+typedef void (__cdecl *FBHDA_access_end_t)(DWORD flags);
+typedef void (__cdecl *FBHDA_access_rect_t)(DWORD left, DWORD top, DWORD right, DWORD bottom);
+typedef BOOL (__cdecl *FBHDA_swap_t)(DWORD offset);
+typedef BOOL (__cdecl *FBHDA_page_modify_t)(DWORD flat_address, DWORD size, const BYTE *new_data);
+typedef void (__cdecl *FBHDA_clean_t)(void);
+
+typedef struct _fbhda_lib_t
+{
+	HMODULE lib;
+	LONG lock;
+	FBHDA_setup_t pFBHDA_setup;
+	FBHDA_access_begin_t pFBHDA_access_begin;
+	FBHDA_access_end_t pFBHDA_access_end;
+	FBHDA_access_rect_t pFBHDA_access_rect;
+	FBHDA_swap_t pFBHDA_swap;
+	FBHDA_page_modify_t pFBHDA_page_modify;
+	FBHDA_clean_t pFBHDA_clean;
+} fbhda_lib_t;
+
 #endif /* __3D_ACCEL_H__ */

@@ -4,4 +4,7 @@ EXPORTS
 	FBHDA_access_end
 	FBHDA_access_rect
 	FBHDA_swap
+	FBHDA_clean
 	FBHDA_page_modify
+	vmhal_setup_str
+	vmhal_setup_dw

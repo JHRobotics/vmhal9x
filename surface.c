@@ -456,8 +456,8 @@ void SurfaceToMesaTex(surface_id sid)
 	surface_info_t *info = SurfaceGetInfo(sid);
 	if(info)
 	{
-		if(info->lock)
-			return;
+		//if(info->lock)
+		//	return;
 
 		// something was write to surface, remove empty flag
 		info->flags &= ~SURF_FLAG_EMPTY;
@@ -574,8 +574,8 @@ void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 	surface_info_t *info = SurfaceGetInfoFromLcl(surf);
 	if(info)
 	{
-		if(info->lock)
-			return;
+		//if(info->lock)
+		//	return;
 
 		surface_attachment_t *item = info->first;
 		while(item)

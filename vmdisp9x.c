@@ -32,6 +32,9 @@
 #include <stdint.h>
 #include "3d_accel.h"
 
+#define VMHAL9X_LIB
+#include "vmsetup.h"
+
 #include "nocrt.h"
 
 static FBHDA_t *hda = NULL;
@@ -143,6 +146,12 @@ BOOL FBHDA_page_modify(DWORD flat_address, DWORD size, const BYTE *new_data)
 	return FALSE;
 }
 
+void FBHDA_clean()
+{
+	if(!FBHDA_valid()) return;
+
+	DeviceIoControl(hda_vxd, OP_FBHDA_CLEAN, NULL, 0, NULL, 0, NULL, NULL);
+}
 
 BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpvReserved)
 {
@@ -151,6 +160,7 @@ BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpvReserved)
 		case DLL_PROCESS_ATTACH:
 			DisableThreadLibraryCalls(hModule);
 			FBHDA_load();
+			vmhal_setup_load(TRUE);
 			break;
 		case DLL_PROCESS_DETACH:
 			if(FBHDA_valid())

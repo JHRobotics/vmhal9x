@@ -41,6 +41,8 @@
 
 #include "hotpatch.h"
 
+#include "vmsetup.h"
+
 #include "nocrt.h"
 
 static const char *blacklist_dll[] = {
@@ -58,25 +60,9 @@ static char winelib_d9[] = "wined9.dll";
 static char ninelib_d8[] = "mesa89.dll";
 static char ninelib_d9[] = "mesa99.dll";
 
-static char *GetExeName(char *buffer)
-{
-	char pathbuf[MAX_PATH];
-	if(GetModuleFileNameA(NULL, pathbuf, MAX_PATH))
-	{
-		const char *exe = strrchr(pathbuf, '\\');
-		if(exe != NULL && strlen(exe) > 1)
-		{
-			strcpy(buffer, exe+1);
-			return buffer;
-		}
-	}
-	
-	return NULL;
-}
-
-static const char reg_baseDD[]  = "Software\\DDSwitcher";
-static const char reg_baseDX8[] = "Software\\D8Switcher";
-static const char reg_baseDX9[] = "Software\\D9Switcher";
+static const char reg_baseDD[]  = "ddraw";
+static const char reg_baseDX8[] = "d3d8";
+static const char reg_baseDX9[] = "d3d9";
 
 static BOOL CheckNine()
 {
@@ -94,120 +80,52 @@ static BOOL CheckNine()
 	return TRUE; /* not VMDISP */
 }
 
-static char *GetLibName(const char *reg_base, char *wine_libname, char *nine_libname)
+static const char *GetLibName(const char *reg_name, char *wine_libname, char *nine_libname)
 {
-	LSTATUS lResult;
-	HKEY hKey;
-	static char buffer[PATH_MAX];
-	static char exe[PATH_MAX];
-	char *result = NULL;
-	
-	if(GetExeName(exe) == NULL)
+	const char *result = NULL;
+	const char *setup = vmhal_setup_str(NULL, reg_name, FALSE);
+	if(setup)
 	{
-		return NULL;
-	}
-
-	lResult = RegOpenKeyEx(HKEY_LOCAL_MACHINE, reg_base, 0, KEY_READ, &hKey);
-	if(lResult == ERROR_SUCCESS)
-	{
-		DWORD size = PATH_MAX;
-		DWORD type;
-		lResult = RegQueryValueExA(hKey, exe, NULL, &type, (LPBYTE)buffer, &size);
-		if(lResult == ERROR_SUCCESS)
+		if(stricmp(setup, "system") == 0)
 		{
-			switch(type)
+			result = NULL;
+		}
+		else if(stricmp(setup, "wine") == 0)
+		{
+			result = wine_libname;
+		}
+		else if(
+			nine_libname != NULL &&
+			(stricmp(setup, "nine") == 0 || stricmp(setup, "ninemore") == 0))
+		{
+			if(CheckNine())
 			{
-				case REG_SZ:
-				case REG_MULTI_SZ:
-				case REG_EXPAND_SZ:
-				{
-					if(stricmp(buffer, "system") == 0)
-					{
-						result = NULL;
-					}
-					else if(stricmp(buffer, "wine") == 0)
-					{
-						result = wine_libname;
-					}
-					else if(
-						nine_libname != NULL &&
-						(stricmp(buffer, "nine") == 0 || stricmp(buffer, "ninemore") == 0)
-					){
-						if(CheckNine())
-						{
-							result = nine_libname;
-						}
-					}
-					else if(nine_libname != NULL && stricmp(buffer, "nineforce") == 0)
-					{
-						result = nine_libname;
-					}
-					else
-					{
-						result = buffer;
-					}
-					break;
-				}
+				result = nine_libname;
 			}
+		}
+		else if(nine_libname != NULL && stricmp(setup, "nineforce") == 0)
+		{
+			result = nine_libname;
 		}
 		else
 		{
-			lResult = RegQueryValueExA(hKey, "global", NULL, &type, (LPBYTE)buffer, &size);
-	    if(lResult == ERROR_SUCCESS)
-	    {
-				switch(type)
-				{
-					case REG_SZ:
-					case REG_MULTI_SZ:
-					case REG_EXPAND_SZ:
-					{
-						if(stricmp(buffer, "system") == 0)
-						{
-							result = NULL;
-						}
-						else if(stricmp(buffer, "wine") == 0)
-						{
-							result = wine_libname;
-						}
-						else if(
-							nine_libname != NULL &&
-							(stricmp(buffer, "nine") == 0 || stricmp(buffer, "ninemore") == 0)
-						){
-							if(CheckNine())
-							{
-								result = nine_libname;
-							}
-						}
-						else if(nine_libname != NULL && stricmp(buffer, "nineforce") == 0)
-						{
-							result = nine_libname;
-						}
-						else
-						{
-							result = buffer;
-						}
-						break;
-					}
-				}
-			}
+			result = setup;
 		}
-		RegCloseKey(hKey);
 	}
-	
 	return result;
 }
 
-static char *GetLibNameDD()
+static const char *GetLibNameDD()
 {
 	return GetLibName(reg_baseDD, winelib_dd, NULL);
 }
 
-static char *GetLibNameD8()
+static const char *GetLibNameD8()
 {
 	return GetLibName(reg_baseDX8, winelib_d8, ninelib_d8);
 }
 
-static char *GetLibNameD9()
+static const char *GetLibNameD9()
 {
 	return GetLibName(reg_baseDX9, winelib_d9, ninelib_d9);
 }
