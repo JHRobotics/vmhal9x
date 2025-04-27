@@ -374,7 +374,7 @@ static void *convert_depth2GL(mesa3d_ctx_t *ctx, const void *in, int bpp)
 {
 	if(ctx->state.depth.wbuffer)
 	{
-		if(VMHALenv.zfloat)
+		if(ctx->entry->env.zfloat)
 		{
 			TOPIC("DEPTHCONV", "Z DX->GL: float -> F32S8");
 			return convert_float_to_f32s8(ctx, in, bpp);
@@ -387,7 +387,7 @@ static void *convert_depth2GL(mesa3d_ctx_t *ctx, const void *in, int bpp)
 	}
 	else
 	{
-		if(VMHALenv.zfloat)
+		if(ctx->entry->env.zfloat)
 		{
 			TOPIC("DEPTHCONV", "Z DX->GL: int -> F32S8");
 			return convert_int_to_f32s8(ctx, in, bpp);

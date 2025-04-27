@@ -121,7 +121,10 @@ static void DoFlipping(VMDAHAL_t *ddhal, void *from, void *to, DWORD from_pitch,
 			}
 			else if(ddhal->pFBHDA32->flags & FB_SUPPORT_FLIPING) /* HW flip support */
 			{
-				FBHDA_swap(offTo);
+				if(!FBHDA_swap(offTo))
+				{
+					ERR("FBHDA_swap failed (flip)");
+				}
 			}
 			else /* nope, copy it to fixed frame buffer surface */
 			{
@@ -129,6 +132,21 @@ static void DoFlipping(VMDAHAL_t *ddhal, void *from, void *to, DWORD from_pitch,
 			}
 		}
 	}
+}
+
+BOOL FlipPrimary(VMDAHAL_t *ddhal, void *to)
+{
+	if(ddhal->pFBHDA32->flags & FB_SUPPORT_FLIPING) /* HW flip support */
+	{
+		uint32_t offTo = GetOffset(ddhal, to);
+		if(!FBHDA_swap(offTo))
+		{
+			ERR("SWAP failed, offset=%d", offTo);
+			return FALSE;
+		}
+		return TRUE;
+	}
+	return FALSE;
 }
 
 uint64_t last_flip_time = 0;

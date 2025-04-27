@@ -6,9 +6,6 @@
 	path = fixlink
 	url = https://github.com/JHRobotics/fixlink
 	branch=main
-[submodule "regex"]
-	path = regex
-	url = https://github.com/kokke/tiny-regex-c.git
 [submodule "regex-nocrt"]
 	path = regex
 	url = https://github.com/JHRobotics/regex-nocrt

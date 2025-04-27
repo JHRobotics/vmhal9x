@@ -491,9 +491,6 @@ void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 	if(texonly)
 		return;
 	
-	if(!VMHALenv.readback)
-		return;
-
 	void *vidmem = (void*)surf->lpGbl->fpVidMem;
 	context_attachment_t *citem = contexts.first;
 	DWORD pid = GetCurrentProcessId();
@@ -502,32 +499,35 @@ void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 	{
 		if(citem->pid == pid)
 		{
-			if(SurfaceGetVidMem(citem->ctx->backbuffer) == vidmem)
+			if(citem->ctx->entry->env.readback)
 			{
-				TOPIC("DEPTHCONV", "Color to mesa");
-				GL_BLOCK_BEGIN(citem->ctx)
-					MesaBufferUploadColor(ctx, vidmem);
-					ctx->render.dirty = FALSE;
-				GL_BLOCK_END
-			}
-
-			if(VMHALenv.touchdepth && citem->ctx->depth_bpp)
-			{
-				if(SurfaceGetVidMem(citem->ctx->depth) == vidmem)
+				if(SurfaceGetVidMem(citem->ctx->backbuffer) == vidmem)
 				{
-					TOPIC("DEPTHCONV", "Depth to mesa");
+					TOPIC("DEPTHCONV", "Color to mesa");
 					GL_BLOCK_BEGIN(citem->ctx)
-						//entry->proc.pglDepthMask(GL_TRUE);
-						//entry->proc.pglClear(GL_DEPTH_BUFFER_BIT);
-						MesaBufferUploadDepth(ctx, vidmem);
-						ctx->render.zdirty = FALSE;
-						//if(!ctx->state.depth.writable)
-						//{
-						//	entry->proc.pglDepthMask(GL_FALSE);
-						//}
+						MesaBufferUploadColor(ctx, vidmem);
+						ctx->render.dirty = FALSE;
 					GL_BLOCK_END
 				}
-			}
+	
+				if(citem->ctx->entry->env.touchdepth && citem->ctx->depth_bpp)
+				{
+					if(SurfaceGetVidMem(citem->ctx->depth) == vidmem)
+					{
+						TOPIC("DEPTHCONV", "Depth to mesa");
+						GL_BLOCK_BEGIN(citem->ctx)
+							//entry->proc.pglDepthMask(GL_TRUE);
+							//entry->proc.pglClear(GL_DEPTH_BUFFER_BIT);
+							MesaBufferUploadDepth(ctx, vidmem);
+							ctx->render.zdirty = FALSE;
+							//if(!ctx->state.depth.writable)
+							//{
+							//	entry->proc.pglDepthMask(GL_FALSE);
+							//}
+						GL_BLOCK_END
+					}
+				} // touchdepth
+			} // readback
 		}
 		
 		citem = citem->next;
@@ -538,9 +538,6 @@ void SurfaceZToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, DWORD color)
 {
 	TRACE_ENTRY
 
-	if(VMHALenv.touchdepth)
-		return;
-
 	void *vidmem = (void*)surf->lpGbl->fpVidMem;
 	context_attachment_t *citem = contexts.first;
 	DWORD pid = GetCurrentProcessId();
@@ -549,17 +546,20 @@ void SurfaceZToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, DWORD color)
 	{
 		if(citem->pid == pid)
 		{
-			if(SurfaceGetVidMem(citem->ctx->depth) == vidmem)
+			if(!citem->ctx->entry->env.touchdepth)
 			{
-				TOPIC("DEPTHCONV", "Clear Z, color=0x%X", color);
-				GL_BLOCK_BEGIN(citem->ctx)
-					D3DVALUE v = 0.0;
-					if(color > 0)
-					{
-						v = 1.0;
-					}
-					MesaClear(ctx, D3DCLEAR_ZBUFFER, 0, v, 0, 0, NULL);
-				GL_BLOCK_END
+				if(SurfaceGetVidMem(citem->ctx->depth) == vidmem)
+				{
+					TOPIC("DEPTHCONV", "Clear Z, color=0x%X", color);
+					GL_BLOCK_BEGIN(citem->ctx)
+						D3DVALUE v = 0.0;
+						if(color > 0)
+						{
+							v = 1.0;
+						}
+						MesaClear(ctx, D3DCLEAR_ZBUFFER, 0, v, 0, 0, NULL);
+					GL_BLOCK_END
+				}
 			}
 		}
 
@@ -611,7 +611,7 @@ void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 				GL_BLOCK_END
 			}
 
-			if(VMHALenv.touchdepth)
+			if(citem->ctx->entry->env.touchdepth)
 			{
 				if(citem->ctx->render.zdirty && citem->ctx->depth_bpp)
 				{

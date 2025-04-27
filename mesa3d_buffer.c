@@ -76,6 +76,8 @@ NUKED_LOCAL void MesaBufferUploadColor(mesa3d_ctx_t *ctx, const void *src)
 	
 	switch(ctx->front_bpp)
 	{
+		case 8:
+			return; /* nope, ignore it */
 		case 16:
 			type = GL_UNSIGNED_SHORT_5_6_5;
 			format = GL_RGB;
@@ -164,6 +166,10 @@ NUKED_LOCAL void MesaBufferDownloadColor(mesa3d_ctx_t *ctx, void *dst)
 
 	switch(ctx->front_bpp)
 	{
+		case 8:
+			type = GL_UNSIGNED_BYTE_3_3_2;
+			format = GL_RGB;
+			break;
 		case 15:
 			type = GL_UNSIGNED_SHORT_5_5_5_1;
 			format = GL_RGBA;
@@ -230,7 +236,7 @@ NUKED_LOCAL void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 			format = GL_DEPTH_STENCIL;
 			if(!ctx->state.depth.wbuffer)
 			{
-				if(!VMHALenv.zfloat)
+				if(!entry->env.zfloat)
 					convert_type = DS_NATIVE;
 			}
 			break;
@@ -263,7 +269,7 @@ NUKED_LOCAL void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 			GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.plane_depth_tex));
 			GL_CHECK(entry->proc.pglTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
 				ctx->state.sw, ctx->state.sh, GL_DEPTH_STENCIL,
-				VMHALenv.zfloat ? GL_FLOAT_32_UNSIGNED_INT_24_8_REV : GL_UNSIGNED_INT_24_8,
+				entry->env.zfloat ? GL_FLOAT_32_UNSIGNED_INT_24_8_REV : GL_UNSIGNED_INT_24_8,
 				native_src));
 			
 			MesaTempFree(ctx, native_src);
@@ -607,9 +613,9 @@ NUKED_LOCAL BOOL MesaBufferFBOSetup(mesa3d_ctx_t *ctx, int width, int height)
 
 		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, fbo->plane_depth_tex));
 		GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0,
-			VMHALenv.zfloat ? GL_DEPTH32F_STENCIL8 : GL_DEPTH24_STENCIL8,
+			entry->env.zfloat ? GL_DEPTH32F_STENCIL8 : GL_DEPTH24_STENCIL8,
 			width, height, 0, GL_DEPTH_STENCIL,
-			VMHALenv.zfloat ? GL_FLOAT_32_UNSIGNED_INT_24_8_REV : GL_UNSIGNED_INT_24_8,			
+			entry->env.zfloat ? GL_FLOAT_32_UNSIGNED_INT_24_8_REV : GL_UNSIGNED_INT_24_8,			
 			NULL));
 
 		GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST));

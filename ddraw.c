@@ -330,7 +330,16 @@ DDENTRY_FPUSAVE(Lock32, LPDDHAL_LOCKDATA, pld)
 	}
 	else
 	{
-		TOPIC("READBACK", "LOCK %X (non primary)", pld->lpDDSurface->lpGbl->fpVidMem);
+		if(pld->lpDDSurface->ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
+		{
+			WARN("Surface primary but not in front, trying to fix...");
+			if(FlipPrimary(ddhal, (void*)pld->lpDDSurface->lpGbl->fpVidMem))
+			{
+				FBHDA_access_begin(0);
+			}
+		}
+		
+		TOPIC("READBACK", "LOCK %X (non primary, primary %X)", pld->lpDDSurface->lpGbl->fpVidMem, ddhal->pFBHDA32->surface);
 	}
 
 #ifdef D3DHAL
@@ -427,8 +436,10 @@ DDENTRY(SetMode32, LPDDHAL_SETMODEDATA, psmod)
 		{
 			ddhal->invalid = TRUE;
 		}
+		TRACE("New display mode: %d x %d x %d",
+			ddhal->pFBHDA32->width, ddhal->pFBHDA32->height, ddhal->pFBHDA32->bpp);
 	}
-	
+
 	return rc;
 }
 

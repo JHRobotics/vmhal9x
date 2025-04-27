@@ -126,7 +126,10 @@ static mesa3d_entry_t *Mesa3DCreate(DWORD pid, mesa3d_entry_t *mesa)
 		}
 			
 		#include "mesa3d_api.h"
-			
+
+		GetVMHALenv(&mesa->env);
+		//memcpy(&mesa->env, &VMHALenv, sizeof(VMHAL_enviroment_t));
+
 	} while(0);
 
 	if(!valid)
@@ -794,23 +797,23 @@ NUKED_LOCAL mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DWORD dds_sid, DW
 				if(gl_ver == NULL)
 					break;
 				
-				long gl_minor = 0;
-				long gl_major = strtol(gl_ver, &ver_minor, 10);
+				entry->gl_minor = 0;
+				entry->gl_major = strtol(gl_ver, &ver_minor, 10);
 				if(ver_minor)
 				{
 					if(ver_minor[0] == '.')
 					{
-						gl_minor = strtol(ver_minor+1, NULL, 10);
+						entry->gl_minor = strtol(ver_minor+1, NULL, 10);
 					}
 				}
 
-				TOPIC("GLVER", "GL version %d.%d - %s", gl_major, gl_minor, gl_ver);
+				TOPIC("GLVER", "GL version %d.%d - %s", entry->gl_major, entry->gl_minor, gl_ver);
 
-				if(!VMHALenv.scanned)
+				if(!entry->env.scanned)
 				{
-					if(gl_major < 3)
+					if(entry->gl_major < 3)
 					{
-						VMHALenv.zfloat = FALSE;
+						entry->env.zfloat = FALSE;
 					}
 
 					GLint max_tex_size = 0;
@@ -823,14 +826,14 @@ NUKED_LOCAL mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DWORD dds_sid, DW
 					{
 						max_tex_size = 16384;
 					}
-					VMHALenv.texture_max_width  = max_tex_size;
-					VMHALenv.texture_max_height = max_tex_size;
-					VMHALenv.num_clips = max_clips;
+					entry->env.texture_max_width  = max_tex_size;
+					entry->env.texture_max_height = max_tex_size;
+					entry->env.num_clips = max_clips;
 
-					TOPIC("GLVER", "VMHALenv.texture_max_width=%d", VMHALenv.texture_max_width);
-					TOPIC("GLVER", "VMHALenv.num_clips=%d", VMHALenv.num_clips);
+					TOPIC("GLVER", "entry->env.texture_max_width=%d", entry->env.texture_max_width);
+					TOPIC("GLVER", "entry->env.num_clips=%d", entry->env.num_clips);
 
-					VMHALenv.scanned = TRUE;
+					entry->env.scanned = TRUE;
 				}
 
 				MesaSetTarget(ctx, dds_sid, ddz_sid, TRUE);
@@ -1072,14 +1075,14 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 	
 	GL_CHECK(entry->proc.pglClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT));
 	
-	ctx->tmu_count = MESA_TMU_CNT();
-	if(VMHALenv.texture_num_units > MESA_TMU_MAX)
+	ctx->tmu_count = entry->env.texture_num_units > MESA_TMU_MAX ? MESA_TMU_MAX : entry->env.texture_num_units;
+	if(entry->env.texture_num_units > MESA_TMU_MAX)
 	{
 		ctx->fbo_tmu = MESA_TMU_MAX;
 	}
 	else
 	{
-		ctx->fbo_tmu = 0;
+		ctx->fbo_tmu = 0; /* VMHALenv.texture_num_units-1 */
 	}
 
 	ctx->state.tmu[0].active = 1;
@@ -1738,7 +1741,7 @@ static void MesaSetClipping(mesa3d_ctx_t *ctx)
 	mesa3d_entry_t *entry = ctx->entry;
 
 	int i;
-	int cnt = NOCRT_MIN(MESA_CLIPS_MAX, VMHALenv.num_clips);
+	int cnt = NOCRT_MIN(MESA_CLIPS_MAX, entry->env.num_clips);
 	if(ctx->state.clipping.enabled)
 	{
 		for(i = 0; i < cnt; i++)
@@ -2784,7 +2787,7 @@ NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DHAL_DP2RENDERSTATE s
 		RENDERSTATE(D3DRENDERSTATE_CLIPPLANEENABLE)
 		{
 			int i;
-			int cnt = NOCRT_MIN(MESA_CLIPS_MAX, VMHALenv.num_clips);
+			int cnt = NOCRT_MIN(MESA_CLIPS_MAX, ctx->entry->env.num_clips);
 			DWORD b = state->dwState;
 			for(i = 0; i < cnt; i++)
 			{
@@ -3095,7 +3098,7 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 			
 			
 			/* needs EXT_texture_filter_anisotropic */
-			if(VMHALenv.max_anisotropy > 1)
+			if(entry->env.max_anisotropy > 1)
 			{
 				GLfloat fanisotropy = 1.0;
 

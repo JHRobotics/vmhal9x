@@ -102,7 +102,7 @@ void FBHDA_access_end(DWORD flags)
 void FBHDA_access_rect(DWORD left, DWORD top, DWORD right, DWORD bottom)
 {
 	if(!FBHDA_valid()) return;
-		
+
 	DWORD rect[4] = {left, top, right, bottom};
 
 	DeviceIoControl(hda_vxd, OP_FBHDA_ACCESS_RECT, &rect, sizeof(rect), NULL, 0, NULL, NULL);

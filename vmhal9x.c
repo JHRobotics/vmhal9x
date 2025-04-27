@@ -33,6 +33,8 @@
 #include "vmhal9x.h"
 #include "wine.h"
 
+#include "vmsetup.h"
+
 #include "nocrt.h"
 
 #ifndef DDHALINFO_ISPRIMARYDISPLAY
@@ -62,8 +64,9 @@ VMDAHAL_t *globalHal;
 
 BOOL halVSync = FALSE;
 
-VMHAL_enviroment_t VMHALenv = {
+static VMHAL_enviroment_t VMHALenv = {
 	FALSE, /* scanned */
+	FALSE, /* runtime dx5 */
 	FALSE, /* runtime dx6 */
 	FALSE, /* runtime dx7 */
 	FALSE, /* runtime dx8 */
@@ -74,7 +77,7 @@ VMHAL_enviroment_t VMHALenv = {
 	TRUE, // touchdepth
 	16384, // tex w  (can be query by GL_MAX_TEXTURE_SIZE)
 	16384, // tex h
-	9, // tex units
+	8 /*9*/, // tex units
 	8, // lights (GL min. is 8)
 	6, // clip planes (GL min. is 6), GL_MAX_CLIP_PLANES
 	TRUE, // use float32 in Z buffer (eg 64-bit F32_S8_X24 depth plane), on FALSE 32-bit S24_S8 depth plane
@@ -245,6 +248,56 @@ BOOL ProcessExists(DWORD pid)
 	return rc;
 }
 
+BOOL GetVMHALenv(VMHAL_enviroment_t *dst)
+{
+	if(dst == NULL) return FALSE;
+
+	memcpy(dst, &VMHALenv, sizeof(VMHAL_enviroment_t));
+
+	if(vmhal_setup_str("hal", "ddi", FALSE) != NULL)
+	{
+		dst->ddi = vmhal_setup_dw("hal", "ddi"); 
+	}
+	
+	if(dst->ddi >= 7)
+	{
+		if(vmhal_setup_str("hal", "hwtl", FALSE) != NULL)
+		{
+			dst->hw_tl = vmhal_setup_dw("hal", "hwtl") ? TRUE : FALSE;
+		}
+	}
+	else
+	{
+		dst->hw_tl = FALSE;
+	}
+	
+	if(vmhal_setup_str("hal", "readback", FALSE) != NULL)
+	{
+		dst->readback = vmhal_setup_dw("hal", "readback") ? TRUE : FALSE;
+	}
+	
+	if(vmhal_setup_str("hal", "touchdepth", FALSE) != NULL)
+	{
+		dst->touchdepth = vmhal_setup_dw("hal", "touchdepth") ? TRUE : FALSE;
+	}
+
+	if(vmhal_setup_str("hal", "vertexblend", FALSE) != NULL)
+	{
+		dst->vertexblend = vmhal_setup_dw("hal", "vertexblend") ? TRUE : FALSE;
+	}
+
+	return TRUE;
+}
+
+void VMHALenv_RuntimeVer(int ver)
+{
+	if(ver >= 9) VMHALenv.dx9 = TRUE;
+	if(ver >= 8) VMHALenv.dx8 = TRUE;
+	if(ver >= 7) VMHALenv.dx7 = TRUE;
+	if(ver >= 6) VMHALenv.dx6 = TRUE;
+	if(ver >= 5) VMHALenv.dx5 = TRUE;
+}
+
 //VMDAHAL_t __stdcall *DriverInit(LPVOID ptr)
 DWORD __stdcall DriverInit(LPVOID ptr)
 {
@@ -274,8 +327,10 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 	globalHal->cb32.WaitForVerticalBlank = WaitForVerticalBlank32;
 	globalHal->cb32.Blt = Blt32;
 	globalHal->cb32.GetBltStatus = GetBltStatus32;
-	globalHal->cb32.SetExclusiveMode = SetExclusiveMode32;
-//	globalHal->cb32.SetMode = SetMode32;
+//	globalHal->cb32.SetExclusiveMode = SetExclusiveMode32;
+#ifdef DEBUG
+	globalHal->cb32.SetMode = SetMode32;
+#endif
 	globalHal->cb32.SetColorKey = SetColorKey32;
 	globalHal->cb32.AddAttachedSurface = AddAttachedSurface32;
 

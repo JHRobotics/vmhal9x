@@ -43,6 +43,8 @@
 /* FROM ddrvmem.h */
 typedef DWORD HDDRVITEM, * LPHDDRVITEM;
 
+#define MESA_TMU_CNT() ((env.texture_num_units > MESA_TMU_MAX) ? MESA_TMU_MAX : env.texture_num_units)
+
 enum DDRV_RETURN {
 	DDRV_SUCCESS_STOP,
 	DDRV_SUCCESS_CONTINUE,
@@ -333,7 +335,7 @@ DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 
 	LPBYTE cmdBufferStart    = insStart + pd->dwCommandOffset;
 	LPBYTE cmdBufferEnd      = cmdBufferStart + pd->dwCommandLength;
-	BOOL rc = FALSE;
+	DWORD rc = DD_OK;
 
 	GL_BLOCK_BEGIN(pd->dwhContext)
 		MesaFVFSet(ctx, pd->dwVertexType, pd->dwVertexSize);
@@ -345,7 +347,7 @@ DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 		MesaApplyMaterial(ctx);
 		if(!ctx->state.recording)
 		{
-			rc = MesaDraw6(ctx, cmdBufferStart, cmdBufferEnd, vertices, &pd->dwErrorOffset, RStates);
+			rc = MesaDraw6(ctx, cmdBufferStart, cmdBufferEnd, vertices, &pd->dwErrorOffset, RStates, pd->dwVertexLength);
 		}
 		else
 		{
@@ -354,14 +356,7 @@ DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 		MesaSpaceIdentityReset(ctx);
 	GL_BLOCK_END
 
-	if(rc)
-	{
-		pd->ddrval = DD_OK;
-	}
-	else
-	{
-		pd->ddrval = D3DERR_COMMAND_UNPARSED;
-	}
+	pd->ddrval = rc;
 	TRACE("MesaDraw6(...) = %d", rc);
 
 #if 0
@@ -670,6 +665,9 @@ DDENTRY_FPUSAVE(DestroyDDLocal32, LPDDHAL_DESTROYDDLOCALDATA, lpdddd)
 
 static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lpActualSize, void *lpvData)
 {
+	VMHAL_enviroment_t env;
+	GetVMHALenv(&env);
+
 	switch (pgdi2->dwType)
 	{
 		case D3DGDI2_TYPE_DXVERSION:
@@ -683,16 +681,13 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 			// DD_RUNTIME_VERSION which is defined in ddrawi.h.
 			DD_DXVERSION *pdxv = (DD_DXVERSION*)pgdi2;
 			if(pdxv->dwDXVersion >= 0x700)
-			{
-				VMHALenv.dx6 = TRUE;
-				VMHALenv.dx7 = TRUE;
-			}
+				VMHALenv_RuntimeVer(7);
 
 			if(pdxv->dwDXVersion >= 0x800)
-				VMHALenv.dx8 = TRUE;
+				VMHALenv_RuntimeVer(8);
 
 			if(pdxv->dwDXVersion >= 0x900)
-				VMHALenv.dx9 = TRUE;
+				VMHALenv_RuntimeVer(9);
 
 			TRACE("pdxv->dwDXVersion=0x%X", pdxv->dwDXVersion);
 
@@ -734,6 +729,7 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 		case D3DGDI2_TYPE_GETD3DCAPS8:
 		{
 			TRACE("D3DGDI2_TYPE_GETD3DCAPS8");
+
 			// The runtime is requesting the DX8 D3D caps 
 			D3DCAPS8 caps;
 			memset(&caps, 0, sizeof(D3DCAPS8));
@@ -839,11 +835,11 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 			caps.MaxSimultaneousTextures = MESA_TMU_CNT();
 			caps.VertexProcessingCaps = MYVERTEXPROCCAPS;
 
-			caps.MaxActiveLights = VMHALenv.num_light;
-			caps.MaxUserClipPlanes = VMHALenv.num_clips;
+			caps.MaxActiveLights = env.num_light;
+			caps.MaxUserClipPlanes = env.num_clips;
 			caps.MaxVertexBlendMatrices = 0;
 			caps.MaxVertexBlendMatrixIndex = 0;
-			if(VMHALenv.vertexblend)
+			if(env.vertexblend)
 			{
 			 	caps.MaxVertexBlendMatrices = MESA_WORLDS_MAX;
 			 	caps.MaxVertexBlendMatrixIndex = 3;
@@ -908,6 +904,8 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 DDENTRY_FPUSAVE(GetDriverInfo32, LPDDHAL_GETDRIVERINFODATA, lpInput)
 {
 	TRACE_ENTRY
+	VMHAL_enviroment_t env;
+	GetVMHALenv(&env);
 
 #ifdef DEBUG
 	SetExceptionHandler();
@@ -948,7 +946,7 @@ DDENTRY_FPUSAVE(GetDriverInfo32, LPDDHAL_GETDRIVERINFODATA, lpInput)
 		COPY_INFO(lpInput, D3DCallbacks2, D3DHAL_CALLBACKS2);
 		TRACE("GUID_D3DCallbacks2 success");
 	}
-	else if(IsEqualIID(&lpInput->guidInfo, &GUID_D3DCallbacks3) && VMHALenv.ddi >= 6)
+	else if(IsEqualIID(&lpInput->guidInfo, &GUID_D3DCallbacks3) && env.ddi >= 6)
 	{
 		/* DX6 */
 		D3DHAL_CALLBACKS3 D3DCallbacks3;
@@ -963,7 +961,7 @@ DDENTRY_FPUSAVE(GetDriverInfo32, LPDDHAL_GETDRIVERINFODATA, lpInput)
 		D3DCallbacks3.Clear2                    = Clear2_32;
 		D3DCallbacks3.dwFlags                  |= D3DHAL3_CB32_CLEAR2;
 
-		VMHALenv.dx6 = TRUE;
+		VMHALenv_RuntimeVer(6);
 
   	COPY_INFO(lpInput, D3DCallbacks3, D3DHAL_CALLBACKS3);
     TRACE("GUID_D3DCallbacks3 success");
@@ -977,10 +975,12 @@ DDENTRY_FPUSAVE(GetDriverInfo32, LPDDHAL_GETDRIVERINFODATA, lpInput)
 		misccb.dwFlags = DDHAL_MISCCB32_GETSYSMEMBLTSTATUS;
 		misccb.GetSysmemBltStatus = GetBltStatus32;
 		
+		VMHALenv_RuntimeVer(5);
+
 		COPY_INFO(lpInput, misccb, DDHAL_DDMISCELLANEOUSCALLBACKS);
 		TRACE("GUID_MiscellaneousCallbacks success");
 	}
-	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_Miscellaneous2Callbacks) && VMHALenv.ddi >= 7)
+	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_Miscellaneous2Callbacks) && env.ddi >= 7)
 	{
 		/* DX7 */
 		DDHAL_DDMISCELLANEOUS2CALLBACKS misccb2;
@@ -994,9 +994,8 @@ DDENTRY_FPUSAVE(GetDriverInfo32, LPDDHAL_GETDRIVERINFODATA, lpInput)
 		misccb2.CreateSurfaceEx = CreateSurfaceEx32;
 		misccb2.DestroyDDLocal  = DestroyDDLocal32;
 
-		VMHALenv.dx7 = TRUE;
-		VMHALenv.dx6 = TRUE;
-		
+		VMHALenv_RuntimeVer(7);
+
 		COPY_INFO(lpInput, misccb2, DDHAL_DDMISCELLANEOUS2CALLBACKS);
 		TRACE("GUID_Miscellaneous2Callbacks success");
 	}
@@ -1043,8 +1042,8 @@ DDENTRY_FPUSAVE(GetDriverInfo32, LPDDHAL_GETDRIVERINFODATA, lpInput)
 		memset(&dxcaps, 0, sizeof(D3DHAL_D3DEXTENDEDCAPS7));
 		dxcaps.dwMinTextureWidth  = 1;
 		dxcaps.dwMinTextureHeight = 1;
-		dxcaps.dwMaxTextureWidth  = VMHALenv.texture_max_width;
-		dxcaps.dwMaxTextureHeight = VMHALenv.texture_max_height;
+		dxcaps.dwMaxTextureWidth  = env.texture_max_width;
+		dxcaps.dwMaxTextureHeight = env.texture_max_height;
 		dxcaps.dwMinStippleWidth  = 32;
 		dxcaps.dwMinStippleHeight = 32;
 		dxcaps.dwMaxStippleWidth  = 32;
@@ -1053,8 +1052,8 @@ DDENTRY_FPUSAVE(GetDriverInfo32, LPDDHAL_GETDRIVERINFODATA, lpInput)
 		dxcaps.dwFVFCaps                   = MESA_TMU_CNT(); /* low 4 bits: 0 implies TLVERTEX only, 1..8 imply FVF aware */
     dxcaps.wMaxTextureBlendStages      = MESA_TMU_CNT();
     dxcaps.wMaxSimultaneousTextures    = MESA_TMU_CNT();
-    dxcaps.dwMaxTextureRepeat          = VMHALenv.texture_max_width;
-    dxcaps.dwMaxTextureAspectRatio     = VMHALenv.texture_max_width;
+    dxcaps.dwMaxTextureRepeat          = env.texture_max_width;
+    dxcaps.dwMaxTextureAspectRatio     = env.texture_max_width;
     dxcaps.dwTextureOpCaps = MYTEXOPCAPS;
   	dxcaps.wMaxTextureBlendStages      = MESA_TMU_CNT();
     dxcaps.wMaxSimultaneousTextures    = MESA_TMU_CNT();
@@ -1074,22 +1073,22 @@ DDENTRY_FPUSAVE(GetDriverInfo32, LPDDHAL_GETDRIVERINFODATA, lpInput)
     T&L:
     dxcaps.dwMaxActiveLights = 0;
     */
-    if(VMHALenv.hw_tl && VMHALenv.ddi >= 7)
+    if(env.hw_tl && env.ddi >= 7)
   	{
-			dxcaps.dwMaxActiveLights = VMHALenv.num_light;
-			dxcaps.wMaxUserClipPlanes = VMHALenv.num_clips; // ref driver = 6
+			dxcaps.dwMaxActiveLights = env.num_light;
+			dxcaps.wMaxUserClipPlanes = env.num_clips; // ref driver = 6
 			dxcaps.wMaxVertexBlendMatrices = 0;
 
-			if(VMHALenv.vertexblend)
+			if(env.vertexblend)
 				dxcaps.wMaxVertexBlendMatrices = MESA_WORLDS_MAX;
 				//^ this need GL_ARB_vertex_blend or some extra CPU power
 
 			dxcaps.dwVertexProcessingCaps = MYVERTEXPROCCAPS;
 		}
 
-		if(VMHALenv.max_anisotropy > 1)
+		if(env.max_anisotropy > 1)
 		{
-			dxcaps.dwMaxAnisotropy = VMHALenv.max_anisotropy;
+			dxcaps.dwMaxAnisotropy = env.max_anisotropy;
 		}
 
 		TRACE("lpInput->dwExpectedSize=%d, D3DHAL_D3DEXTENDEDCAPS5=%d, D3DHAL_D3DEXTENDEDCAPS6=%d, D3DHAL_D3DEXTENDEDCAPS7=%d",
@@ -1098,12 +1097,12 @@ DDENTRY_FPUSAVE(GetDriverInfo32, LPDDHAL_GETDRIVERINFODATA, lpInput)
 			sizeof(D3DHAL_D3DEXTENDEDCAPS6),
 			sizeof(D3DHAL_D3DEXTENDEDCAPS7));
 
-		if(VMHALenv.ddi <= 5)
+		if(env.ddi <= 5)
 		{
 			dxcaps.dwSize = sizeof(D3DHAL_D3DEXTENDEDCAPS5);
 			COPY_INFO(lpInput, dxcaps, D3DHAL_D3DEXTENDEDCAPS5);
 		}
-		else if(VMHALenv.ddi <= 6)
+		else if(env.ddi <= 6)
 		{
 			dxcaps.dwSize = sizeof(D3DHAL_D3DEXTENDEDCAPS6);
 			COPY_INFO(lpInput, dxcaps, D3DHAL_D3DEXTENDEDCAPS6);
@@ -1116,7 +1115,7 @@ DDENTRY_FPUSAVE(GetDriverInfo32, LPDDHAL_GETDRIVERINFODATA, lpInput)
 
 		TRACE("GUID_D3DExtendedCaps success");
 	}
-	else if(IsEqualIID(&lpInput->guidInfo, &GUID_ZPixelFormats) && VMHALenv.ddi >= 6)
+	else if(IsEqualIID(&lpInput->guidInfo, &GUID_ZPixelFormats) && env.ddi >= 6)
 	{
 #pragma pack(push)
 #pragma pack(1)
@@ -1179,7 +1178,7 @@ DDENTRY_FPUSAVE(GetDriverInfo32, LPDDHAL_GETDRIVERINFODATA, lpInput)
 		lpInput->ddRVal = DD_OK;
 		TRACE("GUID_ZPixelFormats success");
 	}
-	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_D3DParseUnknownCommandCallback) && VMHALenv.ddi >= 6) 
+	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_D3DParseUnknownCommandCallback) && env.ddi >= 6) 
 	{
 		mesa3d_entry_t *entry = Mesa3DGet(GetCurrentProcessId(), TRUE);
 		if(entry)
@@ -1189,7 +1188,7 @@ DDENTRY_FPUSAVE(GetDriverInfo32, LPDDHAL_GETDRIVERINFODATA, lpInput)
 			TRACE("GUID_D3DParseUnknownCommandCallback loaded");
 		}
 	}
-	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_NonLocalVidMemCaps) && VMHALenv.ddi >= 6)
+	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_NonLocalVidMemCaps) && env.ddi >= 6)
 	{
 		DDNONLOCALVIDMEMCAPS DDNonLocalVidMemCaps;
 		memset(&DDNonLocalVidMemCaps, 0, sizeof(DDNonLocalVidMemCaps));
@@ -1271,7 +1270,7 @@ DDENTRY_FPUSAVE(GetDriverInfo32, LPDDHAL_GETDRIVERINFODATA, lpInput)
 		TRACE("GUID_MotionCompCallbacks zero");	
 	}
 	// NOTE: GUID_GetDriverInfo2 has the same value as GUID_DDStereoMode
-	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_GetDriverInfo2) && VMHALenv.ddi >= 8) /*  */
+	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_GetDriverInfo2) && env.ddi >= 8) /*  */
 	{
 		if(((DD_GETDRIVERINFO2DATA*)(lpInput->lpvData))->dwMagic == D3DGDI2_MAGIC) /* GUID_GetDriverInfo2 */
 		{
@@ -1323,12 +1322,12 @@ DDENTRY(ContextCreate32, LPD3DHAL_CONTEXTCREATEDATA, pccd)
 		mesa3d_ctx_t *ctx = NULL;
 		
 		entry->runtime_ver = 5;
-		if(VMHALenv.dx6 && VMHALenv.ddi >= 6)
+		if(entry->env.dx6 && entry->env.ddi >= 6)
 		{
 			entry->runtime_ver = 6;
 		}
 
-		if(VMHALenv.dx7 && VMHALenv.ddi >= 7)
+		if(entry->env.dx7 && entry->env.ddi >= 7)
 		{
 			entry->runtime_ver = 7;
 		}
@@ -1918,16 +1917,18 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, LP
 	myGlobalD3DHal.dwNumClipVertices = 0;
 	myGlobalD3DHal.dwNumTextureFormats = (sizeof(myTextureFormats) / sizeof(DDSURFACEDESC));
 	myGlobalD3DHal.lpTextureFormats = &myTextureFormats[0];
+	VMHAL_enviroment_t env;
+	GetVMHALenv(&env);
 	
-	if(VMHALenv.ddi >= 7)
+	if(env.ddi >= 7)
 	{
 		myGlobalD3DHal.hwCaps = myCaps6;
-		if(VMHALenv.ddi < 8)
+		if(env.ddi < 8)
 		{
 			myGlobalD3DHal.hwCaps.dwDevCaps &= ~(CAPS_DX8);
 		}
 		
-		if(VMHALenv.hw_tl)
+		if(env.hw_tl)
 		{
 			myGlobalD3DHal.hwCaps.dwDevCaps |= 
 				D3DDEVCAPS_HWTRANSFORMANDLIGHT /* Device can support transformation and lighting in hardware and DRAWPRIMITIVES2EX must be also */
@@ -1935,7 +1936,7 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, LP
 				| D3DDEVCAPS_HWRASTERIZATION; /* Device has HW acceleration for rasterization */
 		}
 	}
-	else if(VMHALenv.ddi >= 6)
+	else if(env.ddi >= 6)
 	{
 		myGlobalD3DHal.hwCaps = myCaps6;
 		myGlobalD3DHal.hwCaps.dwDevCaps &= ~(CAPS_DX7|CAPS_DX8);
@@ -1944,7 +1945,7 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, LP
 	*lplpGlobal = (DWORD)&myGlobalD3DHal;
 	*lplpHALCallbacks = (DWORD)&myD3DHALCallbacks;
 
-	if(VMHALenv.ddi >= 7)
+	if(env.ddi >= 7)
 	{
 		memcpy(&myD3DHALCallbacks7, &myD3DHALCallbacks, sizeof(myD3DHALCallbacks));
 		myD3DHALCallbacks7.SceneCapture = NULL;
@@ -1972,11 +1973,16 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, LP
 		DDSCAPS_VIDEOMEMORY |
 	0;
 	lpHALFlags->zcaps = DDBD_16 | DDBD_24 | DDBD_32;
-	lpHALFlags->caps2 = DDCAPS2_WIDESURFACES | DDCAPS2_NO2DDURING3DSCENE;
+	lpHALFlags->caps2 = DDCAPS2_WIDESURFACES;
+	/*
+		cap DDCAPS2_NO2DDURING3DSCENE should be theoretically safer to set,
+		BUT some games forbid to start with this flag set.
+	*/
+	
 //	lpHALFlags->caps2 = DDCAPS2_NO2DDURING3DSCENE | DDCAPS2_CANMANAGETEXTURE;
 
 	/* buffer allocation is done in driver only when this flag is set */
-	//lpHALFlags->ddscaps |= DDSCAPS_EXECUTEBUFFER;
+	lpHALFlags->ddscaps |= DDSCAPS_EXECUTEBUFFER;
 
 	return TRUE;
 }

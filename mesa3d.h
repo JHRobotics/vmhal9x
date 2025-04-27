@@ -400,6 +400,9 @@ typedef struct mesa3d_entry
 	HANDLE lib;
 	BOOL os; // offscreen rendering
 	BOOL runtime_ver; // 3, 5, 6, 7
+	int gl_major;
+	int gl_minor;
+	VMHAL_enviroment_t env;
 	mesa3d_ctx_t *ctx[MESA3D_MAX_CTXS];
 	mesa_surfaces_table_t surfaces_tables[SURFACE_TABLES_PER_ENTRY];
 	OSMesaGetProcAddress_h GetProcAddress;
@@ -510,8 +513,8 @@ NUKED_LOCAL void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, vo
 
 NUKED_LOCAL void MesaDrawRefreshState(mesa3d_ctx_t *ctx);
 NUKED_LOCAL void MesaDraw3(mesa3d_ctx_t *ctx, DWORD op, void *prim, LPBYTE vertices);
-NUKED_LOCAL BOOL MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LPBYTE vertices, DWORD *error_offset, LPDWORD RStates);
-NUKED_LOCAL BOOL MesaRecord6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LPBYTE vertices, DWORD *error_offset, LPDWORD RStates);
+NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LPBYTE vertices, DWORD *error_offset, LPDWORD RStates, DWORD vertices_size);
+NUKED_LOCAL DWORD MesaRecord6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LPBYTE vertices, DWORD *error_offset, LPDWORD RStates);
 
 NUKED_LOCAL void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, DWORD stencil, int rects_cnt, RECT *rects);
 NUKED_LOCAL DWORD DDSurf_GetBPP(DDSURF *surf);
@@ -616,8 +619,6 @@ NUKED_LOCAL void MesaRecTMUState(mesa3d_ctx_t *ctx, DWORD tmu, DWORD state, DWOR
 	(_v)[1] = (_dxcv).g; \
 	(_v)[2] = (_dxcv).b; \
 	(_v)[3] = (_dxcv).a
-
-#define MESA_TMU_CNT() ((VMHALenv.texture_num_units > MESA_TMU_MAX) ? MESA_TMU_MAX : VMHALenv.texture_num_units)
 
 #define SURFACES_TABLE_POOL 1024
 

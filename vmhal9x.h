@@ -124,6 +124,7 @@ BOOL ProcessExists(DWORD pid);
 #define INVALID_OFFSET 0xFFFFFFFF
 BOOL IsInFront(VMDAHAL_t *ddhal, void *ptr);
 DWORD GetOffset(VMDAHAL_t *ddhal, void *ptr);
+BOOL FlipPrimary(VMDAHAL_t *ddhal, void *to);
 
 /* modes */
 void UpdateCustomMode(VMDAHAL_t *hal);
@@ -184,6 +185,7 @@ inline static DWORD SurfacePitch(DWORD width, DWORD bpp)
 typedef struct _VMHAL_enviroment
 {
 	BOOL scanned;
+	BOOL dx5;
 	BOOL dx6; // latch for runtime >= dx6
 	BOOL dx7; // ... dx7
 	BOOL dx8; // ... dx8
@@ -204,6 +206,8 @@ typedef struct _VMHAL_enviroment
 
 #define DX7_SURFACE_NEST_TYPES (DDSCAPS_TEXTURE | DDSCAPS_3DDEVICE | DDSCAPS_ZBUFFER)
 
-extern VMHAL_enviroment_t VMHALenv;
+BOOL GetVMHALenv(VMHAL_enviroment_t *dst);
+void VMHALenv_RuntimeVer(int ver);
+//extern VMHAL_enviroment_t VMHALenv;
 
 #endif /* __VMHAL9X_H__INCLUDED__ */
