@@ -157,7 +157,7 @@ DWORD __stdcall DrawOnePrimitive32(LPD3DHAL_DRAWONEPRIMITIVEDATA lpDrawData)
 	VALIDATE(lpDrawData)
 	
 	GL_BLOCK_BEGIN(lpDrawData->dwhContext)
-		MesaDraw(ctx, lpDrawData->PrimitiveType, lpDrawData->VertexType, lpDrawData->lpvVertices, lpDrawData->dwNumVertices);
+		MesaDraw5(ctx, lpDrawData->PrimitiveType, lpDrawData->VertexType, lpDrawData->lpvVertices, lpDrawData->dwNumVertices);
 	GL_BLOCK_END
 
 	lpDrawData->ddrval = DD_OK;
@@ -172,7 +172,7 @@ DWORD __stdcall DrawOneIndexedPrimitive32(LPD3DHAL_DRAWONEINDEXEDPRIMITIVEDATA l
 	VALIDATE(lpDrawData)
 
 	GL_BLOCK_BEGIN(lpDrawData->dwhContext)
-		MesaDrawIndex(ctx, lpDrawData->PrimitiveType, lpDrawData->VertexType,
+		MesaDraw5Index(ctx, lpDrawData->PrimitiveType, lpDrawData->VertexType,
 			lpDrawData->lpvVertices, lpDrawData->dwNumVertices,
 			lpDrawData->lpwIndices, lpDrawData->dwNumIndices
 		);
@@ -251,7 +251,7 @@ DWORD __stdcall DrawPrimitives32(LPD3DHAL_DRAWPRIMITIVESDATA lpDrawData)
 		{
 			TOPIC("TEX", "batch %d, type: %d", drawPrimitiveCounts->wNumVertices, drawPrimitiveCounts->wPrimitiveType);
 			
-			MesaDraw(ctx, drawPrimitiveCounts->wPrimitiveType, drawPrimitiveCounts->wVertexType, (LPD3DTLVERTEX)lpData, drawPrimitiveCounts->wNumVertices);
+			MesaDraw5(ctx, drawPrimitiveCounts->wPrimitiveType, drawPrimitiveCounts->wVertexType, (LPD3DTLVERTEX)lpData, drawPrimitiveCounts->wNumVertices);
 			/* wVertexType should be only D3DVT_TLVERTEX, but for all cases... */
 			switch(drawPrimitiveCounts->wVertexType)
 			{
@@ -266,7 +266,7 @@ DWORD __stdcall DrawPrimitives32(LPD3DHAL_DRAWPRIMITIVESDATA lpDrawData)
 					lpData += drawPrimitiveCounts->wNumVertices * sizeof(D3DTLVERTEX);
 					break;
 			}
-		}		
+		}
 	} while(drawPrimitiveCounts->wNumVertices);
 
 	GL_BLOCK_END
@@ -1441,6 +1441,7 @@ DDENTRY(RenderState32, LPD3DHAL_RENDERSTATEDATA, prd)
 			MesaSetRenderState(ctx, &rstate, NULL);
 			lpState++;
 		}
+		MesaDrawRefreshState(ctx);
 	GL_BLOCK_END
 	
 	prd->ddrval = DD_OK;
@@ -1458,13 +1459,13 @@ DDENTRY(RenderPrimitive32, LPD3DHAL_RENDERPRIMITIVEDATA, prd)
   	LPD3DINSTRUCTION lpIns = &prd->diInstruction;
   	LPBYTE prim = lpData + prd->dwOffset;
   	LPBYTE vertices = NULL;
-  	
+
   	if(prd->lpTLBuf != NULL)
   	{
   		LPBYTE lpVData = (LPBYTE)(((LPDDRAWI_DDRAWSURFACE_INT)prd->lpTLBuf)->lpLcl->lpGbl->fpVidMem);
   		vertices = lpVData + prd->dwTLOffset;
   	}
-		
+
 		if(ctx->state.zvisible)
 		{
 			/* DDK98: If you don't implement Z visibility testing, just do this. */
@@ -1531,7 +1532,7 @@ DDENTRY(TextureDestroy32, LPD3DHAL_TEXTUREDESTROYDATA, ptcd)
 	GL_BLOCK_BEGIN(ptcd->dwhContext)
 		MesaDestroyTexture(MESA_HANDLE_TO_TEX(ptcd->dwHandle), FALSE, 0);
 	GL_BLOCK_END
-	
+
 	ptcd->ddrval = DD_OK;
 	return DDHAL_DRIVER_HANDLED;
 }
@@ -1919,7 +1920,12 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, LP
 	myGlobalD3DHal.lpTextureFormats = &myTextureFormats[0];
 	VMHAL_enviroment_t env;
 	GetVMHALenv(&env);
-	
+
+	if(env.allow_palette == FALSE)
+	{
+		myGlobalD3DHal.dwNumTextureFormats -= NUM_PALETTE_FORMATS;
+	}
+
 	if(env.ddi >= 7)
 	{
 		myGlobalD3DHal.hwCaps = myCaps6;

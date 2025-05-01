@@ -82,7 +82,9 @@ static VMHAL_enviroment_t VMHALenv = {
 	6, // clip planes (GL min. is 6), GL_MAX_CLIP_PLANES
 	TRUE, // use float32 in Z buffer (eg 64-bit F32_S8_X24 depth plane), on FALSE 32-bit S24_S8 depth plane
 	16, // max anisotropy
-	FALSE // vertexblend
+	FALSE, // vertexblend
+	FALSE, // use palette
+	TRUE,  // always use GL_LINEAR
 };
 
 static DWORD CalcPitch(DWORD w, DWORD bpp)
@@ -254,6 +256,13 @@ BOOL GetVMHALenv(VMHAL_enviroment_t *dst)
 
 	memcpy(dst, &VMHALenv, sizeof(VMHAL_enviroment_t));
 
+	return TRUE;
+}
+
+static void ReadEnv(VMHAL_enviroment_t *dst)
+{
+	memcpy(dst, &VMHALenv, sizeof(VMHAL_enviroment_t));
+
 	if(vmhal_setup_str("hal", "ddi", FALSE) != NULL)
 	{
 		dst->ddi = vmhal_setup_dw("hal", "ddi"); 
@@ -286,7 +295,15 @@ BOOL GetVMHALenv(VMHAL_enviroment_t *dst)
 		dst->vertexblend = vmhal_setup_dw("hal", "vertexblend") ? TRUE : FALSE;
 	}
 
-	return TRUE;
+	if(vmhal_setup_str("hal", "palette", FALSE) != NULL)
+	{
+		dst->allow_palette = vmhal_setup_dw("hal", "palette") ? TRUE : FALSE;
+	}
+
+	if(vmhal_setup_str("hal", "filter", FALSE) != NULL)
+	{
+		dst->always_filter = vmhal_setup_dw("hal", "filter") ? TRUE : FALSE;
+	}
 }
 
 void VMHALenv_RuntimeVer(int ver)
@@ -313,7 +330,9 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 		offsetof(VMDAHAL_t, cb32),
 		offsetof(VMDAHAL_t, FBHDA_version)
 	);
-	
+
+	ReadEnv(&VMHALenv);
+
 	globalHal = ptr;
 	
 	globalHal->cb32.CreateSurface = CreateSurface32;
@@ -335,7 +354,10 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 	globalHal->cb32.AddAttachedSurface = AddAttachedSurface32;
 
 #ifdef D3DHAL
-	globalHal->cb32.GetDriverInfo = GetDriverInfo32;
+	if(VMHALenv.ddi >= 5)
+	{
+		globalHal->cb32.GetDriverInfo = GetDriverInfo32;
+	}
 	globalHal->cb32.flags = DDHALINFO_ISPRIMARYDISPLAY; // TODO: set for drivers DDHALINFO_MODEXILLEGAL (vmware workstation)
 	if(VMHALenv.ddi >= 8)
 	{

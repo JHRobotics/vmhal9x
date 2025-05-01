@@ -148,43 +148,16 @@ NUKED_LOCAL void MesaDrawTLVertex(mesa3d_ctx_t *ctx, LPD3DTLVERTEX vertex)
 	
 	if(ctx->state.tmu[0].image)
 	{
-		entry->proc.pglTexCoord2f(CONV_U_TO_S(vertex->tu), CONV_V_TO_T(vertex->tv));
+		entry->proc.pglMultiTexCoord2f(GL_TEXTURE0, CONV_U_TO_S(vertex->tu), CONV_V_TO_T(vertex->tv));
 		TOPIC("TEX", "glTexCoord2f(%f, %f)", vertex->tu, vertex->tv);
 	}
 
-	entry->proc.pglColor4ub(
-		RGBA_GETRED(vertex->color),
-		RGBA_GETGREEN(vertex->color),
-		RGBA_GETBLUE(vertex->color),
-		RGBA_GETALPHA(vertex->color)
-	);
+	LoadColor1(entry, ctx, vertex->color);
+	LoadColor2(entry, ctx, vertex->specular);
 
-	if(ctx->state.specular_vertex)
-	{
-		entry->proc.pglSecondaryColor3ub(
-			RGBA_GETRED(vertex->specular),
-			RGBA_GETGREEN(vertex->specular),
-			RGBA_GETBLUE(vertex->specular)
-		);
-	}
-
-#if 0
-	GLfloat x, y, z, w = 2.0;
-	MesaUnproject(ctx, vertex->sx, vertex->sy, vertex->sz, &x, &y, &z);
-	// w = (1.0/vertex->rhw) - 0.5; = currently best
-	if(vertex->rhw != 0)
-	{
-		w = 2.0/vertex->rhw;
-	}
-	
-	entry->proc.pglVertex4f(x*w, y*w, z*w, w);
-	TOPIC("TEX", "glVertex4f(%f, %f, %f, %f)", x, y, z, w);	
-#else
 	GLfloat v[4];
 	SV_UNPROJECT(v, vertex->sx, vertex->sy, vertex->sz, vertex->rhw);
 	entry->proc.pglVertex4fv(&v[0]);
-#endif
-
 }
 
 NUKED_LOCAL void MesaDrawLVertex(mesa3d_ctx_t *ctx, LPD3DLVERTEX vertex)
@@ -193,37 +166,24 @@ NUKED_LOCAL void MesaDrawLVertex(mesa3d_ctx_t *ctx, LPD3DLVERTEX vertex)
 	
 	if(ctx->state.tmu[0].image)
 	{
-		entry->proc.pglTexCoord2f(CONV_U_TO_S(vertex->tu), CONV_V_TO_T(vertex->tv));
+		entry->proc.pglMultiTexCoord2f(GL_TEXTURE0, CONV_U_TO_S(vertex->tu), CONV_V_TO_T(vertex->tv));
 	}
 
-	entry->proc.pglColor4ub(
-		RGBA_GETRED(vertex->color),
-		RGBA_GETGREEN(vertex->color),
-		RGBA_GETBLUE(vertex->color),
-		RGBA_GETALPHA(vertex->color)
-	);
-	
-	if(ctx->state.specular_vertex)
-	{
-		entry->proc.pglSecondaryColor3ub(
-			RGBA_GETRED(vertex->specular),
-			RGBA_GETGREEN(vertex->specular),
-			RGBA_GETBLUE(vertex->specular)
-		);
-	}
-	
+	LoadColor1(entry, ctx, vertex->color);
+	LoadColor2(entry, ctx, vertex->specular);
+
 	entry->proc.pglVertex3f(vertex->x, vertex->y, vertex->z);
 }
 
 NUKED_LOCAL void MesaDrawVertex(mesa3d_ctx_t *ctx, LPD3DVERTEX vertex)
 {
 	mesa3d_entry_t *entry = ctx->entry;
-	
+
 	if(ctx->state.tmu[0].image)
 	{
-		entry->proc.pglTexCoord2f(CONV_U_TO_S(vertex->tu), CONV_V_TO_T(vertex->tv));
+		entry->proc.pglMultiTexCoord2f(GL_TEXTURE0, CONV_U_TO_S(vertex->tu), CONV_V_TO_T(vertex->tv));
 	}
-					
+
 	entry->proc.pglVertex3f(vertex->x, vertex->y, vertex->z);
 }
 

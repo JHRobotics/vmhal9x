@@ -334,12 +334,17 @@ NUKED_LOCAL void MesaTLRecalcModelview(mesa3d_ctx_t *ctx)
 	ctx->render.dirty = TRUE; \
 	ctx->render.zdirty = TRUE
 
+#define RENDER_BEGIN
+
+#define RENDER_END SET_DIRTY
+
 #define PD2_ERROR *error_offset = (LPBYTE)inst - (LPBYTE)cmdBufferStart; WARN("D3DERR_COMMAND_UNPARSED"); return D3DERR_COMMAND_UNPARSED
 
 #define CHECK_LIMITS(_t, _c) if(prim + (sizeof(_t) * (_c)) > cmdBufferEnd){ \
 	 PD2_ERROR;}
 
 #define CHECK_LIMITS_MORE(_t, _c, _extra) if(prim + (sizeof(_t) * (_c)) + _extra > cmdBufferEnd){ \
+	WARN("start=%d, count=%d, extra=%d size=%d", prim, sizeof(_t)*(_c), _extra, cmdBufferEnd); \
 	 PD2_ERROR;}
 	 
 #define CHECK_LIMITS_SIZE(_s) if(prim + (_s) > cmdBufferEnd){ \
@@ -401,6 +406,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				// field of D3DHAL_DP2COMMAND.
 				TOPIC("DRAW", "DRAW - D3DDP2OP_POINTS, blocks = %d", inst->wPrimitiveCount);
 				CHECK_LIMITS(D3DHAL_DP2POINTS, inst->wPrimitiveCount);
+				RENDER_BEGIN;
 				for(i = 0; i < inst->wPrimitiveCount; i++)
 				{
 					D3DHAL_DP2POINTS *points = (D3DHAL_DP2POINTS*)prim;
@@ -409,7 +415,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 					MesaDrawFVFs(ctx, GL_POINTS, vertices, points->wVStart, points->wCount);
 					prim += sizeof(D3DHAL_DP2POINTS);
 				}
-				SET_DIRTY;
+				RENDER_END;
 				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_LINELIST)
@@ -427,8 +433,9 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				start = ((D3DHAL_DP2LINELIST*)prim)->wVStart;
 				CHECK_DATA2(start, inst->wPrimitiveCount*2);
 
+				RENDER_BEGIN;
 				MesaDrawFVFs(ctx, GL_LINES, vertices, start, inst->wPrimitiveCount*2);
-				SET_DIRTY;
+				RENDER_END;
 				NEXT_INST(sizeof(D3DHAL_DP2LINELIST));
 				break;
 			COMMAND(D3DDP2OP_LINESTRIP)
@@ -445,8 +452,9 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				start = ((D3DHAL_DP2LINESTRIP*)prim)->wVStart;
 				CHECK_DATA2(start, inst->wPrimitiveCount*1);
 
+				RENDER_BEGIN;
 				MesaDrawFVFs(ctx, GL_LINE_STRIP, vertices, start, inst->wPrimitiveCount+1);
-				SET_DIRTY;
+				RENDER_END;
 				NEXT_INST(sizeof(D3DHAL_DP2LINESTRIP));
 				break;
 			COMMAND(D3DDP2OP_TRIANGLELIST)
@@ -465,8 +473,9 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				start = ((D3DHAL_DP2TRIANGLELIST*)prim)->wVStart;
 				CHECK_DATA2(start, inst->wPrimitiveCount*3);
 
+				RENDER_BEGIN;
 				MesaDrawFVFs(ctx, GL_TRIANGLES, vertices, start, inst->wPrimitiveCount*3);
-				SET_DIRTY;
+				RENDER_END;
 				NEXT_INST(sizeof(D3DHAL_DP2TRIANGLELIST));
 				break;
 			COMMAND(D3DDP2OP_TRIANGLESTRIP)
@@ -488,8 +497,9 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				start = ((D3DHAL_DP2TRIANGLESTRIP*)prim)->wVStart;
 				CHECK_DATA2(start, inst->wPrimitiveCount+2)
 
+				RENDER_BEGIN;
 				MesaDrawFVFs(ctx, GL_TRIANGLE_STRIP, vertices, start, inst->wPrimitiveCount+2);
-				SET_DIRTY;
+				RENDER_END;
 				NEXT_INST(sizeof(D3DHAL_DP2TRIANGLESTRIP));
 				break;
 			COMMAND(D3DDP2OP_TRIANGLEFAN)
@@ -504,8 +514,9 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				start = ((D3DHAL_DP2TRIANGLEFAN*)prim)->wVStart;
 				CHECK_DATA2(start, inst->wPrimitiveCount+2)
 
+				RENDER_BEGIN;
 				MesaDrawFVFs(ctx, GL_TRIANGLE_FAN, vertices, start, inst->wPrimitiveCount+2);
-				SET_DIRTY;
+				RENDER_END;
 				NEXT_INST(sizeof(D3DHAL_DP2TRIANGLEFAN));
 				break;
 			COMMAND(D3DDP2OP_INDEXEDLINELIST)
@@ -519,6 +530,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				// (wVStart[(wPrimitiveCount-1)*2], wVStart[wPrimitiveCount*2-1]).
 				CHECK_LIMITS(D3DHAL_DP2INDEXEDLINELIST, inst->wPrimitiveCount);
 				TOPIC("DRAW", "DRAW - D3DDP2OP_INDEXEDLINELIST, primitives = %d, vertices = %d", inst->wPrimitiveCount, inst->wPrimitiveCount*2);
+				RENDER_BEGIN;
 				entry->proc.pglBegin(GL_LINES);
 				for(i = 0; i < inst->wPrimitiveCount; i++)
 				{
@@ -548,7 +560,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				{
 					PD2_ERROR;
 				}
-				SET_DIRTY;
+				RENDER_END;
 				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_INDEXEDLINESTRIP)
@@ -566,10 +578,11 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				// The indexes are relative to a base index value that 
 				// immediately follows the command
 				TOPIC("DRAW", "DRAW - D3DDP2OP_INDEXEDLINESTRIP, primitives = %d, vertices = %d", inst->wPrimitiveCount, inst->wPrimitiveCount+1);
-				CHECK_LIMITS_MORE(D3DHAL_DP2INDEXEDLINESTRIP, inst->wPrimitiveCount, sizeof(D3DHAL_DP2STARTVERTEX));
+				CHECK_LIMITS_MORE(WORD, inst->wPrimitiveCount+1, sizeof(D3DHAL_DP2STARTVERTEX));
 				base = ((D3DHAL_DP2STARTVERTEX*)prim)->wVStart;
 				prim += sizeof(D3DHAL_DP2STARTVERTEX);
 
+				RENDER_BEGIN;
 				entry->proc.pglBegin(GL_LINE_STRIP);
 				for(i = 0; i < inst->wPrimitiveCount+1; i++)
 				{
@@ -590,7 +603,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				{
 					PD2_ERROR;
 				}
-				SET_DIRTY;
+				RENDER_END;
 				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_INDEXEDTRIANGLELIST)
@@ -611,6 +624,8 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				// the corresponding DX6 primitive.
 				TOPIC("DRAW", "DRAW - D3DDP2OP_INDEXEDTRIANGLELIST, primitives = %d, vertices = %d", inst->wPrimitiveCount, inst->wPrimitiveCount*3);
 				CHECK_LIMITS(D3DHAL_DP2INDEXEDTRIANGLELIST, inst->wPrimitiveCount);
+
+				RENDER_BEGIN;
 				entry->proc.pglBegin(GL_TRIANGLES);
 				for(i = 0; i < inst->wPrimitiveCount; i++)
 				{
@@ -645,7 +660,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				{
 					PD2_ERROR;
 				}
-				SET_DIRTY;
+				RENDER_END;
 				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_INDEXEDTRIANGLESTRIP)
@@ -667,13 +682,14 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				// The indexes are relative to a base index value that 
 				// immediately follows the command
 				base = ((D3DHAL_DP2STARTVERTEX*)prim)->wVStart;
-				CHECK_LIMITS(D3DHAL_DP2STARTVERTEX, 1);
+				count = inst->wPrimitiveCount+2;
+				CHECK_LIMITS_MORE(WORD, count, sizeof(D3DHAL_DP2STARTVERTEX));
 				prim += sizeof(D3DHAL_DP2STARTVERTEX);
 				pos = (WORD*)prim;
-				count = inst->wPrimitiveCount+2;
 				prim += sizeof(WORD) * count;
 				TOPIC("DRAW", "DRAW - D3DDP2OP_INDEXEDTRIANGLESTRIP, primitives = %d, vertices = %d", inst->wPrimitiveCount, count);
 
+				RENDER_BEGIN;
 				if(count >= 3)
 				{
 					MesaReverseCull(ctx);
@@ -687,7 +703,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 
 					MesaSetCull(ctx);
 				}
-				SET_DIRTY;
+				RENDER_END;
 				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_INDEXEDTRIANGLEFAN)
@@ -707,6 +723,8 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				prim += sizeof(WORD)*(inst->wPrimitiveCount+2);
 
 				CHECK_DATA(base+pos[0]);
+
+				RENDER_BEGIN;
 				entry->proc.pglBegin(GL_TRIANGLE_FAN);
 				MesaDrawFVFIndex(ctx, vertices, base+pos[0]);
 				for(i = inst->wPrimitiveCount+1; i >= 1; i--)
@@ -726,7 +744,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				{
 					PD2_ERROR;
 				}
-				SET_DIRTY;
+				RENDER_END;
 				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_INDEXEDTRIANGLELIST2)
@@ -747,6 +765,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				base = ((D3DHAL_DP2STARTVERTEX*)prim)->wVStart;
 				prim += sizeof(D3DHAL_DP2STARTVERTEX);
 
+				RENDER_BEGIN;
 				entry->proc.pglBegin(GL_TRIANGLES);
 				for(i = inst->wPrimitiveCount; i > 0; i--)
 				{
@@ -783,7 +802,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 					WARN("i = %d", i);
 					PD2_ERROR;
 				}
-				SET_DIRTY;
+				RENDER_END;
 				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_INDEXEDLINELIST2)
@@ -803,6 +822,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				prim += sizeof(D3DHAL_DP2STARTVERTEX);
 				CHECK_LIMITS(D3DHAL_DP2INDEXEDLINELIST, inst->wPrimitiveCount);
 
+				RENDER_BEGIN;
 				entry->proc.pglBegin(GL_LINES);
 				for(i = 0; i < inst->wPrimitiveCount; i++)
 				{
@@ -832,7 +852,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				{
 					PD2_ERROR;
 				}
-				SET_DIRTY;
+				RENDER_END;
 				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_TRIANGLEFAN_IMM)
@@ -854,10 +874,11 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
     		PRIM_ALIGN;
 				CHECK_LIMITS_SIZE(ctx->state.fvf.stride*count);
 
+				RENDER_BEGIN;
     		MesaDrawFVFs(ctx, GL_TRIANGLE_FAN, prim, 0, count);
 				prim += ctx->state.fvf.stride * count;
 				//PRIM_ALIGN;
-				SET_DIRTY;
+				RENDER_END;
         NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_LINELIST_IMM)
@@ -876,10 +897,11 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				PRIM_ALIGN;
 				CHECK_LIMITS_SIZE(ctx->state.fvf.stride * count);
 
+				RENDER_BEGIN;
 				MesaDrawFVFs(ctx, GL_LINES, prim, 0, count);
 				prim += ctx->state.fvf.stride * count;
 				//PRIM_ALIGN;
-				SET_DIRTY;
+				RENDER_END;
 				NEXT_INST(0);
 				break;
 			COMMAND(D3DDP2OP_RENDERSTATE)
@@ -1416,6 +1438,8 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 	    	break;
 	    COMMAND(D3DDP2OP_DRAWPRIMITIVE)
 				CHECK_LIMITS(D3DHAL_DP2DRAWPRIMITIVE, inst->wStateCount);
+
+				RENDER_BEGIN;
 	    	for(i = 0; i < inst->wStateCount; i++)
 	    	{
 	    		D3DHAL_DP2DRAWPRIMITIVE *draw = (D3DHAL_DP2DRAWPRIMITIVE*)prim;
@@ -1428,18 +1452,20 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 							vertices, draw->VStart, count);*/
 					}
 	    	}
-	    	SET_DIRTY;
+	    	RENDER_END;
 	    	NEXT_INST(0);
 	    	break;
 	    COMMAND(D3DDP2OP_DRAWINDEXEDPRIMITIVE)
 				CHECK_LIMITS(D3DHAL_DP2DRAWINDEXEDPRIMITIVE, inst->wStateCount);
+
+				RENDER_BEGIN;
 	    	for(i = 0; i < inst->wStateCount; i++)
 	    	{
 	    		//D3DHAL_DP2DRAWINDEXEDPRIMITIVE *draw = (D3DHAL_DP2DRAWINDEXEDPRIMITIVE*)prim;
 	    		prim += sizeof(D3DHAL_DP2DRAWINDEXEDPRIMITIVE);
 	    		//count = MesaConvPrimitivesTriangles(draw->primType, draw->PrimitiveCount);
 	    	}
-	    	SET_DIRTY;
+	    	RENDER_END;
 	    	NEXT_INST(0);
 	    	break;
 	    COMMAND(D3DDP2OP_CREATEPIXELSHADER)
@@ -1490,20 +1516,22 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 	    	break;
 	    COMMAND(D3DDP2OP_DRAWPRIMITIVE2)
 				CHECK_LIMITS(D3DHAL_DP2DRAWPRIMITIVE2, inst->wStateCount);
+				RENDER_BEGIN;
 	    	for(i = 0; i < inst->wStateCount; i++)
 	    	{
 	    		prim += sizeof(D3DHAL_DP2DRAWPRIMITIVE2);
 	    	}
-	    	SET_DIRTY;
+	    	RENDER_END;
 	    	NEXT_INST(0);
 	    	break;
 	    COMMAND(D3DDP2OP_DRAWINDEXEDPRIMITIVE2)
 				CHECK_LIMITS(D3DHAL_DP2DRAWINDEXEDPRIMITIVE2, inst->wStateCount);
+				RENDER_BEGIN;
 	    	for(i = 0; i < inst->wStateCount; i++)
 	    	{
 	    		prim += sizeof(D3DHAL_DP2DRAWINDEXEDPRIMITIVE2);
 	    	}
-	    	SET_DIRTY;
+	    	RENDER_END;
 	    	NEXT_INST(0);
 	    	break;
 	    COMMAND(D3DDP2OP_DRAWRECTPATCH)
@@ -1526,7 +1554,6 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 					CHECK_LIMITS_SIZE(extraBytes);
 					prim += extraBytes;
 	    	}
-	    	SET_DIRTY;
 	    	NEXT_INST(0);
 	    	break;
 	    }
@@ -1550,7 +1577,6 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 					CHECK_LIMITS_SIZE(extraBytes);
 					prim += extraBytes;
 	    	}
-	    	SET_DIRTY;
 	    	NEXT_INST(0);
 	    	break;
 	    }
@@ -1905,7 +1931,6 @@ NUKED_LOCAL DWORD MesaRecord6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE c
 					}
 					prim += extraBytes;
 	    	}
-	    	SET_DIRTY;
 	    	NEXT_INST(0);
 	    	break;
 	    }
@@ -1927,7 +1952,6 @@ NUKED_LOCAL DWORD MesaRecord6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE c
 					}
 					prim += extraBytes;
 	    	}
-	    	SET_DIRTY;
 	    	NEXT_INST(0);
 	    	break;
 	    }

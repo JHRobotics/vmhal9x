@@ -116,16 +116,18 @@ struct mesa3d_tmustate
 	DWORD color_op; // D3DTEXTUREOP
 	DWORD color_arg1; // D3DTA_*
 	DWORD color_arg2;
+	DWORD color_arg3;
 	DWORD alpha_op; // D3DTEXTUREOP
 	DWORD alpha_arg1;
 	DWORD alpha_arg2;
-	
+	DWORD alpha_arg3;
+	BOOL result_temp;
 	// filter DX5
-	GLenum texmin;
-	GLenum texmag;
+//	GLenum texmin;
+//	GLenum texmag;
 	
 	// filter DX6 DX7
-	BOOL dx6_filter;
+//	BOOL dx6_filter;
 	D3DTEXTUREMAGFILTER dx_mag;
 	D3DTEXTUREMINFILTER dx_min;
 	D3DTEXTUREMIPFILTER dx_mip;
@@ -503,8 +505,8 @@ NUKED_LOCAL void MesaApplyLighting(mesa3d_ctx_t *ctx);
 #define MESA_TF_WORLD      4
 //#define MESA_TF_TEXTURE    8
 NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DHAL_DP2RENDERSTATE state, LPDWORD RStates);
-NUKED_LOCAL void MesaDraw(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype, LPVOID vertices, DWORD verticesCnt);
-NUKED_LOCAL void MesaDrawIndex(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype,
+NUKED_LOCAL void MesaDraw5(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype, LPVOID vertices, DWORD verticesCnt);
+NUKED_LOCAL void MesaDraw5Index(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype,
 	LPVOID vertices, DWORD verticesCnt,
 	LPWORD indices, DWORD indicesCnt);
 

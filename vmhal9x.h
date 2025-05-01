@@ -202,6 +202,8 @@ typedef struct _VMHAL_enviroment
 	BOOL zfloat;
 	DWORD max_anisotropy;
 	BOOL vertexblend;
+	BOOL allow_palette;
+	BOOL always_filter;
 } VMHAL_enviroment_t;
 
 #define DX7_SURFACE_NEST_TYPES (DDSCAPS_TEXTURE | DDSCAPS_3DDEVICE | DDSCAPS_ZBUFFER)

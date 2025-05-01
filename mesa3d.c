@@ -953,6 +953,7 @@ NUKED_LOCAL BOOL MesaSetTarget(mesa3d_ctx_t *ctx, surface_id dds_sid, surface_id
 
 	MesaDepthApply(ctx);
 	MesaStencilApply(ctx);
+	MesaDrawRefreshState(ctx);
 
 	return TRUE;
 }
@@ -1145,7 +1146,6 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 			defaults:
 			https://learn.microsoft.com/en-us/previous-versions/windows/embedded/ms886612(v=msdn.10)
 		*/
-		ctx->state.tmu[i].dx6_filter = TRUE;
 		ctx->state.tmu[i].dx_mip = D3DTFP_NONE;
 		ctx->state.tmu[i].dx_mag = D3DTFG_POINT;
 		ctx->state.tmu[i].dx_min = D3DTFN_POINT;
@@ -1206,6 +1206,8 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 	
 	ctx->state.bind_vertices = -1;
 	ctx->state.bind_indices_sid = 0;
+	
+	MesaDrawRefreshState(ctx);
 }
 
 NUKED_LOCAL BOOL MesaSetCtx(mesa3d_ctx_t *ctx)
@@ -1635,28 +1637,6 @@ NUKED_INLINE GLenum GetBlendFactor(D3DBLEND dxfactor)
 	}
 
 	return 0;
-}
-
-NUKED_INLINE GLenum GetGLTexFilter(D3DTEXTUREFILTER dxfilter)
-{
-	switch(dxfilter)
-	{
-    case D3DFILTER_LINEAR:
-    	return GL_LINEAR;
-    case D3DFILTER_MIPNEAREST:
-    	return GL_NEAREST_MIPMAP_NEAREST;
-    case D3DFILTER_MIPLINEAR:
-    	return GL_LINEAR_MIPMAP_LINEAR;
-    case D3DFILTER_LINEARMIPNEAREST:
-    	return GL_LINEAR_MIPMAP_NEAREST;
-    case D3DFILTER_LINEARMIPLINEAR:
-    	return GL_NEAREST_MIPMAP_LINEAR;
-    case D3DFILTER_NEAREST:
-    default:
-    	return GL_NEAREST;
-	}
-
-	return GL_NEAREST;
 }
 
 NUKED_INLINE GLenum GetGLFogMode(D3DFOGMODE dxfog)
@@ -2094,37 +2074,33 @@ NUKED_LOCAL void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, vo
 		/* D3DTEXTUREMAGFILTER filter to use for magnification */
 		RENDERSTATE(D3DTSS_MAGFILTER)
 			ts->dx_mag = (D3DTEXTUREMAGFILTER)TSS_DWORD;
-			ts->dx6_filter = TRUE;
+			TOPIC("MINMAG", "D3DTSS_MAGFILTER=%d", TSS_DWORD);
 			ts->update = TRUE;
 			break;
 		/* D3DTEXTUREMINFILTER filter to use for minification */
 		RENDERSTATE(D3DTSS_MINFILTER)
 			ts->dx_min = (D3DTEXTUREMINFILTER)TSS_DWORD;
-			ts->dx6_filter = TRUE;
+			TOPIC("MINMAG", "D3DTSS_MINFILTER=%d", TSS_DWORD);
 			ts->update = TRUE;
 			break;
 		/* D3DTEXTUREMIPFILTER filter to use between mipmaps during minification */
 		RENDERSTATE(D3DTSS_MIPFILTER)
 			ts->dx_mip = (D3DTEXTUREMIPFILTER)TSS_DWORD;
-			ts->dx6_filter = TRUE;
 			ts->update = TRUE;
 			break;
 		/* D3DVALUE Mipmap LOD bias */
 		RENDERSTATE(D3DTSS_MIPMAPLODBIAS)
 			ts->miplodbias = TSS_FLOAT;
-			ts->dx6_filter = TRUE;
 			ts->update = TRUE;
 			break;
 		/* DWORD 0..(n-1) LOD index of largest map to use (0 == largest) */
 		RENDERSTATE(D3DTSS_MAXMIPLEVEL)
 			ts->mipmaxlevel = TSS_DWORD;
-			ts->dx6_filter = TRUE;
 			ts->update = TRUE;
 			break;
 		/* DWORD maximum anisotropy */
 		RENDERSTATE(D3DTSS_MAXANISOTROPY)
 			ts->anisotropy = TSS_DWORD;
-			ts->dx6_filter = TRUE;
 			ts->update = TRUE;
 			break;
 		/* D3DVALUE scale for bump map luminance */
@@ -2174,10 +2150,22 @@ NUKED_LOCAL void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, vo
 			ts->update = TRUE;
 			break;
 		RENDERSTATE(D3DTSS_COLORARG0) /* D3DTA_* third arg for triadic ops */
+			ts->color_arg3 = TSS_DWORD;
+			ts->reload = TRUE;
 			break;
 		RENDERSTATE(D3DTSS_ALPHAARG0) /* D3DTA_* third arg for triadic ops */
+			ts->alpha_arg3 = TSS_DWORD;
+			ts->reload = TRUE;
 			break;
 		RENDERSTATE(D3DTSS_RESULTARG) /* D3DTA_* arg for result (CURRENT or TEMP) */
+			if(TSS_DWORD == D3DTA_TEMP)
+			{
+				ts->result_temp = TRUE;
+			}
+			else
+			{
+				ts->result_temp = FALSE;
+			}
 			break;
 		RENDERSTATE(D3DTSS_CONSTANT)
 			break;
@@ -2425,13 +2413,48 @@ NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DHAL_DP2RENDERSTATE s
 			/* nop */
 			break;
 		RENDERSTATE(D3DRENDERSTATE_TEXTUREMAG) /* D3DTEXTUREFILTER */
-			ctx->state.tmu[0].texmag = GetGLTexFilter((D3DTEXTUREFILTER)state->dwState);
-			ctx->state.tmu[0].dx6_filter = FALSE;
+			switch(state->dwState)
+			{
+		    case D3DFILTER_LINEAR:
+		    case D3DFILTER_MIPLINEAR:
+		    case D3DFILTER_LINEARMIPNEAREST:
+		    case D3DFILTER_LINEARMIPLINEAR:
+		    	ctx->state.tmu[0].dx_mag = D3DTFG_LINEAR;
+		    	break;
+		    case D3DFILTER_NEAREST:
+		    case D3DFILTER_MIPNEAREST:
+		    default:
+		    	ctx->state.tmu[0].dx_mag = D3DTFG_POINT;
+		    	break;
+			}
+			TOPIC("MINMAG", "D3DRENDERSTATE_TEXTUREMAG=%d", state->dwState);
 			ctx->state.tmu[0].update = TRUE;
 			break;
 		RENDERSTATE(D3DRENDERSTATE_TEXTUREMIN) /* D3DTEXTUREFILTER */
-			ctx->state.tmu[0].texmin = GetGLTexFilter((D3DTEXTUREFILTER)state->dwState);
-			ctx->state.tmu[0].dx6_filter = FALSE;
+			switch(state->dwState)
+			{
+		    case D3DFILTER_LINEAR:
+		    	ctx->state.tmu[0].dx_min = D3DTFN_LINEAR;
+		    	ctx->state.tmu[0].dx_mip = D3DTFP_NONE;
+		    	break;
+		    case D3DFILTER_MIPLINEAR:
+		    case D3DFILTER_LINEARMIPLINEAR:
+		    	ctx->state.tmu[0].dx_min = D3DTFN_LINEAR;
+		    	ctx->state.tmu[0].dx_mip = D3DTFP_LINEAR;
+		    	break;
+		    case D3DFILTER_LINEARMIPNEAREST:
+		    	ctx->state.tmu[0].dx_min = D3DTFN_LINEAR;
+		    	ctx->state.tmu[0].dx_mip = D3DTFP_POINT;
+		    	break;
+		    case D3DFILTER_MIPNEAREST:
+		    	ctx->state.tmu[0].dx_min = D3DTFN_POINT;
+		    	ctx->state.tmu[0].dx_mip = D3DTFP_POINT;
+		    case D3DFILTER_NEAREST:
+		    	ctx->state.tmu[0].dx_min = D3DTFN_POINT;
+		    	ctx->state.tmu[0].dx_mip = D3DTFP_NONE;
+		    	break;
+			}
+			TOPIC("MINMAG", "D3DRENDERSTATE_TEXTUREMIN=%d", state->dwState);
 			ctx->state.tmu[0].update = TRUE;
 			break;
 		RENDERSTATE(D3DRENDERSTATE_SRCBLEND) /* D3DBLEND */
@@ -2918,24 +2941,12 @@ NUKED_FAST DWORD MesaConvPrimVertex(D3DPRIMITIVETYPE dx_type, DWORD prim_count)
 	return 0;
 }
 
-NUKED_INLINE GLenum nonMipFilter(GLenum filter)
-{
-	switch(filter)
-	{
-		case GL_LINEAR:
-		case GL_LINEAR_MIPMAP_LINEAR:
-		case GL_LINEAR_MIPMAP_NEAREST:
-			return GL_LINEAR;
-	}
-
-	return GL_NEAREST;
-}
-
 NUKED_INLINE void D3DTA2GL(DWORD dxarg, GLint *gl_src, GLint *gl_op)
 {
 	switch(dxarg & D3DTA_SELECTMASK)
 	{
 		case D3DTA_CURRENT:
+		case D3DTA_TEMP:
 			*gl_src = GL_PREVIOUS;
 			break;
 		case D3DTA_DIFFUSE:
@@ -2974,11 +2985,11 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 {
 	TRACE("ApplyTextureState(..., ..., %d)", tmu);
 	GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0+tmu));
-	
+
 	struct mesa3d_tmustate *ts = &ctx->state.tmu[tmu];
 	BOOL color_key = FALSE;
 	GLenum target = GL_TEXTURE_2D;
-	
+
 	ts->active = FALSE;
 	if(ts->image)
 	{
@@ -3014,117 +3025,126 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 		/*
 		 * texture filtering
 		 */
-		if(ts->dx6_filter)
+		BOOL use_anisotropic = FALSE;
+		if(ts->image->mipmap && ts->dx_mip != D3DTFP_NONE)
 		{
-			BOOL use_anisotropic = FALSE;
-			if(ts->image->mipmap && ts->dx_mip != D3DTFP_NONE)
+			GLint maxlevel = ts->image->mipmap_level;
+			GLint minlevel = ts->mipmaxlevel;
+			if(minlevel > maxlevel)
 			{
-				GLint maxlevel = ts->image->mipmap_level;
-				GLint minlevel = ts->mipmaxlevel;
-				if(minlevel > maxlevel)
-				{
-					minlevel = maxlevel;
-				}
-
-				GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_BASE_LEVEL, minlevel));
-				GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MAX_LEVEL, maxlevel));
-				GL_CHECK(entry->proc.pglTexEnvf(GL_TEXTURE_FILTER_CONTROL, GL_TEXTURE_LOD_BIAS, ts->miplodbias));
-
-				switch(ts->dx_min)
-				{
-					case D3DTFN_ANISOTROPIC:
-						GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR));
-						use_anisotropic = TRUE;
-						break;
-					case D3DTFN_LINEAR:
-						switch(ts->dx_mip)
-						{
-							case D3DTFP_LINEAR:
-								GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR));
-								break;
-							case D3DTFP_POINT:
-							default:
-								GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST));
-								break;
-						}
-						
-						break;
-					case D3DTFN_POINT:
-					default:
-						switch(ts->dx_mip)
-						{
-							case D3DTFP_LINEAR:
-								GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_LINEAR));
-								break;
-							case D3DTFP_POINT:
-							default:
-								GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST));
-								break;
-						}
-						break;
-				}
-			}
-			else /* non mipmap */
-			{
-				GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MAX_LEVEL, 0));
-				switch(ts->dx_min)
-				{
-					case D3DTFN_LINEAR:
-						use_anisotropic = TRUE;
-						/* thru */
-					case D3DTFN_ANISOTROPIC:
-						GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
-						break;
-					case D3DTFN_POINT:
-					default:
-						GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_NEAREST));
-						break;
-				}
+				minlevel = maxlevel;
 			}
 
-			switch(ts->dx_mag)
+			GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_BASE_LEVEL, minlevel));
+			GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MAX_LEVEL, maxlevel));
+			GL_CHECK(entry->proc.pglTexEnvf(GL_TEXTURE_FILTER_CONTROL, GL_TEXTURE_LOD_BIAS, ts->miplodbias));
+
+			switch(ts->dx_min)
 			{
-				case D3DTFG_ANISOTROPIC:
+				case D3DTFN_ANISOTROPIC:
+					GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR));
 					use_anisotropic = TRUE;
-					/* thru */
-				case D3DTFG_LINEAR:
-					GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
 					break;
-				case D3DTFG_POINT:
+				case D3DTFN_LINEAR:
+					switch(ts->dx_mip)
+					{
+						case D3DTFP_LINEAR:
+							GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR));
+							break;
+						case D3DTFP_POINT:
+						default:
+							if(!entry->env.always_filter)
+							{
+								GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST));
+							}
+							else
+							{
+								GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR));
+							}
+							break;
+					}
+					break;
+				case D3DTFN_POINT:
 				default:
-					GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
+					switch(ts->dx_mip)
+					{
+						case D3DTFP_LINEAR:
+							GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_LINEAR));
+							break;
+						case D3DTFP_POINT:
+						default:
+							if(!entry->env.always_filter)
+							{
+								GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST));
+							}
+							else
+							{
+								GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_LINEAR));
+							}
+							break;
+					}
 					break;
-			}
-			
-			
-			/* needs EXT_texture_filter_anisotropic */
-			if(entry->env.max_anisotropy > 1)
-			{
-				GLfloat fanisotropy = 1.0;
-
-				if(use_anisotropic)
-					fanisotropy = ts->anisotropy;
-
-				if(fanisotropy < 1.0)
-					fanisotropy = 1.0;
-		
-				GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MAX_ANISOTROPY_EXT, fanisotropy));
 			}
 		}
-		else /* !dx6_filter */
+		else /* non mipmap */
 		{
-			if(ts->image->mipmap)
+			GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_BASE_LEVEL, 0));
+			GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MAX_LEVEL, 0));
+
+			switch(ts->dx_min)
 			{
-				GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MAX_LEVEL, ts->image->mipmap_level));
-				GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MAG_FILTER, ts->texmag));
-				GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, ts->texmin));
+				case D3DTFN_ANISOTROPIC:
+					use_anisotropic = TRUE;
+					/* thru */
+				case D3DTFN_LINEAR:
+					GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
+					break;
+				case D3DTFN_POINT:
+				default:
+					if(!entry->env.always_filter)
+					{
+						GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_NEAREST));
+					}
+					else
+					{
+						GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
+					}
+					break;
 			}
-			else
-			{
-				GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MAX_LEVEL, 0));
-				GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MAG_FILTER, nonMipFilter(ts->texmag)));
-				GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, nonMipFilter(ts->texmin)));
-			}
+		}
+
+		switch(ts->dx_mag)
+		{
+			case D3DTFG_ANISOTROPIC:
+				use_anisotropic = TRUE;
+				/* thru */
+			case D3DTFG_LINEAR:
+				GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
+				break;
+			case D3DTFG_POINT:
+			default:
+				if(!entry->env.always_filter)
+				{
+					GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
+				}
+				else
+				{
+					GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
+				}
+				break;
+		}
+
+		/* needs EXT_texture_filter_anisotropic */
+		if(entry->env.max_anisotropy > 1)
+		{
+			GLfloat fanisotropy = 1.0;
+			if(use_anisotropic)
+				fanisotropy = ts->anisotropy;
+
+			if(fanisotropy < 1.0)
+				fanisotropy = 1.0;
+
+			GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MAX_ANISOTROPY_EXT, fanisotropy));
 		}
 	}
 	else /* !image */
@@ -3153,15 +3173,25 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 	GLint color_arg3_source = GL_CONSTANT;
 	GLint color_arg3_op = GL_SRC_COLOR;
 	GLint alpha_arg3_source = GL_CONSTANT;
-	GLint alpha_arg3_op = GL_SRC_COLOR;
+	GLint alpha_arg3_op = GL_SRC_ALPHA;
+	
+	// for GL_COMBINE4
+	GLint color_arg4_source = GL_ZERO;
+	GLint color_arg4_op = GL_ONE_MINUS_SRC_COLOR;
+	GLint alpha_arg4_source = GL_ZERO;
+	GLint alpha_arg4_op = GL_ONE_MINUS_SRC_ALPHA;
 
 	D3DTA2GL(ts->color_arg1, &color_arg1_source, &color_arg1_op);
 	D3DTA2GL(ts->color_arg2, &color_arg2_source, &color_arg2_op);
+	D3DTA2GL(ts->color_arg3, &color_arg3_source, &color_arg3_op);
 	D3DTA2GL(ts->alpha_arg1|D3DTA_ALPHAREPLICATE, &alpha_arg1_source, &alpha_arg1_op);
 	D3DTA2GL(ts->alpha_arg2|D3DTA_ALPHAREPLICATE, &alpha_arg2_source, &alpha_arg2_op);
-	
+	D3DTA2GL(ts->alpha_arg3|D3DTA_ALPHAREPLICATE, &alpha_arg3_source, &alpha_arg3_op);
+
 	GLfloat color_mult = 1.0f;
 	GLfloat alpha_mult = 1.0f;
+	
+	BOOL use_nv4 = TRUE;
 
 	switch(ts->color_op)
 	{
@@ -3198,14 +3228,35 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 		case D3DTOP_ADD:
 			TOPIC("TEXENV", "color D3DTOP_ADD");
 			color_fn = GL_ADD;
+			if(use_nv4)
+			{
+				color_arg3_source = color_arg2_source;
+				color_arg3_op     = color_arg2_op;
+				color_arg2_source = GL_ZERO;
+				color_arg2_op     = GL_ONE_MINUS_SRC_COLOR;
+			}
 			break;
 		case D3DTOP_ADDSIGNED:
 			TOPIC("TEXENV", "color D3DTOP_ADDSIGNED");
 			color_fn = GL_ADD_SIGNED;
+			if(use_nv4)
+			{
+				color_arg3_source = color_arg2_source;
+				color_arg3_op     = color_arg2_op;
+				color_arg2_source = GL_ZERO;
+				color_arg2_op     = GL_ONE_MINUS_SRC_COLOR;
+			}
 			break;
 		case D3DTOP_ADDSIGNED2X:
 			TOPIC("TEXENV", "color D3DTOP_ADDSIGNED2X");
 			color_fn = GL_ADD_SIGNED;
+			if(use_nv4)
+			{
+				color_arg3_source = color_arg2_source;
+				color_arg3_op     = color_arg2_op;
+				color_arg2_source = GL_ZERO;
+				color_arg2_op     = GL_ONE_MINUS_SRC_COLOR;
+			}
 			color_mult = 2.0f;
 			break;
 		case D3DTOP_SUBTRACT:
@@ -3214,32 +3265,246 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 			break;
 		case D3DTOP_BLENDDIFFUSEALPHA:
 			TOPIC("TEXENV", "color D3DTOP_BLENDDIFFUSEALPHA");
-			color_fn = GL_INTERPOLATE;
-			color_arg3_source = GL_PRIMARY_COLOR;
-			color_arg3_op = GL_SRC_ALPHA;
+			if(!use_nv4)
+			{
+				color_fn = GL_INTERPOLATE;
+				color_arg3_source = GL_PRIMARY_COLOR;
+				color_arg3_op = GL_SRC_ALPHA;
+			}
+			else
+			{
+				color_fn = GL_ADD;
+				color_arg3_source = color_arg2_source;
+				color_arg3_op     = color_arg2_op;
+				color_arg2_source = GL_PRIMARY_COLOR;
+				color_arg2_op     = GL_SRC_ALPHA;
+				color_arg4_source = GL_PRIMARY_COLOR;
+				color_arg4_op     = GL_ONE_MINUS_SRC_ALPHA;
+			}
 			break;
-		case D3DTOP_BLENDTEXTUREALPHA:
+		case D3DTOP_BLENDTEXTUREALPHA: // Arg1 x (alpha) + Arg2 (1-alpha)
 			TOPIC("TEXENV", "color D3DTOP_BLENDTEXTUREALPHA");
-			color_fn = GL_INTERPOLATE;
-			color_arg3_source = GL_TEXTURE;
-			color_arg3_op = GL_SRC_ALPHA;
+			if(!use_nv4)
+			{
+				color_fn = GL_INTERPOLATE;
+				color_arg3_source = GL_TEXTURE;
+				color_arg3_op = GL_SRC_ALPHA;
+			}
+			else
+			{
+				color_fn = GL_ADD;
+				color_arg3_source = color_arg2_source;
+				color_arg3_op     = color_arg2_op;
+				color_arg2_source = GL_TEXTURE;
+				color_arg2_op     = GL_SRC_ALPHA;
+				color_arg4_source = GL_TEXTURE;
+				color_arg4_op     = GL_ONE_MINUS_SRC_ALPHA;
+			}
 			break;
-		case D3DTOP_BLENDFACTORALPHA:
+		case D3DTOP_BLENDFACTORALPHA: // Arg1 x (alpha) + Arg2 x (1-alpha)
 			TOPIC("TEXENV", "color D3DTOP_BLENDFACTORALPHA");
-			color_fn = GL_INTERPOLATE;
-			color_arg3_source = GL_CONSTANT;
-			color_arg3_op = GL_SRC_ALPHA;
+			if(!use_nv4)
+			{
+				color_fn = GL_INTERPOLATE;
+				color_arg3_source = GL_CONSTANT;
+				color_arg3_op = GL_SRC_ALPHA;
+			}
+			else
+			{
+				color_fn = GL_ADD;
+				color_arg3_source = color_arg2_source;
+				color_arg3_op     = color_arg2_op;
+				color_arg2_source = GL_CONSTANT;
+				color_arg2_op     = GL_SRC_ALPHA;
+				color_arg4_source = GL_CONSTANT;
+				color_arg4_op     = GL_ONE_MINUS_SRC_ALPHA;
+			}
 			break;
 		case D3DTOP_BLENDCURRENTALPHA:
 			TOPIC("TEXENV", "color D3DTOP_BLENDCURRENTALPHA");
+			if(!use_nv4)
+			{
+				color_fn = GL_INTERPOLATE;
+				color_arg3_source = GL_PREVIOUS;
+				color_arg3_op = GL_SRC_ALPHA;
+			}
+			else
+			{
+				color_fn = GL_ADD;
+				color_arg3_source = color_arg2_source;
+				color_arg3_op     = color_arg2_op;
+				color_arg2_source = GL_PREVIOUS;
+				color_arg2_op     = GL_SRC_ALPHA;
+				color_arg4_source = GL_PREVIOUS;
+				color_arg4_op     = GL_ONE_MINUS_SRC_ALPHA;
+			}
+			break;
+		case D3DTOP_DOTPRODUCT3:
+			TOPIC("TEXENV", "color D3DTOP_DOTPRODUCT3");
+			color_fn = GL_DOT3_RGBA;
+			break;
+		case D3DTOP_LERP:
+			TOPIC("TEXENV", "color D3DTOP_LERP");
 			color_fn = GL_INTERPOLATE;
-			color_arg3_source = GL_PREVIOUS;
-			color_arg3_op = GL_SRC_ALPHA;
 			break;
 		/*
 				NOTE: for another states we can use this:
-					https://registry.khronos.org/OpenGL/extensions/NV/NV_texture_env_combine4.tx
+					https://registry.khronos.org/OpenGL/extensions/NV/NV_texture_env_combine4.txt
 		*/
+		case D3DTOP_MODULATEALPHA_ADDCOLOR: // Arg1.RGB + Arg1.A*Arg2.RGB
+			if(use_nv4)
+			{
+				TOPIC("TEXENV", "color D3DTOP_MODULATEALPHA_ADDCOLOR");
+				color_fn = GL_ADD;
+				color_arg4_source = color_arg2_source;
+				color_arg4_op     = color_arg2_op;
+				color_arg3_source = color_arg1_source;
+				color_arg3_op     = color_arg1_op;
+				switch(color_arg1_op)
+				{
+					case GL_SRC_COLOR:           color_arg3_op = GL_SRC_ALPHA;           break;
+					case GL_ONE_MINUS_SRC_COLOR: color_arg3_op = GL_ONE_MINUS_SRC_ALPHA; break;
+				}
+				color_arg2_source = GL_ZERO;
+				color_arg2_op     = GL_ONE_MINUS_SRC_COLOR;
+				break;
+			}
+			/* TRU */
+		case D3DTOP_MODULATEINVALPHA_ADDCOLOR: // (1-Arg1.RGB)*Arg2.RGB + Arg1.A
+			if(use_nv4)
+			{
+				TOPIC("TEXENV", "color D3DTOP_MODULATEINVALPHA_ADDCOLOR");
+				color_fn = GL_ADD;
+				color_arg3_source = color_arg1_source;
+				color_arg3_op     = color_arg1_op;
+				switch(color_arg1_op)
+				{
+					case GL_SRC_COLOR:
+						color_arg1_op = GL_ONE_MINUS_SRC_COLOR;
+						color_arg3_op = GL_SRC_ALPHA;
+						break;
+					case GL_ONE_MINUS_SRC_COLOR:
+						color_arg1_op = GL_SRC_COLOR;
+						color_arg3_op = GL_ONE_MINUS_SRC_ALPHA;
+						break;
+					case GL_SRC_ALPHA:
+						color_arg1_op = GL_ONE_MINUS_SRC_ALPHA;
+						break;
+					case GL_ONE_MINUS_SRC_ALPHA:
+						color_arg1_op = GL_SRC_ALPHA;
+						break;
+				}
+				color_arg4_source = GL_ZERO;
+				color_arg4_op     = GL_ONE_MINUS_SRC_COLOR;
+				break;
+			}
+			/* TRU */
+		case D3DTOP_MODULATECOLOR_ADDALPHA: // Arg1.RGB*Arg2.RGB + Arg1.A
+			if(use_nv4)
+			{
+				TOPIC("TEXENV", "color D3DTOP_MODULATECOLOR_ADDALPHA");
+				color_fn          = GL_ADD;
+				color_arg3_source = color_arg1_source;
+				color_arg3_op     = color_arg1_op;
+				switch(color_arg3_op)
+				{
+					case GL_SRC_COLOR:           color_arg3_op = GL_SRC_ALPHA;           break;
+					case GL_ONE_MINUS_SRC_COLOR: color_arg3_op = GL_ONE_MINUS_SRC_ALPHA; break;
+				}
+				color_arg4_source = GL_ZERO;
+				color_arg4_op     = GL_ONE_MINUS_SRC_COLOR;
+				break;
+			}
+			/* TRU */
+		case D3DTOP_MODULATEINVCOLOR_ADDALPHA: // (1-Arg1.RGB)*Arg2.RGB + Arg1.A
+			if(use_nv4)
+			{
+				TOPIC("TEXENV", "color D3DTOP_MODULATEINVCOLOR_ADDALPHA");
+				color_fn          = GL_ADD;
+				color_arg3_source = color_arg1_source;
+				color_arg3_op     = color_arg1_op;
+				switch(color_arg1_op)
+				{
+					case GL_SRC_COLOR:
+						color_arg1_op = GL_ONE_MINUS_SRC_COLOR;
+						color_arg3_op = GL_SRC_ALPHA;
+						break;
+					case GL_ONE_MINUS_SRC_COLOR:
+						color_arg1_op = GL_SRC_COLOR;
+						color_arg3_op = GL_ONE_MINUS_SRC_ALPHA;
+						break;
+					case GL_SRC_ALPHA:
+						color_arg1_op = GL_ONE_MINUS_SRC_ALPHA;
+						break;
+					case GL_ONE_MINUS_SRC_ALPHA:
+						color_arg1_op = GL_SRC_ALPHA;
+						break;
+				}
+				color_arg4_source = GL_ZERO;
+				color_arg4_op     = GL_ONE_MINUS_SRC_COLOR;
+				break;
+			}
+			/* TRU */
+		case D3DTOP_ADDSMOOTH: // = Arg1 + (1-Arg1)*Arg2
+			if(use_nv4)
+			{
+				TOPIC("TEXENV", "color D3DTOP_ADDSMOOTH");
+				color_fn = GL_ADD;
+				color_arg3_source = color_arg2_source;
+				color_arg3_op     = color_arg2_op;
+				color_arg2_source = color_arg1_source;
+				switch(color_arg1_op)
+				{
+					case GL_SRC_COLOR:           color_arg2_op = GL_ONE_MINUS_SRC_COLOR; break;
+					case GL_ONE_MINUS_SRC_COLOR: color_arg2_op = GL_SRC_COLOR;           break;
+					case GL_SRC_ALPHA:           color_arg2_op = GL_ONE_MINUS_SRC_ALPHA; break;
+					case GL_ONE_MINUS_SRC_ALPHA: color_arg2_op = GL_SRC_ALPHA;           break;
+				}
+				break;
+			}
+			/* TRU */
+		case D3DTOP_PREMODULATE:
+			if(use_nv4)
+			{
+				TOPIC("TEXENV", "color D3DTOP_PREMODULATE");
+				color_fn = GL_MODULATE;
+				color_arg1_source = GL_TEXTURE0 + tmu;
+				color_arg1_op = GL_SRC_COLOR;
+				color_arg2_source = GL_TEXTURE0 + tmu + 1;
+				color_arg2_op = GL_SRC_COLOR;
+				break;
+			}
+			/* TRU */
+		case D3DTOP_BLENDTEXTUREALPHAPM: // Arg1 + Arg2 x (1-Alpha)
+			if(use_nv4)
+			{
+				TOPIC("TEXENV", "color D3DTOP_BLENDTEXTUREALPHAPM");
+				color_fn = GL_ADD;
+				color_arg3_source = color_arg2_source;
+				color_arg3_op     = color_arg2_op;
+				color_arg2_source = GL_ZERO;
+				color_arg2_op     = GL_ONE_MINUS_SRC_COLOR;
+				color_arg4_source = GL_TEXTURE;
+				color_arg4_op     = GL_ONE_MINUS_SRC_ALPHA;
+				break;
+			}
+			/* TRU */
+		case D3DTOP_MULTIPLYADD: // (Arg1) * Arg2 + (1-Arg1) * Arg3.
+			if(use_nv4)
+			{
+				TOPIC("TEXENV", "color D3DTOP_MULTIPLYADD");
+				color_fn = GL_ADD;
+				color_arg4_source = color_arg1_source;
+				switch(color_arg1_op)
+				{
+					case GL_SRC_COLOR:           color_arg4_op = GL_ONE_MINUS_SRC_COLOR; break;
+					case GL_ONE_MINUS_SRC_COLOR: color_arg4_op = GL_SRC_COLOR;           break;
+					case GL_SRC_ALPHA:           color_arg4_op = GL_ONE_MINUS_SRC_ALPHA; break;
+					case GL_ONE_MINUS_SRC_ALPHA: color_arg4_op = GL_SRC_ALPHA;           break;
+				}
+				break;
+			}
+			/* TRU */
 		default:
 			WARN("Unknown color texture blend operation: %d, TMU: %d", ts->color_op, tmu);
 			break;
@@ -3287,15 +3552,36 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 		case D3DTOP_ADD:
 			TOPIC("TEXENV", "alpha D3DTOP_ADD");
 			alpha_fn = GL_ADD;
+			if(use_nv4)
+			{
+				alpha_arg3_source = alpha_arg2_source;
+				alpha_arg3_op     = alpha_arg2_op;
+				alpha_arg2_source = GL_ZERO;
+				alpha_arg2_op     = GL_ONE_MINUS_SRC_COLOR;
+			}
 			break;
 		case D3DTOP_ADDSIGNED:
 			TOPIC("TEXENV", "alpha D3DTOP_ADDSIGNED");
 			alpha_fn = GL_ADD_SIGNED;
+			if(use_nv4)
+			{
+				alpha_arg3_source = alpha_arg2_source;
+				alpha_arg3_op     = alpha_arg2_op;
+				alpha_arg2_source = GL_ZERO;
+				alpha_arg2_op     = GL_ONE_MINUS_SRC_COLOR;
+			}
 			break;
 		case D3DTOP_ADDSIGNED2X:
 			TOPIC("TEXENV", "alpha D3DTOP_ADDSIGNED2X");
 			alpha_fn = GL_ADD_SIGNED;
 			alpha_mult = 2.0f;
+			if(use_nv4)
+			{
+				alpha_arg3_source = alpha_arg2_source;
+				alpha_arg3_op     = alpha_arg2_op;
+				alpha_arg2_source = GL_ZERO;
+				alpha_arg2_op     = GL_ONE_MINUS_SRC_COLOR;
+			}
 			break;
 		case D3DTOP_SUBTRACT:
 			TOPIC("TEXENV", "alpha D3DTOP_SUBTRACT");
@@ -3309,9 +3595,22 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 			break;
 		case D3DTOP_BLENDTEXTUREALPHA:
 			TOPIC("TEXENV", "alpha D3DTOP_BLENDTEXTUREALPHA");
-			alpha_fn = GL_INTERPOLATE;
-			alpha_arg3_source = GL_TEXTURE;
-			alpha_arg3_op = GL_SRC_ALPHA;
+			if(use_nv4)
+			{
+				alpha_fn = GL_INTERPOLATE;
+				alpha_arg3_source = GL_TEXTURE;
+				alpha_arg3_op = GL_SRC_ALPHA;
+			}
+			else
+			{
+				alpha_fn = GL_ADD;
+				alpha_arg3_source = alpha_arg2_source;
+				alpha_arg3_op     = alpha_arg2_op;
+				alpha_arg2_source = GL_TEXTURE;
+				alpha_arg2_op     = GL_SRC_ALPHA;
+				alpha_arg4_source = GL_TEXTURE;
+				alpha_arg4_op     = GL_ONE_MINUS_SRC_ALPHA;
+			}
 			break;
 		case D3DTOP_BLENDFACTORALPHA:
 			TOPIC("TEXENV", "alpha D3DTOP_BLENDFACTORALPHA");
@@ -3325,12 +3624,83 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 			alpha_arg3_source = GL_PREVIOUS;
 			alpha_arg3_op = GL_SRC_ALPHA;
 			break;
+		case D3DTOP_DOTPRODUCT3:
+			TOPIC("TEXENV", "alpha D3DTOP_DOTPRODUCT3");
+			alpha_fn = GL_DOT3_RGBA;
+			break;
+		case D3DTOP_LERP:
+			TOPIC("TEXENV", "alpha D3DTOP_LERP");
+			alpha_fn = GL_INTERPOLATE;
+			break;
+		case D3DTOP_ADDSMOOTH: // = Arg1 + (1-Arg1)*Arg2
+			if(use_nv4)
+			{
+				TOPIC("TEXENV", "alpha D3DTOP_ADDSMOOTH");
+				alpha_fn = GL_ADD;
+				alpha_arg3_source = alpha_arg2_source;
+				alpha_arg3_op     = alpha_arg2_op;
+				alpha_arg2_source = alpha_arg1_source;
+				switch(alpha_arg1_op)
+				{
+					case GL_SRC_ALPHA:           alpha_arg2_op = GL_ONE_MINUS_SRC_ALPHA; break;
+					case GL_ONE_MINUS_SRC_ALPHA: alpha_arg2_op = GL_SRC_ALPHA;           break;
+				}
+				break;
+			}
+			/* TRU */
+		case D3DTOP_PREMODULATE:
+			if(use_nv4)
+			{
+				TOPIC("TEXENV", "alpha D3DTOP_PREMODULATE");
+				alpha_fn = GL_MODULATE;
+				alpha_arg1_source = GL_TEXTURE0 + tmu;
+				alpha_arg1_op = GL_SRC_ALPHA;
+				alpha_arg2_source = GL_TEXTURE0 + tmu + 1;
+				alpha_arg2_op = GL_SRC_ALPHA;
+				break;
+			}
+			/* TRU */
+		case D3DTOP_BLENDTEXTUREALPHAPM: // Arg1 + Arg2 x (1-Alpha)
+			if(use_nv4)
+			{
+				TOPIC("TEXENV", "alpha D3DTOP_BLENDTEXTUREALPHAPM");
+				alpha_fn = GL_ADD;
+				alpha_arg3_source = alpha_arg2_source;
+				alpha_arg3_op     = alpha_arg2_op;
+				alpha_arg2_source = GL_ZERO;
+				alpha_arg2_op     = GL_ONE_MINUS_SRC_ALPHA;
+				alpha_arg4_source = GL_PREVIOUS;
+				alpha_arg4_op     = GL_ONE_MINUS_SRC_ALPHA;
+				break;
+			}
+			/* TRU */
+		case D3DTOP_MULTIPLYADD: // (Arg1) * Arg2 + (1-Arg1) * Arg3.
+			if(use_nv4)
+			{
+				TOPIC("TEXENV", "alpha D3DTOP_MULTIPLYADD");
+				alpha_fn = GL_ADD;
+				alpha_arg4_source = alpha_arg1_source;
+				switch(alpha_arg1_op)
+				{
+					case GL_SRC_ALPHA:           alpha_arg4_op = GL_ONE_MINUS_SRC_ALPHA; break;
+					case GL_ONE_MINUS_SRC_ALPHA: alpha_arg4_op = GL_SRC_ALPHA;           break;
+				}
+				break;
+			}
+			/* TRU */
 		default:
 			WARN("Unknown alpha texture blend operation: %d, TMU: %d", ts->color_op, tmu);
 			break;
 	}
 
-	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE));
+	if(use_nv4)
+	{
+		GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE4_NV));
+	}
+	else
+	{
+		GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE));
+	}
 	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB, color_fn));
 	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_ALPHA, alpha_fn));
 
@@ -3341,10 +3711,16 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC1_RGB, color_arg2_source));
 	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_RGB, color_arg2_op));
 
-	if(color_fn == GL_INTERPOLATE)
+	if(color_fn == GL_INTERPOLATE || use_nv4)
 	{
 	 	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC2_RGB, color_arg3_source));
 		GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND2_RGB, color_arg3_op));
+	}
+
+	if(use_nv4)
+	{
+	 	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SOURCE3_RGB_NV, color_arg4_source));
+		GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND3_RGB_NV, color_arg4_op));
 	}
 
 	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC0_ALPHA, alpha_arg1_source));
@@ -3352,10 +3728,16 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC1_ALPHA, alpha_arg2_source));
 	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_ALPHA, alpha_arg2_op));
 
-	if(alpha_fn == GL_INTERPOLATE)
+	if(alpha_fn == GL_INTERPOLATE || use_nv4)
 	{
 	 	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC2_ALPHA, alpha_arg3_source));
 		GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND2_ALPHA, alpha_arg3_op));
+	}
+
+	if(use_nv4)
+	{
+	 	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SOURCE3_ALPHA_NV, alpha_arg4_source));
+		GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND3_ALPHA_NV, alpha_arg4_op));
 	}
 
 	GL_CHECK(entry->proc.pglTexEnvf(GL_TEXTURE_ENV, GL_RGB_SCALE,   color_mult));
@@ -3628,7 +4010,7 @@ NUKED_LOCAL void MesaDrawRefreshState(mesa3d_ctx_t *ctx)
 	}
 }
 
-NUKED_LOCAL void MesaDraw(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype, LPVOID vertices, DWORD verticesCnt)
+NUKED_LOCAL void MesaDraw5(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype, LPVOID vertices, DWORD verticesCnt)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 
@@ -3723,7 +4105,7 @@ NUKED_LOCAL void MesaDraw3(mesa3d_ctx_t *ctx, DWORD op, void *prim, LPBYTE verti
 	ctx->render.zdirty = TRUE;
 }
 
-NUKED_LOCAL void MesaDrawIndex(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype,
+NUKED_LOCAL void MesaDraw5Index(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERTEXTYPE vtype,
 	LPVOID vertices, DWORD verticesCnt,
 	LPWORD indices, DWORD indicesCnt)
 {

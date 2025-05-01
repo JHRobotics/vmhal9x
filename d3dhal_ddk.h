@@ -1837,4 +1837,11 @@ typedef struct _D3DTRIPATCH_INFO
 
 #define D3DPBLENDCAPS_BLENDFACTOR       0x00002000L /* Supports both D3DBLEND_BLENDFACTOR and D3DBLEND_INVBLENDFACTOR */
 
+#ifndef D3DTA_TEMP
+#define D3DTA_TEMP              0x00000005  // select temporary register color (read/write)
+#endif
+
+#define D3DTOP_MULTIPLYADD   25
+#define D3DTOP_LERP          26
+
 #endif /* _D3DHAL_H */

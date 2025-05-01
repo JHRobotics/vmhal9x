@@ -150,6 +150,7 @@ NUKED_LOCAL void MesaBufferUploadColor(mesa3d_ctx_t *ctx, const void *src)
 	if(ctx->fbo_tmu < ctx->tmu_count)
 	{
 		ctx->state.tmu[ctx->fbo_tmu].update = TRUE;
+		MesaDrawRefreshState(ctx);
 	}
 	
 	TOPIC("READBACK", "%X -> upload color!", src);
@@ -279,6 +280,7 @@ NUKED_LOCAL void MesaBufferUploadDepth(mesa3d_ctx_t *ctx, const void *src)
 	if(ctx->fbo_tmu < ctx->tmu_count)
 	{
 		ctx->state.tmu[ctx->fbo_tmu].update = TRUE;
+		MesaDrawRefreshState(ctx);
 	}
 	
 	TOPIC("READBACK", "%X -> upload depth!", src);
