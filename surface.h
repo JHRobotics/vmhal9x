@@ -63,8 +63,13 @@ typedef struct _DDSURF
 
 LPDDRAWI_DDRAWSURFACE_LCL SurfaceDuplicate(LPDDRAWI_DDRAWSURFACE_LCL original);
 
-DDSURF *SurfaceGetSURF(surface_id sid);
-void *SurfaceGetVidMem(surface_id sid);
+NUKED_LOCAL DDSURF *SurfaceGetSURF(surface_id sid);
+NUKED_LOCAL void *SurfaceGetVidMem(surface_id sid);
+NUKED_LOCAL void SurfaceAttachTexture(surface_id sid, void *mesa_tex, int level, int side);
+NUKED_LOCAL void SurfaceDeattachTexture(surface_id sid, void *mesa_tex, int level, int side);
+NUKED_LOCAL void SurfaceAttachCtx(void *mesa_ctx);
+NUKED_LOCAL void SurfaceDeattachCtx(void *mesa_ctx);
+NUKED_LOCAL LPDDRAWI_DDRAWSURFACE_LCL SurfaceGetLCL_DX7(surface_id sid);
 
 /* private, but for debuging sometimes needed in other files */
 struct surface_attachment;

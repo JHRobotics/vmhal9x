@@ -534,13 +534,13 @@ NUKED_LOCAL void MesaBufferUploadTexturePalette(mesa3d_ctx_t *ctx, mesa3d_textur
 NUKED_LOCAL BOOL MesaBufferFBOSetup(mesa3d_ctx_t *ctx, int width, int height);
 
 /* calculation */
-NUKED_LOCAL BOOL MesaUnprojectf(GLfloat winx, GLfloat winy, GLfloat winz, GLfloat clipw,
+/*NUKED_LOCAL BOOL MesaUnprojectf(GLfloat winx, GLfloat winy, GLfloat winz, GLfloat clipw,
 	const GLfloat modelMatrix[16], 
 	const GLfloat projMatrix[16],
 	const GLint viewport[4],
-	GLfloat *objx, GLfloat *objy, GLfloat *objz, GLfloat *objw);
+	GLfloat *objx, GLfloat *objy, GLfloat *objz, GLfloat *objw);*/
 NUKED_LOCAL void MesaIdentity(GLfloat matrix[16]);
-NUKED_LOCAL BOOL MesaIsIdentity(GLfloat matrix[16]);
+//NUKED_LOCAL BOOL MesaIsIdentity(GLfloat matrix[16]);
 NUKED_LOCAL void MesaSpaceIdentitySet(mesa3d_ctx_t *ctx);
 NUKED_LOCAL void MesaSpaceIdentityReset(mesa3d_ctx_t *ctx);
 NUKED_LOCAL void MesaSpaceModelviewSet(mesa3d_ctx_t *ctx);

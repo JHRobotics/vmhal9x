@@ -256,28 +256,6 @@ static void SurfaceCopyLCL(LPDDRAWI_DDRAWSURFACE_LCL surf, DDSURF *dest, BOOL re
 	if(recursion)
 	{
 		SurfaceCopyLCLLoop(surf, surf, dest);
-#if 0
-		LPATTACHLIST item = surf->lpAttachList;
-		for(;;)
-		{
-			if(!item) break;
-			if(!item->lpAttached) break;
-			if(item->lpAttached == surf) break;
-	
-			if(dest->attachments_cnt < DDSURF_ATTACH_MAX)
-			{
-				if(item->lpAttached->dwReserved1 == 0)
-				{
-					SurfaceCreateInfo(item->lpAttached, FALSE);
-				}
-				
-				dest->attachments[dest->attachments_cnt] = item->lpAttached->dwReserved1;
-				dest->attachments_cnt++;
-			}
-	
-			item = item->lpAttached->lpAttachList;
-		}
-#endif
 	}
 }
 
@@ -328,7 +306,7 @@ static surface_info_t *SurfaceGetInfoFromLcl(LPDDRAWI_DDRAWSURFACE_LCL surf)
 	return NULL;
 }
 
-DDSURF *SurfaceGetSURF(surface_id sid)
+NUKED_LOCAL DDSURF *SurfaceGetSURF(surface_id sid)
 {
 	surface_info_t *info = SurfaceGetInfo(sid);
 	if(info)
@@ -339,7 +317,7 @@ DDSURF *SurfaceGetSURF(surface_id sid)
 	return NULL;
 }
 
-void *SurfaceGetVidMem(surface_id sid)
+NUKED_LOCAL void *SurfaceGetVidMem(surface_id sid)
 {
 	surface_info_t *info = SurfaceGetInfo(sid);
 	if(info)
@@ -350,7 +328,7 @@ void *SurfaceGetVidMem(surface_id sid)
 	return NULL;
 }
 
-LPDDRAWI_DDRAWSURFACE_LCL SurfaceGetLCL_DX7(surface_id sid)
+NUKED_LOCAL LPDDRAWI_DDRAWSURFACE_LCL SurfaceGetLCL_DX7(surface_id sid)
 {
 	surface_info_t *info = SurfaceGetInfo(sid);
 	if(info)
@@ -405,7 +383,7 @@ static void SurfaceAttachTexture_int(surface_info_t *info, void *tex, int level,
 	} // info
 }
 
-void SurfaceAttachTexture(surface_id sid, void *mesa_tex, int level, int side)
+NUKED_LOCAL void SurfaceAttachTexture(surface_id sid, void *mesa_tex, int level, int side)
 {
 	TRACE_ENTRY
 
@@ -416,7 +394,7 @@ void SurfaceAttachTexture(surface_id sid, void *mesa_tex, int level, int side)
 	}
 }
 
-void SurfaceAttachCtx(void *mesa_ctx)
+NUKED_LOCAL void SurfaceAttachCtx(void *mesa_ctx)
 {
 	TRACE_ENTRY
 	
@@ -787,7 +765,7 @@ NUKED_LOCAL void SurfaceFree(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDD
 	}
 }
 
-void SurfaceDeattachTexture(surface_id sid, void *mesa_tex, int level, int side)
+NUKED_LOCAL void SurfaceDeattachTexture(surface_id sid, void *mesa_tex, int level, int side)
 {
 	TRACE_ENTRY
 
@@ -936,6 +914,7 @@ NUKED_LOCAL BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL 
 	/* system memory */
 	if(((surface->ddsCaps.dwCaps & (DDSCAPS_SYSTEMMEMORY | DDSCAPS_TEXTURE)) == 
 		(DDSCAPS_SYSTEMMEMORY | DDSCAPS_TEXTURE)) || surface->lpGbl->fpVidMem < 0x80000000)
+	//if(surface->lpGbl->fpVidMem < 0x80000000)
 	{
 		LPDDRAWI_DDRAWSURFACE_LCL scopy = SurfaceDuplicate(surface);
 		if(scopy)
@@ -947,10 +926,11 @@ NUKED_LOCAL BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL 
 				info->flags &= ~SURF_FLAG_EMPTY;
 				info->flags |=  SURF_FLAG_COPY;
 				SurfaceLoopDuplicate(surface, surface, info);
-				TOPIC("MEMORY", "Duplicate handle=%d, sid=%d (original)dwCaps=0x%X",
+				TOPIC("MEMORY", "Duplicate handle=%d, sid=%d (original)dwCaps=0x%X, memory=0x%X",
 					scopy->lpSurfMore->dwSurfaceHandle,
 					scopy->dwReserved1,
-					surface->ddsCaps.dwCaps
+					surface->ddsCaps.dwCaps,
+					surface->lpGbl->fpVidMem
 				);
 
 				MesaSurfacesTableInsertHandle(entry, lpDDLcl, scopy->lpSurfMore->dwSurfaceHandle, scopy->dwReserved1);

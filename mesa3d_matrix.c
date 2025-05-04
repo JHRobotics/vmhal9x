@@ -154,6 +154,7 @@ inline static void matmultf(const GLfloat a[16], const GLfloat b[16], GLfloat r[
 		r[i] = tmp[i];
 }
 
+#if 0
 NUKED_LOCAL BOOL MesaUnprojectf(GLfloat winx, GLfloat winy, GLfloat winz, GLfloat clipw,
 	const GLfloat modelMatrix[16], 
 	const GLfloat projMatrix[16],
@@ -202,7 +203,9 @@ NUKED_LOCAL BOOL MesaUnprojectf(GLfloat winx, GLfloat winy, GLfloat winz, GLfloa
 
 	return TRUE;
 }
+#endif
 
+#if 0
 NUKED_LOCAL BOOL MesaIsIdentity(GLfloat matrix[16])
 {
 	int i = 0;
@@ -222,6 +225,7 @@ NUKED_LOCAL BOOL MesaIsIdentity(GLfloat matrix[16])
 	
 	return TRUE;
 }
+#endif
 
 NUKED_LOCAL void MesaIdentity(GLfloat matrix[16])
 {

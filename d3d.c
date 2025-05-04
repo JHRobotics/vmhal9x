@@ -552,44 +552,6 @@ DDENTRY_FPUSAVE(CreateSurfaceEx32, LPDDHAL_CREATESURFACEEXDATA, lpcsxd)
 	if(surf->ddsCaps.dwCaps & DX7_SURFACE_NEST_TYPES)
 	{
 		SurfaceExInsert(entry, lpcsxd->lpDDLcl, surf);
-#if 0
-		if(!((surf->ddsCaps.dwCaps & DDSCAPS_MIPMAP) || (surf->lpSurfMore->ddsCapsEx.dwCaps2 & DDSCAPS2_CUBEMAP)))
-		{
-			/* 
-			 * from DDK ME:
-			 * for some surfaces other than MIPMAP or CUBEMAP, such as
-			 * flipping chains, we make a slot for every surface, as
-			 * they are not as interleaved
-			 */
-			
-			LPATTACHLIST curr = surf->lpAttachList;
-			while(curr)
-			{
-				if(curr->lpAttached == surf)
-				{
-					break;
-				}
-				
-				if(curr->lpAttached)
-				{
-					TRACE("LOOP %d", curr->lpAttached->lpSurfMore->dwSurfaceHandle);
-					if(curr->lpAttached->ddsCaps.dwCaps & DX7_SURFACE_NEST_TYPES)
-					{
-						SurfaceExInsert(entry, lpcsxd->lpDDLcl, curr->lpAttached);
-					}
-					
-					curr = curr->lpAttached->lpAttachList;
-				}
-				else
-				{
-					curr = NULL;
-					//curr = curr->lpLink;
-				}
-				//curr = curr->lpLink;
-				
-			}
-		}
-#endif
 	}
 	else
 	{
@@ -1017,7 +979,7 @@ DDENTRY_FPUSAVE(GetDriverInfo32, LPDDHAL_GETDRIVERINFODATA, lpInput)
 		DWORD extra_heaps = (lpInput->dwExpectedSize - sizeof(DDMORESURFACECAPS)) / (sizeof(DDSCAPSEX)*2);
 		DDMoreSurfaceCaps.dwSize = sizeof(DDMORESURFACECAPS) + extra_heaps * sizeof(DDSCAPSEX) * 2;
 		/* OK, DDS dwCaps is passed by 16bit driver, but DDS dwCaps2 is passed here... */
-		DDMoreSurfaceCaps.ddsCapsMore.dwCaps2 = DDSCAPS2_CUBEMAP /* | DDSCAPS2_VERTEXBUFFER | DDSCAPS2_COMMANDBUFFER*/;
+		DDMoreSurfaceCaps.ddsCapsMore.dwCaps2 = DDSCAPS2_CUBEMAP  | DDSCAPS2_VERTEXBUFFER | DDSCAPS2_COMMANDBUFFER;
 
 		memcpy(ptr, &DDMoreSurfaceCaps, sizeof(DDMORESURFACECAPS));
 		ptr += sizeof(DDMORESURFACECAPS);
@@ -1823,16 +1785,25 @@ DDENTRY(LockExecuteBuffer32, LPDDHAL_LOCKDATA, lock)
 {
 	TRACE_ENTRY
 	/* nop */
-
-	return DDHAL_DRIVER_NOTHANDLED; /* let the lock processed */
+	
+	lock->lpSurfData = (void*)lock->lpDDSurface->lpGbl->fpVidMem;
+	lock->ddRVal = DD_OK;
+	
+	return DDHAL_DRIVER_HANDLED;
+	//return DDHAL_DRIVER_NOTHANDLED; /* let the lock processed */
 }
 
 DDENTRY(UnlockExecuteBuffer32, LPDDHAL_UNLOCKDATA, lock)
 {
 	TRACE_ENTRY
 	/* nop */
+	//lock->ddRVal = DD_OK;
+	
+	lock->ddRVal = DD_OK;
+	
+	return DDHAL_DRIVER_HANDLED;
 
-	return DDHAL_DRIVER_NOTHANDLED; /* let the unlock processed */
+//	return DDHAL_DRIVER_NOTHANDLED; /* let the unlock processed */
 }
 
 /* GLOBAL hal */
