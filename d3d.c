@@ -347,20 +347,14 @@ DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 		MesaApplyLighting(ctx);
 		MesaApplyMaterial(ctx);
 */
-		if(!ctx->state.recording)
+		LPBYTE UMVertices = pd->lpVertices;
+		if(UMVertices != NULL)
 		{
-			LPBYTE UMVertices = pd->lpVertices;
-			if(UMVertices != NULL)
-			{
-				UMVertices += pd->dwVertexOffset;
-			}
-			
-			rc = MesaDraw6(ctx, cmdBufferStart, cmdBufferEnd, vertices, UMVertices, pd->dwVertexType, &pd->dwErrorOffset, RStates, pd->dwVertexLength);
+			UMVertices += pd->dwVertexOffset;
 		}
-		else
-		{
-			rc = MesaRecord6(ctx, cmdBufferStart, cmdBufferEnd, vertices, &pd->dwErrorOffset, RStates);
-		}
+
+		rc = MesaDraw6(ctx, cmdBufferStart, cmdBufferEnd, vertices, UMVertices, pd->dwVertexType, &pd->dwErrorOffset, RStates, pd->dwVertexLength);
+
 		//MesaSpaceIdentityReset(ctx);
 	GL_BLOCK_END
 
@@ -798,8 +792,8 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 			caps.LineCaps = D3DLINECAPS_ALPHACMP | D3DLINECAPS_BLEND | D3DLINECAPS_FOG;
 			caps.TextureAddressCaps = myCaps6.dpcTriCaps.dwTextureAddressCaps;
 			caps.PresentationIntervals = 0;
-			caps.MaxTextureWidth = 16384;
-			caps.MaxTextureHeight = 16384;
+			caps.MaxTextureWidth = env.texture_max_width;
+			caps.MaxTextureHeight = env.texture_max_height;
 			caps.MaxVolumeExtent = 2048;
 			caps.MaxTextureRepeat = 2048;
 			caps.MaxTextureAspectRatio = 2048;

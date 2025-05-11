@@ -524,7 +524,6 @@ NUKED_LOCAL void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, vo
 NUKED_LOCAL void MesaDrawRefreshState(mesa3d_ctx_t *ctx);
 NUKED_LOCAL void MesaDraw3(mesa3d_ctx_t *ctx, DWORD op, void *prim, LPBYTE vertices);
 NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LPBYTE vertices, LPBYTE UMVertices, DWORD fvf, DWORD *error_offset, LPDWORD RStates, DWORD vertices_size);
-NUKED_LOCAL DWORD MesaRecord6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LPBYTE vertices, DWORD *error_offset, LPDWORD RStates);
 
 NUKED_LOCAL void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVALUE depth, DWORD stencil, int rects_cnt, RECT *rects);
 

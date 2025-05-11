@@ -926,9 +926,14 @@ NUKED_LOCAL BOOL MesaSetTarget(mesa3d_ctx_t *ctx, surface_id dds_sid, surface_id
 		if(ddz)
 		{
 			bpp_depth = ddz->bpp;
+			TRACE("bpp_depth = %d", ddz->bpp);
 
 			if(ddz->pixfmt.dwFlags & DDPF_STENCILBUFFER)
 				ctx->depth_stencil = TRUE;
+		}
+		else
+		{
+			ERR("ddz_sid=%d => ddz=NULL", ddz_sid);
 		}
 	}
 
