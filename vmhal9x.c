@@ -71,7 +71,11 @@ static VMHAL_enviroment_t VMHALenv = {
 	FALSE, /* runtime dx7 */
 	FALSE, /* runtime dx8 */
 	FALSE, /* runtime dx9 */
-	7, // DDI (maximum)
+#ifndef DEBUG
+  7,
+#else
+	8, // DDI (maximum)
+#endif
 	TRUE, // HW T&L
 	TRUE, // readback
 	TRUE, // touchdepth

@@ -440,6 +440,9 @@ NUKED_LOCAL void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *te
 		TOPIC("CUBE", "glTexImage2D(GL_TEXTURE_2D, %d, ...)", level);
 		if(!tex->compressed)
 		{
+			TRACE("glTexImage2D level=%d, internalformat=0x%X, w=%d, h=%d, format=0x%X, type=0x%X",
+				level, tex->internalformat, w, h, tex->format, tex->type
+			);
 			GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, level, tex->internalformat,
 				w, h, 0, tex->format, tex->type, ptr));
 		}

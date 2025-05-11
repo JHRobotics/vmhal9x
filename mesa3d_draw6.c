@@ -321,6 +321,25 @@ NUKED_LOCAL void MesaTLRecalcModelview(mesa3d_ctx_t *ctx)
 	}
 }
 
+NUKED_INLINE void draw_fvf(mesa3d_ctx_t *ctx, DWORD fvf)
+{
+	if(ctx->state.fvf.type != fvf)
+	{
+		MesaFVFSet(ctx, fvf);
+		if((fvf & D3DFVF_POSITION_MASK) == D3DFVF_XYZRHW)
+		{
+			MesaSpaceIdentitySet(ctx);
+		}
+		else
+		{
+			MesaSpaceIdentityReset(ctx);
+		}
+		
+		MesaApplyLighting(ctx);
+		MesaApplyMaterial(ctx);
+	}
+}
+
 #define NEXT_INST(_s) inst = (LPD3DHAL_DP2COMMAND)(prim + (_s))
 
 #define NEXT_INST_TC(_t, _c) inst = (LPD3DHAL_DP2COMMAND)(prim + (sizeof(_t)*(_c)))
@@ -334,7 +353,7 @@ NUKED_LOCAL void MesaTLRecalcModelview(mesa3d_ctx_t *ctx)
 	ctx->render.dirty = TRUE; \
 	ctx->render.zdirty = TRUE
 
-#define RENDER_BEGIN
+#define RENDER_BEGIN(_fvf) draw_fvf(ctx, _fvf)
 
 #define RENDER_END SET_DIRTY
 
@@ -361,7 +380,16 @@ NUKED_LOCAL void MesaTLRecalcModelview(mesa3d_ctx_t *ctx)
 	CHECK_DATA(_start_index) \
 	CHECK_DATA(_start_index + _cnt - 1)
 
-NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd, LPBYTE vertices, DWORD *error_offset, LPDWORD RStates, DWORD vertices_max)
+//#define D8INDEX(_n) (indicesDX8_stride==2 ? ((WORD*)indicesDX8)[_n] : ((DWORD*)indicesDX8)[_n])
+
+#define D8_VALIDATE_STRIDE(_s) switch(_s){ \
+	case 0: case 2: case 4: break; \
+	default: ERR("Invalid DX8 indices stride: %d", _s); return D3DERR_COMMAND_UNPARSED; break;}
+
+NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
+	LPBYTE cmdBufferStart, LPBYTE cmdBufferEnd,
+	LPBYTE vertices, LPBYTE UMVertices, DWORD fvf,
+	DWORD *error_offset, LPDWORD RStates, DWORD vertices_max)
 {
 	TOPIC("READBACK", "MesaDraw6");
 	
@@ -373,23 +401,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 	DWORD start, count, base;
 	int i;
 	WORD *pos;
-	LPBYTE verticesDX8 = NULL;
-	DWORD verticesDX8_stride = 0;
-	LPBYTE indicesDX8 = NULL;
-	DWORD  indicesDX8_stride = 0; // 2 or 4
 
-	if(ctx->state.bind_vertices >= 0)
-	{
-		verticesDX8 = ctx->vstream[ctx->state.bind_vertices].mem;
-		verticesDX8_stride = ctx->vstream[ctx->state.bind_vertices].stride;
-	}
-	
-	if(ctx->state.bind_indices_sid > 0)
-	{
-		indicesDX8 = SurfaceGetVidMem(ctx->state.bind_indices_sid);
-		indicesDX8_stride = ctx->state.bind_indices_stride;
-	}
-	
 	while((LPBYTE)inst < cmdBufferEnd)
 	{
 		LPBYTE prim = (LPBYTE)(inst + 1);
@@ -406,7 +418,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				// field of D3DHAL_DP2COMMAND.
 				TOPIC("DRAW", "DRAW - D3DDP2OP_POINTS, blocks = %d", inst->wPrimitiveCount);
 				CHECK_LIMITS(D3DHAL_DP2POINTS, inst->wPrimitiveCount);
-				RENDER_BEGIN;
+				RENDER_BEGIN(fvf);
 				for(i = 0; i < inst->wPrimitiveCount; i++)
 				{
 					D3DHAL_DP2POINTS *points = (D3DHAL_DP2POINTS*)prim;
@@ -433,7 +445,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				start = ((D3DHAL_DP2LINELIST*)prim)->wVStart;
 				CHECK_DATA2(start, inst->wPrimitiveCount*2);
 
-				RENDER_BEGIN;
+				RENDER_BEGIN(fvf);
 				MesaDrawFVFs(ctx, GL_LINES, vertices, start, inst->wPrimitiveCount*2);
 				RENDER_END;
 				NEXT_INST(sizeof(D3DHAL_DP2LINELIST));
@@ -452,7 +464,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				start = ((D3DHAL_DP2LINESTRIP*)prim)->wVStart;
 				CHECK_DATA2(start, inst->wPrimitiveCount*1);
 
-				RENDER_BEGIN;
+				RENDER_BEGIN(fvf);
 				MesaDrawFVFs(ctx, GL_LINE_STRIP, vertices, start, inst->wPrimitiveCount+1);
 				RENDER_END;
 				NEXT_INST(sizeof(D3DHAL_DP2LINESTRIP));
@@ -473,7 +485,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				start = ((D3DHAL_DP2TRIANGLELIST*)prim)->wVStart;
 				CHECK_DATA2(start, inst->wPrimitiveCount*3);
 
-				RENDER_BEGIN;
+				RENDER_BEGIN(fvf);
 				MesaDrawFVFs(ctx, GL_TRIANGLES, vertices, start, inst->wPrimitiveCount*3);
 				RENDER_END;
 				NEXT_INST(sizeof(D3DHAL_DP2TRIANGLELIST));
@@ -497,7 +509,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				start = ((D3DHAL_DP2TRIANGLESTRIP*)prim)->wVStart;
 				CHECK_DATA2(start, inst->wPrimitiveCount+2)
 
-				RENDER_BEGIN;
+				RENDER_BEGIN(fvf);
 				MesaDrawFVFs(ctx, GL_TRIANGLE_STRIP, vertices, start, inst->wPrimitiveCount+2);
 				RENDER_END;
 				NEXT_INST(sizeof(D3DHAL_DP2TRIANGLESTRIP));
@@ -514,7 +526,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				start = ((D3DHAL_DP2TRIANGLEFAN*)prim)->wVStart;
 				CHECK_DATA2(start, inst->wPrimitiveCount+2)
 
-				RENDER_BEGIN;
+				RENDER_BEGIN(fvf);
 				MesaDrawFVFs(ctx, GL_TRIANGLE_FAN, vertices, start, inst->wPrimitiveCount+2);
 				RENDER_END;
 				NEXT_INST(sizeof(D3DHAL_DP2TRIANGLEFAN));
@@ -530,7 +542,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				// (wVStart[(wPrimitiveCount-1)*2], wVStart[wPrimitiveCount*2-1]).
 				CHECK_LIMITS(D3DHAL_DP2INDEXEDLINELIST, inst->wPrimitiveCount);
 				TOPIC("DRAW", "DRAW - D3DDP2OP_INDEXEDLINELIST, primitives = %d, vertices = %d", inst->wPrimitiveCount, inst->wPrimitiveCount*2);
-				RENDER_BEGIN;
+				RENDER_BEGIN(fvf);
 				entry->proc.pglBegin(GL_LINES);
 				for(i = 0; i < inst->wPrimitiveCount; i++)
 				{
@@ -582,7 +594,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				base = ((D3DHAL_DP2STARTVERTEX*)prim)->wVStart;
 				prim += sizeof(D3DHAL_DP2STARTVERTEX);
 
-				RENDER_BEGIN;
+				RENDER_BEGIN(fvf);
 				entry->proc.pglBegin(GL_LINE_STRIP);
 				for(i = 0; i < inst->wPrimitiveCount+1; i++)
 				{
@@ -625,7 +637,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				TOPIC("DRAW", "DRAW - D3DDP2OP_INDEXEDTRIANGLELIST, primitives = %d, vertices = %d", inst->wPrimitiveCount, inst->wPrimitiveCount*3);
 				CHECK_LIMITS(D3DHAL_DP2INDEXEDTRIANGLELIST, inst->wPrimitiveCount);
 
-				RENDER_BEGIN;
+				RENDER_BEGIN(fvf);
 				entry->proc.pglBegin(GL_TRIANGLES);
 				for(i = 0; i < inst->wPrimitiveCount; i++)
 				{
@@ -689,7 +701,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				prim += sizeof(WORD) * count;
 				TOPIC("DRAW", "DRAW - D3DDP2OP_INDEXEDTRIANGLESTRIP, primitives = %d, vertices = %d", inst->wPrimitiveCount, count);
 
-				RENDER_BEGIN;
+				RENDER_BEGIN(fvf);
 				if(count >= 3)
 				{
 					MesaReverseCull(ctx);
@@ -724,7 +736,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 
 				CHECK_DATA(base+pos[0]);
 
-				RENDER_BEGIN;
+				RENDER_BEGIN(fvf);
 				entry->proc.pglBegin(GL_TRIANGLE_FAN);
 				MesaDrawFVFIndex(ctx, vertices, base+pos[0]);
 				for(i = inst->wPrimitiveCount+1; i >= 1; i--)
@@ -765,7 +777,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				base = ((D3DHAL_DP2STARTVERTEX*)prim)->wVStart;
 				prim += sizeof(D3DHAL_DP2STARTVERTEX);
 
-				RENDER_BEGIN;
+				RENDER_BEGIN(fvf);
 				entry->proc.pglBegin(GL_TRIANGLES);
 				for(i = inst->wPrimitiveCount; i > 0; i--)
 				{
@@ -822,7 +834,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				prim += sizeof(D3DHAL_DP2STARTVERTEX);
 				CHECK_LIMITS(D3DHAL_DP2INDEXEDLINELIST, inst->wPrimitiveCount);
 
-				RENDER_BEGIN;
+				RENDER_BEGIN(fvf);
 				entry->proc.pglBegin(GL_LINES);
 				for(i = 0; i < inst->wPrimitiveCount; i++)
 				{
@@ -874,7 +886,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
     		PRIM_ALIGN;
 				CHECK_LIMITS_SIZE(ctx->state.fvf.stride*count);
 
-				RENDER_BEGIN;
+				RENDER_BEGIN(fvf);
     		MesaDrawFVFs(ctx, GL_TRIANGLE_FAN, prim, 0, count);
 				prim += ctx->state.fvf.stride * count;
 				//PRIM_ALIGN;
@@ -897,7 +909,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				PRIM_ALIGN;
 				CHECK_LIMITS_SIZE(ctx->state.fvf.stride * count);
 
-				RENDER_BEGIN;
+				RENDER_BEGIN(fvf);
 				MesaDrawFVFs(ctx, GL_LINES, prim, 0, count);
 				prim += ctx->state.fvf.stride * count;
 				//PRIM_ALIGN;
@@ -979,10 +991,9 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 					
 					TOPIC("DEPTH", "w-buffer range %f - %f", winfo->dvWNear, winfo->dvWFar);
 					//GL_CHECK(entry->proc.pglDepthRange(winfo->dvWNear, winfo->dvWFar));
-					GLfloat wmax = NOCRT_MAX(winfo->dvWNear, winfo->dvWFar);
-					
-					/* scale projection if Wmax is too large */
 #if 0
+					/* scale projection if Wmax is too large */
+					GLfloat wmax = NOCRT_MAX(winfo->dvWNear, winfo->dvWFar);
 					if(wmax > ctx->matrix.wmax)
 					{
 						GLfloat sz = GL_WRANGE_MAX/wmax;
@@ -1147,6 +1158,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				break;
 			COMMAND(D3DDP2OP_SETTRANSFORM)
 				CHECK_LIMITS(D3DDP2OP_SETTRANSFORM, inst->wStateCount);
+				TRACE("D3DDP2OP_SETTRANSFORM: wStateCount=%p", inst->wStateCount);
 				for(i = 0; i < inst->wStateCount; i++)
 				{
 					LPD3DHAL_DP2SETTRANSFORM stf = (LPD3DHAL_DP2SETTRANSFORM)prim;
@@ -1255,11 +1267,10 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 						
 						TOPIC("TARGET", "hRenderTarget=%d, hZBuffer=%d", pSRTData->hRenderTarget, pSRTData->hZBuffer);
 						TOPIC("TEXTARGET", "hRenderTarget=%d, hZBuffer=%d", pSRTData->hRenderTarget, pSRTData->hZBuffer);
-						
-						
+
 						surface_id dds_sid = ctx->surfaces->table[pSRTData->hRenderTarget];
 						surface_id ddz_sid = ctx->surfaces->table[pSRTData->hZBuffer];
-	
+
 						if(dds_sid)
 						{
 							MesaSetTarget(ctx, dds_sid, ddz_sid, FALSE);
@@ -1361,9 +1372,49 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 				NEXT_INST(0);
 	    	break;
 	    COMMAND(D3DDP2OP_SETVERTEXSHADER)
+	    	/**
+				 * 2k3 DDK:
+				 * All DirectX 8.0 level drivers must support the D3DDP2OP_SETVERTEXSHADER
+				 * token because it is sent even if the driver does not support programmable
+				 * vertex processing.
+				 * In that case, however, the shader handle is always an FVF code indicating
+				 * fixed function processing of the vertex data. The driver should use the
+				 * FVF code stored in the dwHandle member as the format of the vertex data
+				 * in stream zero. A driver that does support programmable vertex processing
+				 * must examine the handle to determine whether it refers to a shader previously
+				 * created with D3DDP2OP_CREATEVERTEXSHADER or an FVF code and take the
+				 * appropriate action.
+				 * 
+				 * Pixel and vertex shaders are orthogonal. Thus, if a legacy FVF code is selected
+				 * as the current vertex shader this does not imply legacy pixel processing.
+				 * In order to reset pixel processing to a subprogrammable mode the current
+				 * pixel shader must also be set to zero. Care should be taken in the driver
+				 * to only reset vertex processing state to a fixed function mode and not pixel
+				 * processing state when the vertex shader is set to an FVF code.
+				 * 
+				 * When switching from fixed function vertex processing to programmable vertex
+				 * processing, the values of legacy render state and matrices should be preserved.
+				 * If and when a switch from programmable to fixed function vertex processing
+				 * occurs (the driver receives a D3DDP2OP_SETVERTEXSHADER with an FVF as the
+				 * shader handle), that preserved state should be restored.
+				 * 
+				 * When switching between programmable shaders, any constant register that
+				 * has a value specified in the definition of that shader should be set to
+				 * that value. The values of all other constant registers should remain unchanged.
+				 * 
+				 * For D3DDP2OP_SETVERTEXSHADERDECL operations, the runtime specifies
+				 * a legacy FVF code or a DirectX 9.0 declaration handle in the dwHandle member.
+				 * The runtime indicates a DirectX 9.0 declaration handle by setting bit 0 of the handle.
+				 * For D3DDP2OP_SETVERTEXSHADERFUNC operations, the runtime sets dwHandle
+				 * to zero to indicate a fixed function pipeline.
+				 **/
 				CHECK_LIMITS(D3DHAL_DP2VERTEXSHADER, inst->wStateCount);
 	    	for(i = 0; i < inst->wStateCount; i++)
 				{
+					D3DHAL_DP2VERTEXSHADER *shader = (D3DHAL_DP2VERTEXSHADER*)prim;
+					/* since there is no vertex shader support, there is alway FVF code */
+					ctx->state.fvf_shader = shader->dwHandle;
+					TRACE("fvf_shader = 0x%X", ctx->state.fvf_shader);
 					prim += sizeof(D3DHAL_DP2VERTEXSHADER);
 				}
 				NEXT_INST(0);
@@ -1387,19 +1438,28 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 	    		prim += sizeof(D3DHAL_DP2SETSTREAMSOURCE);
 	    		if(vsrc->dwStream < MESA_MAX_STREAM)
 	    		{
+	    			TRACE("D3DHAL_DP2SETSTREAMSOURCE: dwVBHandle=%d, dwStride=%d, dwStream=%d", vsrc->dwVBHandle, vsrc->dwStride, vsrc->dwStream);
 	    			if(vsrc->dwVBHandle > 0)
 	    			{
-	    				surface_id sid = ctx->surfaces->table[vsrc->dwVBHandle];
-	    				if(sid)
+	    				//surface_id sid = ctx->surfaces->table[vsrc->dwVBHandle];
+	    				void *buffer = MesaSurfacesGetBuffer(ctx, vsrc->dwVBHandle);
+	    				if(buffer)
 	    				{
-	    					ctx->vstream[vsrc->dwStream].sid = sid;
+//	    					ctx->vstream[vsrc->dwStream].sid = sid;
 	    					ctx->vstream[vsrc->dwStream].VBHandle = vsrc->dwVBHandle;
 	    					ctx->vstream[vsrc->dwStream].stride = vsrc->dwStride;
-	    					ctx->vstream[vsrc->dwStream].mem = SurfaceGetVidMem(sid);
+	    					ctx->vstream[vsrc->dwStream].mem = buffer;
 	    					
-	    					verticesDX8 = ctx->vstream[vsrc->dwStream].mem;
-	    					ctx->state.bind_vertices = vsrc->dwStream;
+	    					TRACE("D3DHAL_DP2SETSTREAMSOURCE: stream=%d mem=0x%X", vsrc->dwStream, ctx->vstream[vsrc->dwStream].mem);
 	    				}
+	    				else
+	    				{
+	    					ERR("INVALID vertex buffer handle %d", vsrc->dwVBHandle );
+	    				}
+	    			}
+	    			else
+	    			{
+	    				WARN("vsrc->dwVBHandle == 0");
 	    			}
 	    		}
 	    	}
@@ -1413,7 +1473,9 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 	    		prim += sizeof(D3DHAL_DP2SETSTREAMSOURCEUM);
 	    		if(um->dwStream < MESA_MAX_STREAM)
 	    		{
-	    			ctx->vstream[um->dwStream].stride = um->dwStride;
+	    			ctx->vstream[um->dwStream].VBHandle = 0;
+	    			ctx->vstream[um->dwStream].stride   = um->dwStride;
+	    			ctx->vstream[um->dwStream].mem      = UMVertices;
 	    		}
 	    	}
 	    	NEXT_INST(0);
@@ -1424,14 +1486,14 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 	    	{
 	    		D3DHAL_DP2SETINDICES *si = (D3DHAL_DP2SETINDICES*)prim;
 	    		prim += sizeof(D3DHAL_DP2SETINDICES);
-	    		
+
+	    		TRACE("D3DDP2OP_SETINDICES: dwVBHandle=%d, dwStride=%d", si->dwVBHandle, si->dwStride);
+
 	    		if(si->dwVBHandle > 0)
 	    		{
-	    			ctx->state.bind_indices_sid = ctx->surfaces->table[si->dwVBHandle];
+	    			ctx->state.bind_indices = MesaSurfacesGetBuffer(ctx, si->dwVBHandle);
+	    			D8_VALIDATE_STRIDE(si->dwStride);
 	    			ctx->state.bind_indices_stride = si->dwStride;
-	    			
-	    			indicesDX8 = SurfaceGetVidMem(ctx->state.bind_indices_sid);
-	    			indicesDX8_stride = si->dwStride;
 	    		}
 	    	}
 	    	NEXT_INST(0);
@@ -1439,18 +1501,24 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 	    COMMAND(D3DDP2OP_DRAWPRIMITIVE)
 				CHECK_LIMITS(D3DHAL_DP2DRAWPRIMITIVE, inst->wStateCount);
 
-				RENDER_BEGIN;
+				RENDER_BEGIN(ctx->state.fvf_shader);
 	    	for(i = 0; i < inst->wStateCount; i++)
 	    	{
 	    		D3DHAL_DP2DRAWPRIMITIVE *draw = (D3DHAL_DP2DRAWPRIMITIVE*)prim;
 	    		prim += sizeof(D3DHAL_DP2DRAWPRIMITIVE);
-	    		count = MesaConvPrimVertex(draw->primType, draw->PrimitiveCount);
-					if(count)
-					{
-						/*MesaDrawFVFs(ctx,
-							MesaConvPrimType(draw->primType),
-							vertices, draw->VStart, count);*/
-					}
+	    		GLenum prim = MesaConvPrimType(draw->primType);
+	    		if(prim != GL_ZERO)
+	    		{
+	    			/* using stream 0 */
+	    			void *verticesDX8 = ctx->vstream[0].mem;
+	    			DWORD verticesDX8_stride = ctx->vstream[0].stride;
+	    			
+	    			if(verticesDX8 && verticesDX8_stride)
+	    			{
+	    				TRACE("D3DHAL_DP2DRAWPRIMITIVE: (GL)prim=0x%X, mem=0x%X, stride=%d, start=%d, cnt=%d", prim, verticesDX8, verticesDX8_stride, draw->VStart, MesaConvPrimVertex(draw->primType, draw->PrimitiveCount));
+	    				MesaDrawFVFBlock(ctx, prim, verticesDX8, verticesDX8_stride*draw->VStart, MesaConvPrimVertex(draw->primType, draw->PrimitiveCount), verticesDX8_stride);
+	    			}
+	    		}
 	    	}
 	    	RENDER_END;
 	    	NEXT_INST(0);
@@ -1458,12 +1526,26 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 	    COMMAND(D3DDP2OP_DRAWINDEXEDPRIMITIVE)
 				CHECK_LIMITS(D3DHAL_DP2DRAWINDEXEDPRIMITIVE, inst->wStateCount);
 
-				RENDER_BEGIN;
+				RENDER_BEGIN(ctx->state.fvf_shader);
 	    	for(i = 0; i < inst->wStateCount; i++)
 	    	{
-	    		//D3DHAL_DP2DRAWINDEXEDPRIMITIVE *draw = (D3DHAL_DP2DRAWINDEXEDPRIMITIVE*)prim;
+	    		D3DHAL_DP2DRAWINDEXEDPRIMITIVE *draw = (D3DHAL_DP2DRAWINDEXEDPRIMITIVE*)prim;
 	    		prim += sizeof(D3DHAL_DP2DRAWINDEXEDPRIMITIVE);
-	    		//count = MesaConvPrimitivesTriangles(draw->primType, draw->PrimitiveCount);
+	    		GLenum prim = MesaConvPrimType(draw->primType);
+	    		if(prim != GL_ZERO)
+	    		{
+	    			/* using stream 0 */
+	    			void *verticesDX8 = ctx->vstream[0].mem;
+	    			DWORD verticesDX8_stride = ctx->vstream[0].stride;
+
+	    			if(ctx->state.bind_indices && verticesDX8 && verticesDX8_stride)
+	    			{
+	    				MesaDrawFVFBlockIndex(ctx, prim,
+		    				((BYTE*)verticesDX8)+draw->BaseVertexIndex*verticesDX8_stride, verticesDX8_stride,
+		    				ctx->state.bind_indices, ctx->state.bind_indices_stride,
+		    				draw->StartIndex, MesaConvPrimVertex(draw->primType, draw->PrimitiveCount));
+		    		}
+	    		}
 	    	}
 	    	RENDER_END;
 	    	NEXT_INST(0);
@@ -1516,20 +1598,49 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 	    	break;
 	    COMMAND(D3DDP2OP_DRAWPRIMITIVE2)
 				CHECK_LIMITS(D3DHAL_DP2DRAWPRIMITIVE2, inst->wStateCount);
-				RENDER_BEGIN;
+				RENDER_BEGIN(ctx->state.fvf_shader);
 	    	for(i = 0; i < inst->wStateCount; i++)
 	    	{
+	    		D3DHAL_DP2DRAWPRIMITIVE2 *draw = (D3DHAL_DP2DRAWPRIMITIVE2*)prim;
 	    		prim += sizeof(D3DHAL_DP2DRAWPRIMITIVE2);
+	    		GLenum prim = MesaConvPrimType(draw->primType);
+	    		if(prim != GL_ZERO)
+	    		{
+						/* using stream 0 */
+	    			void *verticesDX8 = ctx->vstream[0].mem;
+	    			DWORD verticesDX8_stride = ctx->vstream[0].stride;
+	    			
+	    			if(verticesDX8 && verticesDX8_stride)
+	    			{
+	    				MesaDrawFVFBlock(ctx, prim, verticesDX8, draw->FirstVertexOffset, MesaConvPrimVertex(draw->primType, draw->PrimitiveCount), verticesDX8_stride);
+	    			}
+	    		}
 	    	}
 	    	RENDER_END;
 	    	NEXT_INST(0);
 	    	break;
 	    COMMAND(D3DDP2OP_DRAWINDEXEDPRIMITIVE2)
 				CHECK_LIMITS(D3DHAL_DP2DRAWINDEXEDPRIMITIVE2, inst->wStateCount);
-				RENDER_BEGIN;
+				RENDER_BEGIN(ctx->state.fvf_shader);
 	    	for(i = 0; i < inst->wStateCount; i++)
 	    	{
+	    		D3DHAL_DP2DRAWINDEXEDPRIMITIVE2 *draw = (D3DHAL_DP2DRAWINDEXEDPRIMITIVE2*)prim;
 	    		prim += sizeof(D3DHAL_DP2DRAWINDEXEDPRIMITIVE2);
+	    		GLenum prim = MesaConvPrimType(draw->primType);
+	    		if(prim != GL_ZERO)
+	    		{
+						/* using stream 0 */
+	    			void *verticesDX8 = ctx->vstream[0].mem;
+	    			DWORD verticesDX8_stride = ctx->vstream[0].stride;
+
+	    			if(verticesDX8 && verticesDX8_stride && ctx->state.bind_indices)
+	    			{
+	    				MesaDrawFVFBlockIndex(ctx, prim,
+		    				((BYTE*)verticesDX8)+draw->BaseVertexOffset, verticesDX8_stride,
+	    					((BYTE*)ctx->state.bind_indices)+draw->StartIndexOffset, ctx->state.bind_indices_stride,
+	    					0, MesaConvPrimVertex(draw->primType, draw->PrimitiveCount));
+	    			}
+	    		}
 	    	}
 	    	RENDER_END;
 	    	NEXT_INST(0);
@@ -1600,9 +1711,9 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx, LPBYTE cmdBufferStart, LPBYTE cmd
 	    	CHECK_LIMITS(D3DHAL_DP2MULTIPLYTRANSFORM, inst->wStateCount);
 	    	for(i = 0; i < inst->wStateCount; i++)
 	    	{
-	    		D3DHAL_DP2MULTIPLYTRANSFORM *rf = (D3DHAL_DP2MULTIPLYTRANSFORM*)prim;
+	    		D3DHAL_DP2MULTIPLYTRANSFORM *tf = (D3DHAL_DP2MULTIPLYTRANSFORM*)prim;
+	    		MesaMultTransform(ctx, tf->xfrmType, &tf->matrix);
 	    		prim += sizeof(D3DHAL_DP2MULTIPLYTRANSFORM);
-	    		
 	    	}
 	    	NEXT_INST(0);
 	    	break;

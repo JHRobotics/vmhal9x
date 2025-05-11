@@ -46,6 +46,10 @@ typedef struct _DDSURF
 	FLATPTR fpVidMem;
 	LPDDRAWI_DDRAWSURFACE_GBL lpGbl;
 	LPDDRAWI_DDRAWSURFACE_LCL lpLclDX7; // DX7 and older only!
+	DDPIXELFORMAT pixfmt;
+	DWORD width;
+	DWORD height;
+	DWORD bpp;
 	DWORD dwFlags;
 	DWORD dwCaps;
 	DWORD dwCaps2;

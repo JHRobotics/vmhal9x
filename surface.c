@@ -152,8 +152,9 @@ static surface_info_t *SurfaceCreateInfo(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL re
 
 	if((DWORD)surf->lpGbl < 0x80000000 && surf->lpGbl->fpVidMem < 0x80000000)
 	{
-		ERR("ono global lpGbl=0x%X", surf->lpGbl);
+		ERR("no global lpGbl=0x%X", surf->lpGbl);
 		return NULL;
+		//WARN("user mem surface gbl=0x%X", surf->lpGbl);
 	}
 	
 	surface_info_t *info = hal_calloc(HEAP_NORMAL, sizeof(surface_info_t), 0);
@@ -914,7 +915,8 @@ NUKED_LOCAL BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL 
 	/* system memory */
 	if(((surface->ddsCaps.dwCaps & (DDSCAPS_SYSTEMMEMORY | DDSCAPS_TEXTURE)) == 
 		(DDSCAPS_SYSTEMMEMORY | DDSCAPS_TEXTURE)) || surface->lpGbl->fpVidMem < 0x80000000)
-	//if(surface->lpGbl->fpVidMem < 0x80000000)
+/*	if(((surface->ddsCaps.dwCaps & (DDSCAPS_TEXTURE)) == 
+		(DDSCAPS_TEXTURE)) && surface->lpGbl->fpVidMem < 0x80000000) *//* JH: OK, copy textures only when they're in private memory, all others like buffer leave where they're */
 	{
 		LPDDRAWI_DDRAWSURFACE_LCL scopy = SurfaceDuplicate(surface);
 		if(scopy)
@@ -1001,6 +1003,12 @@ NUKED_LOCAL BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL 
 	}
 
 	return FALSE;
+}
+
+NUKED_LOCAL void SurfaceExInsertBuffer(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, DWORD dwSurfaceHandle, void *mem)
+{
+	TRACE("insert buffer %d => 0x%X", dwSurfaceHandle, mem);
+	MesaSurfacesTableInsertBuffer(entry, lpDDLcl, dwSurfaceHandle, mem);
 }
 
 BOOL SurfaceIsEmpty(surface_id sid)
@@ -1223,5 +1231,73 @@ void SurfaceUnlock(LPDDRAWI_DDRAWSURFACE_LCL surf)
 		{
 			info->lock--;
 		}
+	}
+}
+
+void SurfaceSetFormat(surface_id sid, DDPIXELFORMAT *fmt, DWORD screen_bpp)
+{
+	DDSURF *surf = SurfaceGetSURF(sid);
+	if(surf)
+	{
+		memcpy(&surf->pixfmt, fmt, sizeof(DDPIXELFORMAT));
+		if((surf->pixfmt.dwFlags & (DDPF_RGB | DDPF_FOURCC | DDPF_ZBUFFER)) == 0)
+		{
+			surf->pixfmt.dwFlags = GL_RGB;
+			
+			switch(screen_bpp)
+			{
+				case 8:
+					surf->pixfmt.dwFlags |= DDPF_PALETTEINDEXED8;
+					surf->pixfmt.dwRGBBitCount = 8;
+					surf->pixfmt.dwRBitMask = 0;
+					surf->pixfmt.dwGBitMask = 0;
+					surf->pixfmt.dwBBitMask = 0;
+					surf->pixfmt.dwRGBAlphaBitMask = 0;
+					surf->pixfmt.dwFourCC = 0;
+					break;
+				case 16:
+					surf->pixfmt.dwRGBBitCount = 16;
+					surf->pixfmt.dwRBitMask = 0x00F80000;
+					surf->pixfmt.dwGBitMask = 0x00007E00;
+					surf->pixfmt.dwBBitMask = 0x0000001F;
+					surf->pixfmt.dwRGBAlphaBitMask = 0x00000000;
+					surf->pixfmt.dwFourCC = 0;
+					break;
+				case 32:
+					surf->pixfmt.dwRGBBitCount = 32;
+					surf->pixfmt.dwRBitMask = 0x00FF0000;
+					surf->pixfmt.dwGBitMask = 0x0000FF00;
+					surf->pixfmt.dwBBitMask = 0x000000FF;
+					surf->pixfmt.dwRGBAlphaBitMask = 0x00000000;
+					surf->pixfmt.dwFourCC = 0;
+					break;
+				/* currently this modes should not be present */
+				case 15:
+					surf->pixfmt.dwRGBBitCount = 15;
+					surf->pixfmt.dwRBitMask = 0x007C0000;
+					surf->pixfmt.dwGBitMask = 0x00003E00;
+					surf->pixfmt.dwBBitMask = 0x0000001F;
+					surf->pixfmt.dwRGBAlphaBitMask = 0x00000000;
+					surf->pixfmt.dwFourCC = 0;
+					break;
+				case 24:
+					surf->pixfmt.dwRGBBitCount = 24;
+					surf->pixfmt.dwRBitMask = 0x00FF0000;
+					surf->pixfmt.dwGBitMask = 0x0000FF00;
+					surf->pixfmt.dwBBitMask = 0x000000FF;
+					surf->pixfmt.dwRGBAlphaBitMask = 0x00000000;
+					surf->pixfmt.dwFourCC = 0;
+					break;
+			}
+			surf->bpp = screen_bpp;
+		}
+		else
+		{
+			// FIXME: FourCC
+			surf->bpp = fmt->dwRGBBitCount;
+		}
+
+		surf->width  = surf->lpGbl->wWidth;
+		surf->height = surf->lpGbl->wHeight;
 	}
 }

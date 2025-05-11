@@ -111,9 +111,10 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 		{
 			LPDDRAWI_DDRAWSURFACE_LCL lpSurf = lplpSList[i];
 
+			DDPIXELFORMAT *fmt = &pcsd->lpDDSurfaceDesc->ddpfPixelFormat;
 			TOPIC("TARGET", "CreateSurface32 dwFlags=0x%X", lpSurf->lpGbl->ddpfSurface.dwFlags);
-			
-			if(lpSurf->lpGbl->ddpfSurface.dwFlags & DDPF_FOURCC)
+
+			if(fmt->dwFlags & DDPF_FOURCC)
 			{
 				DWORD pitch;
 				DWORD size = SurfaceDataSize(lpSurf->lpGbl, &pitch);
@@ -122,6 +123,7 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 				if(i == 0)
 				{
 					pcsd->lpDDSurfaceDesc->lPitch = pitch;
+					pcsd->lpDDSurfaceDesc->dwFlags |= DDSD_PITCH;
 				}
 				
 				lpSurf->lpGbl->dwBlockSizeX = size;
@@ -136,27 +138,31 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 					lpSurf->lpGbl->fpVidMem = DDHAL_PLEASEALLOC_BLOCKSIZE;
 				}
 			}
-			else if(lpSurf->lpGbl->ddpfSurface.dwFlags & DDPF_RGB)
+			else if(fmt->dwFlags & DDPF_RGB)
 			{
 				lpSurf->lpGbl->dwBlockSizeX = (DWORD)lpSurf->lpGbl->wHeight * lpSurf->lpGbl->lPitch;
 				lpSurf->lpGbl->dwBlockSizeY = 1;
 				//lpSurf->lpGbl->fpVidMem     = DDHAL_PLEASEALLOC_BLOCKSIZE;
 
-				TOPIC("CUBE", "Alloc RGB %d x %d = %d (pitch %d)", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->lPitch);
-				TOPIC("MIPMAP", "Alloc RGB %d x %d = %d (pitch %d)", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->lPitch);
 				TOPIC("ALLOC", "RGB %d x %d = %d (pitch %d)", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->lPitch);
+				TOPIC("ALLOC", "RGB %d x %d (pitch %d)", 
+					pcsd->lpDDSurfaceDesc->dwWidth, pcsd->lpDDSurfaceDesc->dwHeight, pcsd->lpDDSurfaceDesc->lPitch);
 
-				TOPIC("ALLOCTRACE", "create: %d x %d, dwFlags=0x%X, dwCaps=0x%X", lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->dwBlockSizeY, lpSurf->lpGbl->ddpfSurface.dwFlags, pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps);
+				TOPIC("ALLOCTRACE", "create: %d x %d, dwFlags=0x%X, dwCaps=0x%X", lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->dwBlockSizeY, fmt->dwFlags, pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps);
 				if(!hal_valloc(pcsd->lpDD, lpSurf, FALSE))
 				{
 					WARN("DDERR_OUTOFVIDEOMEMORY (pass to HEL to solve this)");
 					lpSurf->lpGbl->fpVidMem = DDHAL_PLEASEALLOC_BLOCKSIZE;
 				}
-				//lpSurf->lpGbl->fpVidMem     = DDHAL_PLEASEALLOC_BLOCKSIZE;
+				if(i == 0)
+				{
+					pcsd->lpDDSurfaceDesc->lPitch = lpSurf->lpGbl->lPitch;
+					pcsd->lpDDSurfaceDesc->dwFlags |= DDSD_PITCH;
+				}
 			}
-			else if(lpSurf->lpGbl->ddpfSurface.dwFlags & DDPF_ZBUFFER)
+			else if(fmt->dwFlags & DDPF_ZBUFFER)
 			{
-				if(lpSurf->lpGbl->ddpfSurface.dwZBufferBitDepth >= 24)
+				if(fmt->dwZBufferBitDepth >= 24)
 				{
 					lpSurf->lpGbl->lPitch = SurfacePitch(lpSurf->lpGbl->wWidth, 32);
 				}
@@ -171,31 +177,48 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 					WARN("DDERR_OUTOFVIDEOMEMORY (pass to HEL to solve this)");
 					lpSurf->lpGbl->fpVidMem = DDHAL_PLEASEALLOC_BLOCKSIZE;
 				}
+				if(i == 0)
+				{
+					pcsd->lpDDSurfaceDesc->lPitch = lpSurf->lpGbl->lPitch;
+					pcsd->lpDDSurfaceDesc->dwFlags |= DDSD_PITCH;
+				}
 			}
 			else
 			{
 				DWORD s = (DWORD)lpSurf->lpGbl->wHeight * lpSurf->lpGbl->lPitch;
 
 				TOPIC("ALLOC", "Unknown format %X, allocated primary surface (%d x %d) = %d, fpVidMem=%X",
-					lpSurf->lpGbl->ddpfSurface.dwFlags,
+					fmt->dwFlags,
 					lpSurf->lpGbl->wWidth,
 					lpSurf->lpGbl->wHeight, s, lpSurf->lpGbl->fpVidMem);
+				
+				TRACE("Alternate desc: fmt flags=%X flags=0x%X", pcsd->lpDDSurfaceDesc->ddpfPixelFormat.dwFlags, pcsd->lpDDSurfaceDesc->dwFlags);
 
 				lpSurf->lpGbl->dwBlockSizeX = s;
 				lpSurf->lpGbl->dwBlockSizeY = 1;
 				lpSurf->lpGbl->fpVidMem     = DDHAL_PLEASEALLOC_BLOCKSIZE; /* required for this type of surface */
-				
+				if(i == 0)
+				{
+					pcsd->lpDDSurfaceDesc->lPitch = lpSurf->lpGbl->lPitch;
+					pcsd->lpDDSurfaceDesc->dwFlags |= DDSD_PITCH;
+				}
 				TOPIC("MEMORY", "HAL allocated surface, flags=0x%X, caps=0x%X",
-				lpSurf->lpGbl->ddpfSurface.dwFlags,
+				fmt->dwFlags,
 				lpSurf->ddsCaps.dwCaps
 				);
 			}
-
-			if(SurfaceCreate(lpSurf) == 0)
+			
+			surface_id sid = SurfaceCreate(lpSurf);
+			if(sid == 0)
 			{
 				pcsd->ddRVal = DDERR_OUTOFMEMORY;
 				return DDHAL_DRIVER_HANDLED;
 			}
+			else
+			{
+				SurfaceSetFormat(sid, fmt, hal->pFBHDA32->bpp);
+			}
+			
 			TOPIC("TARGET", "Created sid=%d", lpSurf->dwReserved1);
 			
 			TOPIC("GL", "Mipmam %d/%d created", i+1, pcsd->dwSCnt);
@@ -343,6 +366,7 @@ DDENTRY_FPUSAVE(Lock32, LPDDHAL_LOCKDATA, pld)
 	}
 
 #ifdef D3DHAL
+  // FIXME: implement DDLOCK_DISCARDCONTENTS flags
 	surface_id sid = pld->lpDDSurface->dwReserved1;
 	if(sid)
 	{

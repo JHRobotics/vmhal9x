@@ -157,6 +157,7 @@ void SurfaceDeleteAll();
 void SurfaceToMesaTex(surface_id sid);
 void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly);
 void SurfaceZToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, DWORD color);
+void SurfaceSetFormat(surface_id sid, DDPIXELFORMAT *fmt, DWORD screen_bpp);
 
 void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly);
 BOOL SurfaceIsEmpty(surface_id sid);

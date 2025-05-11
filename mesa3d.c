@@ -262,9 +262,10 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 {
 	*palette = FALSE;
 	
-	if((surf->dwFlags & DDRAWISURF_HASPIXELFORMAT) != 0)
-	{
-		DDPIXELFORMAT fmt = surf->lpGbl->ddpfSurface;
+	//if((surf->dwFlags & DDRAWISURF_HASPIXELFORMAT) != 0)
+	//{
+		//DDPIXELFORMAT fmt = surf->lpGbl->ddpfSurface;
+		DDPIXELFORMAT fmt = surf->pixfmt;
 		TOPIC("BLEND", "DDPIXELFORMAT.dwFlags = 0x%X", fmt.dwFlags);
 		
 		if(fmt.dwFlags & DDPF_FOURCC)
@@ -564,8 +565,10 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 				return TRUE;
 			}
 		}
+		WARN("No know pixel format");
 		return FALSE;
-	} // HASPIXELFORMAT
+	// } // HASPIXELFORMAT
+#if 0
 	else
 	{
 		FBHDA_t *hda = FBHDA_setup();
@@ -601,6 +604,7 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 		}
 		return TRUE;
 	}
+#endif
 	
 	return FALSE; /* not reached */
 }
@@ -908,9 +912,9 @@ NUKED_LOCAL BOOL MesaSetTarget(mesa3d_ctx_t *ctx, surface_id dds_sid, surface_id
 
 	DDSURF *dds = SurfaceGetSURF(dds_sid);
 
-	int width  = dds->lpGbl->wWidth;
-	int height = dds->lpGbl->wHeight;
-	int bpp = DDSurf_GetBPP(dds);
+	int width  = dds->width;
+	int height = dds->height;
+	int bpp =    dds->bpp;
 	int bpp_depth = 0;
 	BOOL viewport_set = TRUE;
 	//dds->fpVidMem = dds->lpLcl->lpGbl->fpVidMem;
@@ -921,9 +925,9 @@ NUKED_LOCAL BOOL MesaSetTarget(mesa3d_ctx_t *ctx, surface_id dds_sid, surface_id
 		DDSURF *ddz = SurfaceGetSURF(ddz_sid);
 		if(ddz)
 		{
-			bpp_depth = DDSurf_GetBPP(ddz);
+			bpp_depth = ddz->bpp;
 
-			if(ddz->lpGbl->ddpfSurface.dwFlags & DDPF_STENCILBUFFER)
+			if(ddz->pixfmt.dwFlags & DDPF_STENCILBUFFER)
 				ctx->depth_stencil = TRUE;
 		}
 	}
@@ -1205,8 +1209,9 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 	MesaStencilApply(ctx);
 	
 	ctx->state.bind_vertices = -1;
-	ctx->state.bind_indices_sid = 0;
-	
+	ctx->state.bind_indices = NULL;
+	ctx->vstream[0].mem = NULL;
+
 	MesaDrawRefreshState(ctx);
 }
 
@@ -1246,29 +1251,6 @@ NUKED_LOCAL BOOL MesaSetCtx(mesa3d_ctx_t *ctx)
 	return FALSE;
 }
 
-/* convert functions (TODO: move to special file) */
-NUKED_LOCAL DWORD DDSurf_GetBPP(DDSURF *surf)
-{
-	if(surf == NULL)
-	{
-		return 0;
-	}
-
-	DWORD bpp;
-
-	if((surf->dwFlags & DDRAWISURF_HASPIXELFORMAT) == 0)
-	{
-		FBHDA_t *hda = FBHDA_setup();
-		bpp = hda->bpp;
-	}
-	else
-	{
-		bpp = surf->lpGbl->ddpfSurface.dwRGBBitCount;
-	}
-
-	return bpp;
-}
-
 NUKED_INLINE int GetCubeSide(DWORD dwCaps2)
 {
 	if(dwCaps2 & DDSCAPS2_CUBEMAP_POSITIVEX)
@@ -1294,9 +1276,6 @@ NUKED_LOCAL mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, surface_id si
 
 	if(surf == NULL)
 		return NULL;
-
-	TOPIC("GL", "new texture");
-	// NOTE: id=sid in ctx->tex[id]
 
 	if(sid >= MESA3D_MAX_TEXS)
 	{
@@ -1352,11 +1331,11 @@ NUKED_LOCAL mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, surface_id si
 
 		if(DDSurfaceToGL(surf, &tex->bpp, &tex->internalformat, &tex->format, &tex->type, &tex->compressed, &tex->palette))
 		{
-			tex->width  = surf->lpGbl->wWidth;
-			tex->height = surf->lpGbl->wHeight;
+			tex->width  = surf->width;
+			tex->height = surf->height;
 
 			GL_CHECK(entry->proc.pglGenTextures(1, &tex->gltex));
-			TOPIC("TEXMEM", "new texture: %d", tex->gltex);
+			TOPIC("TEXMEM", "new texture: %d (%d x %d)", tex->gltex, tex->width, tex->height);
 
 			if((surf->dwFlags & DDRAWISURF_HASCKEYSRCBLT) && ctx->state.tmu[0].colorkey)
 			{
@@ -2804,6 +2783,7 @@ NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DHAL_DP2RENDERSTATE s
 					}
 					break;
 				RENDERSTATE(D3DRS_SOFTWAREVERTEXPROCESSING)
+					TRACE("D3DRS_SOFTWAREVERTEXPROCESSING=0x%X", state->dwState);
 					break;
 				RENDERSTATE(D3DRS_POINTSIZE)
 					break;
@@ -2824,10 +2804,10 @@ NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DHAL_DP2RENDERSTATE s
 				RENDERSTATE(D3DRS_MULTISAMPLEMASK)
 					break;
 				RENDERSTATE(D3DRS_PATCHEDGESTYLE)
-					WARN("D3DRS_DEBUGMONITORTOKEN=0x%X", state->dwState);
+					WARN("D3DRS_PATCHEDGESTYLE=0x%X", state->dwState);
 					break;
 				RENDERSTATE(D3DRS_PATCHSEGMENTS)
-					WARN("D3DRS_DEBUGMONITORTOKEN=0x%X", state->dwState);
+					WARN("D3DRS_PATCHSEGMENTS=0x%X", state->dwState);
 					break;
 				RENDERSTATE(D3DRS_DEBUGMONITORTOKEN)
 					TRACE("D3DRS_DEBUGMONITORTOKEN=0x%X", state->dwState);
@@ -2859,7 +2839,7 @@ NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DHAL_DP2RENDERSTATE s
 
 NUKED_FAST GLenum MesaConvPrimType(D3DPRIMITIVETYPE dx_type)
 {
-	GLenum gl_type = -1;
+	GLenum gl_type = GL_ZERO;
 	
 	switch(dx_type)
 	{
@@ -3522,7 +3502,7 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 				alpha_arg3_source = alpha_arg2_source;
 				alpha_arg3_op     = alpha_arg2_op;
 				alpha_arg2_source = GL_ZERO;
-				alpha_arg2_op     = GL_ONE_MINUS_SRC_COLOR;
+				alpha_arg2_op     = GL_ONE_MINUS_SRC_ALPHA;
 			}
 			break;
 		case D3DTOP_ADDSIGNED:
@@ -3533,7 +3513,7 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 				alpha_arg3_source = alpha_arg2_source;
 				alpha_arg3_op     = alpha_arg2_op;
 				alpha_arg2_source = GL_ZERO;
-				alpha_arg2_op     = GL_ONE_MINUS_SRC_COLOR;
+				alpha_arg2_op     = GL_ONE_MINUS_SRC_ALPHA;
 			}
 			break;
 		case D3DTOP_ADDSIGNED2X:
@@ -3545,7 +3525,7 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 				alpha_arg3_source = alpha_arg2_source;
 				alpha_arg3_op     = alpha_arg2_op;
 				alpha_arg2_source = GL_ZERO;
-				alpha_arg2_op     = GL_ONE_MINUS_SRC_COLOR;
+				alpha_arg2_op     = GL_ONE_MINUS_SRC_ALPHA;
 			}
 			break;
 		case D3DTOP_SUBTRACT:
@@ -3983,7 +3963,7 @@ NUKED_LOCAL void MesaDraw5(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERT
 
 	GLenum gl_ptype = MesaConvPrimType(dx_ptype);
 
-	if(gl_ptype != -1)
+	if(gl_ptype != GL_ZERO)
 	{
 		TOPIC("GL", "glBegin(%d)", gl_ptype);
 		entry->proc.pglBegin(gl_ptype);
@@ -4081,7 +4061,7 @@ NUKED_LOCAL void MesaDraw5Index(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3
 
 	GLenum gl_ptype = MesaConvPrimType(dx_ptype);
 
-	if(gl_ptype != -1)
+	if(gl_ptype != GL_ZERO)
 	{
 		TOPIC("GL", "glBegin(%d)", gl_ptype);
 		entry->proc.pglBegin(gl_ptype);
@@ -4298,85 +4278,6 @@ NUKED_LOCAL void MesaSceneEnd(mesa3d_ctx_t *ctx)
 #endif
 }
 
-#define COPY_MATRIX(_srcdx, _dst) do{ \
-	(_dst)[ 0]=(_srcdx)->_11; (_dst)[ 1]=(_srcdx)->_12; (_dst)[ 2]=(_srcdx)->_13; (_dst)[ 3]=(_srcdx)->_14; \
-	(_dst)[ 4]=(_srcdx)->_21; (_dst)[ 5]=(_srcdx)->_22; (_dst)[ 6]=(_srcdx)->_23; (_dst)[ 7]=(_srcdx)->_24; \
-	(_dst)[ 8]=(_srcdx)->_31; (_dst)[ 9]=(_srcdx)->_32; (_dst)[10]=(_srcdx)->_33; (_dst)[11]=(_srcdx)->_34; \
-	(_dst)[12]=(_srcdx)->_41; (_dst)[13]=(_srcdx)->_42; (_dst)[14]=(_srcdx)->_43; (_dst)[15]=(_srcdx)->_44; \
-	}while(0)
-
-NUKED_LOCAL void MesaSetTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *matrix)
-{
-	TOPIC("MATRIX", "MesaSetTransform(ctx, 0x%X, %p)", xtype, matrix);
-
-	/**
-		This is undocumented and comes from reference driver.
-		Original note:
-		  BUGBUG is there a define for 0x80000000?
-	**/
-	BOOL set_identity = (xtype & 0x80000000) == 0 ? FALSE : TRUE;
-	D3DTRANSFORMSTATETYPE state = (D3DTRANSFORMSTATETYPE)(xtype & 0x7FFFFFFF);
-	GLfloat m[16];
-	if(!set_identity && matrix != NULL)
-	{
-		COPY_MATRIX(matrix, m);
-	}
-	else
-	{
-		MesaIdentity(m);
-	}
-	
-	switch(state)
-	{
-		case D3DTRANSFORMSTATE_WORLD:
-			memcpy(ctx->matrix.world[0], m, sizeof(m));
-			MesaApplyTransform(ctx, MESA_TF_WORLD);
-			break;
-		case D3DTRANSFORMSTATE_VIEW:
-			if(memcmp(ctx->matrix.view, m, sizeof(m)) != 0)
-			{
-				memcpy(ctx->matrix.view, m, sizeof(m));
-				MesaApplyTransform(ctx, MESA_TF_VIEW);
-			}
-			break;
-		case D3DTRANSFORMSTATE_PROJECTION:
-			if(memcmp(ctx->matrix.proj, m, sizeof(m)) != 0)
-			{
-				memcpy(ctx->matrix.proj, m, sizeof(m));
-				MesaApplyTransform(ctx, MESA_TF_PROJECTION);
-			}
-			break;
-		case D3DTRANSFORMSTATE_WORLD1:
-			memcpy(ctx->matrix.world[1], m, sizeof(m));
-			MesaApplyTransform(ctx, MESA_TF_WORLD);
-			break;
-		case D3DTRANSFORMSTATE_WORLD2:
-			memcpy(ctx->matrix.world[2], m, sizeof(m));
-			MesaApplyTransform(ctx, MESA_TF_WORLD);
-			break;
-		case D3DTRANSFORMSTATE_WORLD3:
-			memcpy(ctx->matrix.world[3], m, sizeof(m));
-			MesaApplyTransform(ctx, MESA_TF_WORLD);
-			break;
-#if 0 /* disabled for now */
-		case D3DTRANSFORMSTATE_TEXTURE0...D3DTRANSFORMSTATE_TEXTURE7:
-		{
-			DWORD tmu = state-D3DTRANSFORMSTATE_TEXTURE0;
-			memcpy(ctx->state.tmu[tmu].matrix, m, sizeof(m));
-			ctx->state.tmu[tmu].move = TRUE;
-			MesaDrawRefreshState(ctx);
-			break;
-		}
-#else
-		case D3DTRANSFORMSTATE_TEXTURE0...D3DTRANSFORMSTATE_TEXTURE7:
-			break;
-#endif
-		default:
-			WARN("MesaSetTransform: invalid state=%d, xtype=%X", state, xtype);
-			break;
-	}
-}
-
 NUKED_LOCAL mesa_surfaces_table_t *MesaSurfacesTableGet(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, DWORD max_id)
 {
 	mesa_surfaces_table_t *table = NULL;
@@ -4401,9 +4302,10 @@ NUKED_LOCAL mesa_surfaces_table_t *MesaSurfacesTableGet(mesa3d_entry_t *entry, L
 		if(max_id >= table->table_size)
 		{
 			DWORD new_size = ((max_id + SURFACES_TABLE_POOL)/SURFACES_TABLE_POOL) * SURFACES_TABLE_POOL;
-			if(hal_realloc(HEAP_NORMAL, (void**)&table->table, new_size * sizeof(surface_info_t*), TRUE))
+			if(hal_realloc(HEAP_NORMAL, (void**)&table->table, new_size * sizeof(surface_id), TRUE))
 			{
 				table->table_size = new_size;
+				hal_realloc(HEAP_NORMAL, (void**)&table->usermem, new_size * sizeof(void*), TRUE);
 			}
 		}
 	}
@@ -4448,7 +4350,29 @@ NUKED_LOCAL void MesaSurfacesTableInsertHandle(mesa3d_entry_t *entry, LPDDRAWI_D
 	if(table)
 	{
 		table->table[handle] = sid;
+		table->usermem[handle] = NULL;
 	}
+}
+
+NUKED_LOCAL void MesaSurfacesTableInsertBuffer(mesa3d_entry_t *entry,  LPDDRAWI_DIRECTDRAW_LCL lpDDLcl, DWORD handle, void *mem)
+{
+	mesa_surfaces_table_t *table = MesaSurfacesTableGet(entry, lpDDLcl, handle);
+	if(table)
+	{
+		table->table[handle] = 0;
+		table->usermem[handle] = mem;
+	}
+}
+
+NUKED_FAST void *MesaSurfacesGetBuffer(mesa3d_ctx_t *ctx, DWORD dwSurfacehandle)
+{
+	surface_id sid = ctx->surfaces->table[dwSurfacehandle];
+	if(sid)
+	{
+		return SurfaceGetVidMem(sid);
+	}
+	
+	return ctx->surfaces->usermem[dwSurfacehandle];
 }
 
 NUKED_LOCAL mesa3d_texture_t *MesaTextureFromSurfaceHandle(mesa3d_ctx_t *ctx, DWORD handle)

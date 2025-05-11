@@ -338,6 +338,7 @@ DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 	DWORD rc = DD_OK;
 
 	GL_BLOCK_BEGIN(pd->dwhContext)
+/*
 		MesaFVFSet(ctx, pd->dwVertexType, pd->dwVertexSize);
 		if((pd->dwVertexType & D3DFVF_POSITION_MASK) == D3DFVF_XYZRHW)
 		{
@@ -345,15 +346,22 @@ DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 		}
 		MesaApplyLighting(ctx);
 		MesaApplyMaterial(ctx);
+*/
 		if(!ctx->state.recording)
 		{
-			rc = MesaDraw6(ctx, cmdBufferStart, cmdBufferEnd, vertices, &pd->dwErrorOffset, RStates, pd->dwVertexLength);
+			LPBYTE UMVertices = pd->lpVertices;
+			if(UMVertices != NULL)
+			{
+				UMVertices += pd->dwVertexOffset;
+			}
+			
+			rc = MesaDraw6(ctx, cmdBufferStart, cmdBufferEnd, vertices, UMVertices, pd->dwVertexType, &pd->dwErrorOffset, RStates, pd->dwVertexLength);
 		}
 		else
 		{
 			rc = MesaRecord6(ctx, cmdBufferStart, cmdBufferEnd, vertices, &pd->dwErrorOffset, RStates);
 		}
-		MesaSpaceIdentityReset(ctx);
+		//MesaSpaceIdentityReset(ctx);
 	GL_BLOCK_END
 
 	pd->ddrval = rc;
@@ -556,11 +564,18 @@ DDENTRY_FPUSAVE(CreateSurfaceEx32, LPDDHAL_CREATESURFACEEXDATA, lpcsxd)
 	else
 	{
 		/* is exec buffer */
-		if((surf->ddsCaps.dwCaps & (DDSCAPS_RESERVED2 | DDSCAPS_VIDEOMEMORY)) == (DDSCAPS_RESERVED2 | DDSCAPS_VIDEOMEMORY))
+		if(surf->ddsCaps.dwCaps & DDSCAPS_EXECUTEBUFFER)
 		{
 			TOPIC("EXEBUF", "surface 0x%X, vram=0x%X", surf->lpSurfMore->dwSurfaceHandle, surf->lpGbl->fpVidMem);
 			/* DX8+ need register buffer too for usage with streams */
-			SurfaceExInsert(entry, lpcsxd->lpDDLcl, surf);
+			if(surf->ddsCaps.dwCaps & DDSCAPS_VIDEOMEMORY)
+			{
+				SurfaceExInsert(entry, lpcsxd->lpDDLcl, surf);
+			}
+			else
+			{
+				SurfaceExInsertBuffer(entry, lpcsxd->lpDDLcl, surf->lpSurfMore->dwSurfaceHandle, (void*)surf->lpGbl->fpVidMem);
+			}
 		}
 		else
 		{
@@ -698,6 +713,7 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 			caps.DeviceType = D3DDEVTYPE_HAL;
 			caps.AdapterOrdinal = 0;
 
+#if 0
 			caps.Caps = DDCAPS_GDI | /* HW is shared with GDI */
 				DDCAPS_BLT | /* BLT is supported */
 				DDCAPS_BLTDEPTHFILL | /* depth fill */
@@ -712,8 +728,13 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 			/* JH: ^should we copy here DDCAPS_* flags or use only D3DCAPS_* flags?
 			 * permedia driver do first one, from DX8 SDK doc say's the second...
 			 */
+#else
+			caps.Caps = 0; /* DX7 */
+			caps.Caps2 = D3DCAPS2_CANRENDERWINDOWED;
+			caps.Caps3 = 0;
+#endif
 			
-			caps.PresentationIntervals = 0;
+			caps.PresentationIntervals = D3DPRESENT_INTERVAL_IMMEDIATE | D3DPRESENT_INTERVAL_ONE;
 			caps.CursorCaps = 0;//D3DCURSORCAPS_COLOR | D3DCURSORCAPS_LOWRES;
 			caps.DevCaps =
 				//D3DDEVCAPS_CANBLTSYSTONONLOCAL | // Device supports blits from system-memory textures to nonlocal video-memory textures. */
@@ -724,7 +745,7 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 				D3DDEVCAPS_HWRASTERIZATION | // Device has hardware acceleration for scene rasterization. 
 				D3DDEVCAPS_HWTRANSFORMANDLIGHT | // Device can support transformation and lighting in hardware. 
 				//D3DDEVCAPS_NPATCHES | // Device supports N patches. 
-				//D3DDEVCAPS_PUREDEVICE | // Device can support rasterization, transform, lighting, and shading in hardware. (no need for final version of runtime)
+				D3DDEVCAPS_PUREDEVICE | // Device can support rasterization, transform, lighting, and shading in hardware. (no need for final version of runtime)
 				//D3DDEVCAPS_QUINTICRTPATCHES | // Device supports quintic béziers and B-splines. 
 				//D3DDEVCAPS_RTPATCHES | // Device supports rectangular and triangular patches. 
 				//D3DDEVCAPS_RTPATCHHANDLEZERO | // When this device capability is set, the hardware architecture does not require caching of any information, and uncached patches (handle zero) will be drawn as efficiently as cached ones. Note that setting D3DDEVCAPS_RTPATCHHANDLEZERO does not mean that a patch with handle zero can be drawn. A handle-zero patch can always be drawn whether this cap is set or not. 
@@ -807,8 +828,9 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 			 	caps.MaxVertexBlendMatrixIndex = 3;
 			}
 			caps.MaxPointSize = 1.0f;
-			caps.MaxPrimitiveCount = 0x000FFFFF;
-			caps.MaxVertexIndex = 0x000FFFFF;
+			caps.MaxPrimitiveCount = 0x0000FFFFF;
+			caps.MaxVertexIndex = 0x002000000;
+			/* A driver reports support for 32-bit indices by setting the value of the MaxVertexIndex field of D3DCAPS8 (currently also in D3DHAL_D3DEXTENDEDCAPS) to a value greater than 0xFFFF */
 			caps.MaxStreams = 1;
 			caps.MaxStreamStride = 256;
 			caps.VertexShaderVersion = D3DVS_VERSION(0, 0);

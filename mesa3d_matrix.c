@@ -31,6 +31,7 @@
 #include <ddrawi.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "d3dhal_ddk.h"
 #include "vmdahal32.h"
 #include "vmhal9x.h"
 #include "mesa3d.h"
@@ -448,4 +449,169 @@ NUKED_LOCAL void MesaVetexBlend(mesa3d_ctx_t *ctx, GLfloat coords[3], GLfloat *b
 	}
 	
 	matmultvecf(m, in4, out);
+}
+
+#define COPY_MATRIX(_srcdx, _dst) do{ \
+	(_dst)[ 0]=(_srcdx)->_11; (_dst)[ 1]=(_srcdx)->_12; (_dst)[ 2]=(_srcdx)->_13; (_dst)[ 3]=(_srcdx)->_14; \
+	(_dst)[ 4]=(_srcdx)->_21; (_dst)[ 5]=(_srcdx)->_22; (_dst)[ 6]=(_srcdx)->_23; (_dst)[ 7]=(_srcdx)->_24; \
+	(_dst)[ 8]=(_srcdx)->_31; (_dst)[ 9]=(_srcdx)->_32; (_dst)[10]=(_srcdx)->_33; (_dst)[11]=(_srcdx)->_34; \
+	(_dst)[12]=(_srcdx)->_41; (_dst)[13]=(_srcdx)->_42; (_dst)[14]=(_srcdx)->_43; (_dst)[15]=(_srcdx)->_44; \
+	}while(0)
+
+NUKED_LOCAL void MesaSetTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *matrix)
+{
+	TOPIC("MATRIX", "MesaSetTransform(ctx, 0x%X, %p)", xtype, matrix);
+
+	/**
+		This is undocumented and comes from reference driver.
+		Original note:
+		  BUGBUG is there a define for 0x80000000?
+	**/
+	BOOL set_identity = (xtype & 0x80000000) == 0 ? FALSE : TRUE;
+	DWORD state = xtype & 0x7FFFFFFF;
+	GLfloat m[16];
+	if(!set_identity && matrix != NULL)
+	{
+		COPY_MATRIX(matrix, m);
+	}
+	else
+	{
+		MesaIdentity(m);
+	}
+	
+	switch(state)
+	{
+		case D3DTRANSFORMSTATE_WORLD:
+		case D3DTS_WORLD:
+			memcpy(ctx->matrix.world[0], m, sizeof(m));
+			MesaApplyTransform(ctx, MESA_TF_WORLD);
+			break;
+		case D3DTRANSFORMSTATE_VIEW:
+			if(memcmp(ctx->matrix.view, m, sizeof(m)) != 0)
+			{
+				memcpy(ctx->matrix.view, m, sizeof(m));
+				MesaApplyTransform(ctx, MESA_TF_VIEW);
+			}
+			break;
+		case D3DTRANSFORMSTATE_PROJECTION:
+			if(memcmp(ctx->matrix.proj, m, sizeof(m)) != 0)
+			{
+				memcpy(ctx->matrix.proj, m, sizeof(m));
+				MesaApplyTransform(ctx, MESA_TF_PROJECTION);
+			}
+			break;
+		case D3DTRANSFORMSTATE_WORLD1:
+		case D3DTS_WORLD1:
+			memcpy(ctx->matrix.world[1], m, sizeof(m));
+			MesaApplyTransform(ctx, MESA_TF_WORLD);
+			break;
+		case D3DTRANSFORMSTATE_WORLD2:
+		case D3DTS_WORLD2:
+			memcpy(ctx->matrix.world[2], m, sizeof(m));
+			MesaApplyTransform(ctx, MESA_TF_WORLD);
+			break;
+		case D3DTRANSFORMSTATE_WORLD3:
+		case D3DTS_WORLD3:
+			memcpy(ctx->matrix.world[3], m, sizeof(m));
+			MesaApplyTransform(ctx, MESA_TF_WORLD);
+			break;
+#if 0 /* disabled for now */
+		case D3DTRANSFORMSTATE_TEXTURE0...D3DTRANSFORMSTATE_TEXTURE7:
+		{
+			DWORD tmu = state-D3DTRANSFORMSTATE_TEXTURE0;
+			memcpy(ctx->state.tmu[tmu].matrix, m, sizeof(m));
+			ctx->state.tmu[tmu].move = TRUE;
+			MesaDrawRefreshState(ctx);
+			break;
+		}
+#else
+		case D3DTRANSFORMSTATE_TEXTURE0...D3DTRANSFORMSTATE_TEXTURE7:
+			break;
+#endif
+		default:
+			/* MSDN: https://learn.microsoft.com/en-us/windows/win32/direct3d9/d3dtransformstatetype		
+				The transform states in the range 256 through 511 are reserved to
+				store up to 256 world matrices that can be indexed using the
+				D3DTS_WORLDMATRIX and D3DTS_WORLD macros.
+			*/
+			if(state >= 256 && state <= 511)
+			{
+				DWORD w_index = state-256;
+				memcpy(ctx->matrix.stored[w_index], m, sizeof(m));
+				
+				TRACE("MesaSetTransform: saved matrix %d", w_index);
+				// TODO: are these state usefull in this driver? Or we can safely ignore them and save memory?
+				if(w_index == 0)
+				{
+					//memcpy(ctx->matrix.world[0], m, sizeof(m));
+					//MesaApplyTransform(ctx, MESA_TF_WORLD);
+				}
+			}
+			else
+			{
+				WARN("MesaSetTransform: invalid state=%d, xtype=%X", state, xtype);
+			}
+			break;
+	}
+}
+
+NUKED_LOCAL void MesaMultTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *matrix)
+{
+	BOOL set_identity = (xtype & 0x80000000) == 0 ? FALSE : TRUE;
+	DWORD state = xtype & 0x7FFFFFFF;
+	GLfloat m[16];
+	if(!set_identity && matrix != NULL)
+	{
+		COPY_MATRIX(matrix, m);
+	}
+	else
+	{
+		MesaIdentity(m);
+	}
+	
+	switch(state)
+	{
+		case D3DTRANSFORMSTATE_WORLD:
+		case D3DTS_WORLD:
+			matmultf(ctx->matrix.world[0], m, ctx->matrix.world[0]);
+			MesaApplyTransform(ctx, MESA_TF_WORLD);
+			break;
+		case D3DTRANSFORMSTATE_VIEW:
+			matmultf(ctx->matrix.view, m, ctx->matrix.view);
+			MesaApplyTransform(ctx, MESA_TF_VIEW);
+			break;
+		case D3DTRANSFORMSTATE_PROJECTION:
+			matmultf(ctx->matrix.proj, m, ctx->matrix.proj);
+			break;
+		case D3DTRANSFORMSTATE_WORLD1:
+		case D3DTS_WORLD1:
+			matmultf(ctx->matrix.world[1], m, ctx->matrix.world[1]);
+			MesaApplyTransform(ctx, MESA_TF_WORLD);
+			break;
+		case D3DTRANSFORMSTATE_WORLD2:
+		case D3DTS_WORLD2:
+			matmultf(ctx->matrix.world[2], m, ctx->matrix.world[2]);
+			MesaApplyTransform(ctx, MESA_TF_WORLD);
+			break;
+		case D3DTRANSFORMSTATE_WORLD3:
+		case D3DTS_WORLD3:
+			matmultf(ctx->matrix.world[3], m, ctx->matrix.world[3]);
+			MesaApplyTransform(ctx, MESA_TF_WORLD);
+			break;
+#if 0 /* disabled for now */
+		case D3DTRANSFORMSTATE_TEXTURE0...D3DTRANSFORMSTATE_TEXTURE7:
+		{
+			matmultf(ctx->state.tmu[tmu].matrix, m, ctx->state.tmu[tmu].matrix);
+			ctx->state.tmu[tmu].move = TRUE;
+			MesaDrawRefreshState(ctx);
+			break;
+		}
+#else
+		case D3DTRANSFORMSTATE_TEXTURE0...D3DTRANSFORMSTATE_TEXTURE7:
+			break;
+#endif
+		default:
+			// ...
+			break;
+	}
 }
