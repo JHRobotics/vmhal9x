@@ -248,10 +248,10 @@ void printmtx(const char *name, GLfloat m[16])
 }
 #endif
 
-NUKED_LOCAL void MesaApplyViewport(mesa3d_ctx_t *ctx, GLint x, GLint y, GLint w, GLint h)
+NUKED_LOCAL void MesaApplyViewport(mesa3d_ctx_t *ctx, GLint x, GLint y, GLint w, GLint h, BOOL stateset)
 {
 	TRACE_ENTRY
-	
+
 	mesa3d_entry_t *entry = ctx->entry;
 	GL_CHECK(entry->proc.pglViewport(x, y, w, h));
 
@@ -263,6 +263,15 @@ NUKED_LOCAL void MesaApplyViewport(mesa3d_ctx_t *ctx, GLint x, GLint y, GLint w,
 	ctx->matrix.vpnorm[1] = ctx->matrix.viewport[1];
 	ctx->matrix.vpnorm[2] = 2.0f / ctx->matrix.viewport[2];
 	ctx->matrix.vpnorm[3] = 2.0f / ctx->matrix.viewport[3];
+
+	if(stateset)
+	{
+		ctx->state.current.viewport.dwX = x;
+		ctx->state.current.viewport.dwY = y;
+		ctx->state.current.viewport.dwWidth = w;
+		ctx->state.current.viewport.dwHeight = h;
+		ctx->state.current.extraset[0] |= 1 << MESA_REC_EXTRA_VIEWPORT;
+	}
 }
 
 /**
@@ -469,6 +478,7 @@ NUKED_LOCAL void MesaSetTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *mat
 	**/
 	BOOL set_identity = (xtype & 0x80000000) == 0 ? FALSE : TRUE;
 	DWORD state = xtype & 0x7FFFFFFF;
+	DWORD state_mtx = 0;
 	GLfloat m[16];
 	if(!set_identity && matrix != NULL)
 	{
@@ -485,6 +495,7 @@ NUKED_LOCAL void MesaSetTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *mat
 		case D3DTS_WORLD:
 			memcpy(ctx->matrix.world[0], m, sizeof(m));
 			MesaApplyTransform(ctx, MESA_TF_WORLD);
+			state_mtx = D3DTRANSFORMSTATE_WORLD;
 			break;
 		case D3DTRANSFORMSTATE_VIEW:
 			if(memcmp(ctx->matrix.view, m, sizeof(m)) != 0)
@@ -492,6 +503,7 @@ NUKED_LOCAL void MesaSetTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *mat
 				memcpy(ctx->matrix.view, m, sizeof(m));
 				MesaApplyTransform(ctx, MESA_TF_VIEW);
 			}
+			state_mtx = D3DTRANSFORMSTATE_VIEW;
 			break;
 		case D3DTRANSFORMSTATE_PROJECTION:
 			if(memcmp(ctx->matrix.proj, m, sizeof(m)) != 0)
@@ -499,11 +511,13 @@ NUKED_LOCAL void MesaSetTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *mat
 				memcpy(ctx->matrix.proj, m, sizeof(m));
 				MesaApplyTransform(ctx, MESA_TF_PROJECTION);
 			}
+			state_mtx = D3DTRANSFORMSTATE_PROJECTION;
 			break;
 		case D3DTRANSFORMSTATE_WORLD1:
 		case D3DTS_WORLD1:
 			memcpy(ctx->matrix.world[1], m, sizeof(m));
 			MesaApplyTransform(ctx, MESA_TF_WORLD);
+			state_mtx = D3DTRANSFORMSTATE_WORLD1;
 			break;
 		case D3DTRANSFORMSTATE_WORLD2:
 		case D3DTS_WORLD2:
@@ -514,6 +528,7 @@ NUKED_LOCAL void MesaSetTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *mat
 		case D3DTS_WORLD3:
 			memcpy(ctx->matrix.world[3], m, sizeof(m));
 			MesaApplyTransform(ctx, MESA_TF_WORLD);
+			state_mtx = D3DTRANSFORMSTATE_WORLD2;
 			break;
 #if 0 /* disabled for now */
 		case D3DTRANSFORMSTATE_TEXTURE0...D3DTRANSFORMSTATE_TEXTURE7:
@@ -522,6 +537,7 @@ NUKED_LOCAL void MesaSetTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *mat
 			memcpy(ctx->state.tmu[tmu].matrix, m, sizeof(m));
 			ctx->state.tmu[tmu].move = TRUE;
 			MesaDrawRefreshState(ctx);
+			state_mtx = state;
 			break;
 		}
 #else
@@ -536,8 +552,9 @@ NUKED_LOCAL void MesaSetTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *mat
 			*/
 			if(state >= 256 && state <= 511)
 			{
+#if 0
 				DWORD w_index = state-256;
-				memcpy(ctx->matrix.stored[w_index], m, sizeof(m));
+				//memcpy(ctx->matrix.stored[w_index], m, sizeof(m));
 				
 				TRACE("MesaSetTransform: saved matrix %d", w_index);
 				// TODO: are these state usefull in this driver? Or we can safely ignore them and save memory?
@@ -546,12 +563,19 @@ NUKED_LOCAL void MesaSetTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *mat
 					//memcpy(ctx->matrix.world[0], m, sizeof(m));
 					//MesaApplyTransform(ctx, MESA_TF_WORLD);
 				}
+#endif
 			}
 			else
 			{
 				WARN("MesaSetTransform: invalid state=%d, xtype=%X", state, xtype);
 			}
 			break;
+	} // switch(state)
+	
+	if(state_mtx > 0 && state_mtx <= MESA_REC_MAX_MATICES)
+	{
+		memcpy(&ctx->state.current.matices[state_mtx], matrix, sizeof(D3DMATRIX));
+		ctx->state.current.maticesset[0] |= 1 << state_mtx;
 	}
 }
 

@@ -32,6 +32,8 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <math.h>
+#include "ddrawi_ddk.h"
+#include "d3dhal_ddk.h"
 #include "vmdahal32.h"
 #include "vmhal9x.h"
 #include "mesa3d.h"
@@ -71,6 +73,8 @@ NUKED_LOCAL void state_apply_mask(mesa_rec_state_t *rec, D3DSTATEBLOCKTYPE sbTyp
 {
 	DWORD state_mask[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 	DWORD tmu_mask[1] = {0};
+	DWORD maticesset[1] = {0};
+	DWORD extraset[1] = {0};
 
 	if(sbType == D3DSBT_ALL)
 	{
@@ -193,6 +197,24 @@ NUKED_LOCAL void state_apply_mask(mesa_rec_state_t *rec, D3DSTATEBLOCKTYPE sbTyp
 		SET_BIT(tmu_mask, D3DTSS_COLORARG0);
 		SET_BIT(tmu_mask, D3DTSS_ALPHAARG0);
 		SET_BIT(tmu_mask, D3DTSS_RESULTARG);
+
+		SET_BIT(maticesset, D3DTRANSFORMSTATE_WORLD);
+		SET_BIT(maticesset, D3DTRANSFORMSTATE_VIEW);
+		SET_BIT(maticesset, D3DTRANSFORMSTATE_PROJECTION);
+		SET_BIT(maticesset, D3DTRANSFORMSTATE_WORLD1);
+		SET_BIT(maticesset, D3DTRANSFORMSTATE_WORLD2);
+		SET_BIT(maticesset, D3DTRANSFORMSTATE_WORLD3);
+		SET_BIT(maticesset, D3DTRANSFORMSTATE_TEXTURE0);
+		SET_BIT(maticesset, D3DTRANSFORMSTATE_TEXTURE1);
+		SET_BIT(maticesset, D3DTRANSFORMSTATE_TEXTURE2);
+		SET_BIT(maticesset, D3DTRANSFORMSTATE_TEXTURE3);
+		SET_BIT(maticesset, D3DTRANSFORMSTATE_TEXTURE4);
+		SET_BIT(maticesset, D3DTRANSFORMSTATE_TEXTURE5);
+		SET_BIT(maticesset, D3DTRANSFORMSTATE_TEXTURE7);
+
+		SET_BIT(extraset, MESA_REC_EXTRA_VIEWPORT);
+		SET_BIT(extraset, MESA_REC_EXTRA_MATERIAL);
+		SET_BIT(extraset, MESA_REC_EXTRA_VERTEXSHADER);
 	}
 	else if(sbType == D3DSBT_PIXELSTATE)
 	{
@@ -322,6 +344,8 @@ NUKED_LOCAL void state_apply_mask(mesa_rec_state_t *rec, D3DSTATEBLOCKTYPE sbTyp
 
 		SET_BIT(tmu_mask, D3DTSS_TEXCOORDINDEX);
 		SET_BIT(tmu_mask, D3DTSS_TEXTURETRANSFORMFLAGS);
+
+		SET_BIT(extraset, MESA_REC_EXTRA_VERTEXSHADER);
 	}
 	
 	DWORD i;
@@ -334,6 +358,9 @@ NUKED_LOCAL void state_apply_mask(mesa_rec_state_t *rec, D3DSTATEBLOCKTYPE sbTyp
 	{
 		rec->tmu->set[0] &= tmu_mask[0];
 	}
+
+	rec->maticesset[0] &= maticesset[0];
+	rec->extraset[0] &= extraset[0];
 }
 
 #undef SET_BIT
@@ -341,7 +368,32 @@ NUKED_LOCAL void state_apply_mask(mesa_rec_state_t *rec, D3DSTATEBLOCKTYPE sbTyp
 NUKED_LOCAL void MesaApplyState(mesa3d_ctx_t *ctx, mesa_rec_state_t *rec)
 {
 	DWORD i, j;
-	for(i = 0; i < MESA_REC_MAX_STATE; i++)
+	for(i = 0; i <= MESA_REC_MAX_MATICES; i++)
+	{
+		if(rec->maticesset[0] & (1 << i))
+		{
+			MesaSetTransform(ctx, i, &rec->matices[i]);
+		}
+	}
+
+	if(rec->extraset[0] & (1 << MESA_REC_EXTRA_VIEWPORT))
+	{
+		MesaApplyViewport(ctx, rec->viewport.dwX, rec->viewport.dwY, rec->viewport.dwWidth, rec->viewport.dwHeight, TRUE);
+	}
+
+	if(rec->extraset[0] & (1 << MESA_REC_EXTRA_MATERIAL))
+	{
+		MesaApplyMaterialSet(ctx, &rec->material);
+	}
+
+	if(rec->extraset[0] & (1 << MESA_REC_EXTRA_VERTEXSHADER))
+	{
+		ctx->state.fvf_shader = rec->vertexshader;
+		ctx->state.current.vertexshader = rec->vertexshader;
+		ctx->state.current.extraset[0] |= 1 << MESA_REC_EXTRA_VERTEXSHADER;
+	}
+
+	for(i = 0; i <= MESA_REC_MAX_STATE; i++)
 	{
 		DWORD state_byte = i >> 5;
 		DWORD state_bit = 1 << (i & 31);
@@ -351,6 +403,7 @@ NUKED_LOCAL void MesaApplyState(mesa3d_ctx_t *ctx, mesa_rec_state_t *rec)
 			D3DHAL_DP2RENDERSTATE rstate;
 			rstate.RenderState = i;
 			rstate.dwState = rec->state[i];
+			//TOPIC("STATESET", "MesaApplyState: state=%d value=0x%X", i, rec->state[i]);
 			MesaSetRenderState(ctx, &rstate, NULL);
 		}
 	}
@@ -440,7 +493,7 @@ NUKED_LOCAL void MesaRecApply(mesa3d_ctx_t *ctx, DWORD handle)
 {
 	TRACE_ENTRY
 	
-	mesa_rec_state_t *rec = MesaRecLookup(ctx, handle, TRUE);
+	mesa_rec_state_t *rec = MesaRecLookup(ctx, handle, FALSE);
 	if(rec != NULL)
 	{
 		if(rec == ctx->state.record)
@@ -473,4 +526,28 @@ NUKED_LOCAL void MesaRecDelete(mesa3d_ctx_t *ctx, DWORD handle)
 			ctx->records[i] = NULL;
 		}
 	} // for
+}
+
+NUKED_LOCAL void MesaCaptureInit(mesa3d_ctx_t *ctx)
+{
+	memset(&ctx->state.current, 0, sizeof(mesa_rec_state_t));
+}
+
+NUKED_LOCAL void MesaCapture(mesa3d_ctx_t *ctx, DWORD handle, D3DSTATEBLOCKTYPE sbType)
+{
+	TRACE_ENTRY
+
+	mesa_rec_state_t *rec = MesaRecLookup(ctx, handle, FALSE);
+
+	if(rec)
+	{
+		memcpy(&rec->stateset, &ctx->state.current.stateset, sizeof(DWORD[8]));
+		memcpy(&rec->state,    &ctx->state.current.state,    sizeof(DWORD[256]));
+		memcpy(&rec->tmu,      &ctx->state.current.tmu,      sizeof(mesa_rec_tmu_t[MESA_TMU_MAX]));
+		state_apply_mask(rec, sbType);
+	}
+	else
+	{
+		ERR("Invalid record(%d) to capture", handle);
+	}
 }

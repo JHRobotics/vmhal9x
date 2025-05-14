@@ -32,11 +32,12 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <math.h>
+#include "ddrawi_ddk.h"
+#include "d3dhal_ddk.h"
 #include "vmdahal32.h"
 #include "vmhal9x.h"
 #include "mesa3d.h"
 #include "osmesa.h"
-#include "d3dhal_ddk.h"
 
 #include "nocrt.h"
 #endif
@@ -323,21 +324,28 @@ NUKED_LOCAL void MesaTLRecalcModelview(mesa3d_ctx_t *ctx)
 
 NUKED_INLINE void draw_fvf(mesa3d_ctx_t *ctx, DWORD fvf)
 {
+	BOOL sr = FALSE;
 	if(ctx->state.fvf.type != fvf)
 	{
 		MesaFVFSet(ctx, fvf);
-		if((fvf & D3DFVF_POSITION_MASK) == D3DFVF_XYZRHW)
-		{
-			MesaSpaceIdentitySet(ctx);
-		}
-		else
-		{
-			MesaSpaceIdentityReset(ctx);
-		}
+		sr = TRUE;
+	}
+	
+	if((fvf & D3DFVF_POSITION_MASK) == D3DFVF_XYZRHW)
+	{
+		MesaSpaceIdentitySet(ctx);
+	}
 
+	if(sr)
+	{
 		MesaApplyLighting(ctx);
 		MesaApplyMaterial(ctx);
 	}
+}
+
+NUKED_INLINE void draw_fvf_end(mesa3d_ctx_t *ctx)
+{
+	MesaSpaceIdentityReset(ctx);
 }
 
 #define NEXT_INST(_s) inst = (LPD3DHAL_DP2COMMAND)(prim + (_s))
@@ -355,7 +363,7 @@ NUKED_INLINE void draw_fvf(mesa3d_ctx_t *ctx, DWORD fvf)
 
 #define RENDER_BEGIN(_fvf) draw_fvf(ctx, _fvf)
 
-#define RENDER_END SET_DIRTY
+#define RENDER_END draw_fvf_end(ctx); SET_DIRTY
 
 #define PD2_ERROR *error_offset = (LPBYTE)inst - (LPBYTE)cmdBufferStart; WARN("D3DERR_COMMAND_UNPARSED"); return D3DERR_COMMAND_UNPARSED
 
@@ -970,14 +978,14 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					for(i = 0; i < inst->wStateCount; i++)
 					{
 						D3DHAL_DP2VIEWPORTINFO *viewport = (D3DHAL_DP2VIEWPORTINFO*)prim;
+						prim += sizeof(D3DHAL_DP2VIEWPORTINFO);
 						TOPIC("ZVIEW", "viewport = %d %d %d %d",
 							viewport->dwX,
 							viewport->dwY,
 							viewport->dwWidth,
 							viewport->dwHeight);
 
-						MesaApplyViewport(ctx, viewport->dwX, viewport->dwY, viewport->dwWidth, viewport->dwHeight);
-						prim += sizeof(D3DHAL_DP2VIEWPORTINFO);
+						MesaApplyViewport(ctx, viewport->dwX, viewport->dwY, viewport->dwWidth, viewport->dwHeight, TRUE);
 					}
 					NEXT_INST(0);
 					break;
@@ -1099,19 +1107,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 						LPD3DHAL_DP2SETMATERIAL material = (LPD3DHAL_DP2SETMATERIAL)prim;
 						prim += sizeof(D3DHAL_DP2SETMATERIAL);
 
-						MESA_D3DCOLORVALUE_TO_FV(material->dcvDiffuse,  ctx->state.material.diffuse);
-						MESA_D3DCOLORVALUE_TO_FV(material->dcvAmbient,  ctx->state.material.ambient);
-						MESA_D3DCOLORVALUE_TO_FV(material->dcvEmissive, ctx->state.material.emissive);
-						MESA_D3DCOLORVALUE_TO_FV(material->dcvSpecular, ctx->state.material.specular);
-
-						if(material->dvPower < 0)
-							ctx->state.material.shininess = 0;
-						else if(material->dvPower > 128)
-							ctx->state.material.shininess = 128;
-						else
-							ctx->state.material.shininess = material->dvPower;
-
-						MesaApplyMaterial(ctx);
+						MesaApplyMaterialSet(ctx, material);
 					}
 					NEXT_INST(0);
 					break;
@@ -1224,10 +1220,12 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 								ctx->state.recording = TRUE;
 								break;
 							case D3DHAL_STATESETBEGIN:
+								TOPIC("STATESET", "STATESET begin recording(%d)", pStateSetOp->dwParam);
 								MesaRecStart(ctx, pStateSetOp->dwParam, D3DSBT_ALL);
 								ctx->state.recording = TRUE;
 								break;
 							case D3DHAL_STATESETEND:
+								TOPIC("STATESET", "STATESET end recording(%d)", pStateSetOp->dwParam);
 								MesaRecStop(ctx);
 								ctx->state.recording = FALSE;
 								break;
@@ -1235,11 +1233,14 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 								MesaRecDelete(ctx, pStateSetOp->dwParam);
 								break;
 							case D3DHAL_STATESETEXECUTE:
+								TOPIC("STATESET", "STATESET execure %d", pStateSetOp->dwParam);
 								MesaRecApply(ctx, pStateSetOp->dwParam);
 								break;
 							case D3DHAL_STATESETCAPTURE:
-								MesaRecStart(ctx, pStateSetOp->dwParam, D3DSBT_ALL);
-								ctx->state.recording = FALSE;
+								TOPIC("STATESET", "STATESET capture => %d", pStateSetOp->dwParam);
+								MesaCapture(ctx, pStateSetOp->dwParam, D3DSBT_ALL);
+								//MesaRecStart(ctx, pStateSetOp->dwParam, D3DSBT_ALL);
+								//ctx->state.recording = FALSE;
 								break;
 							default:
 								WARN("D3DDP2OP_STATESET: %d", pStateSetOp->dwOperation);
@@ -1417,6 +1418,9 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 						D3DHAL_DP2VERTEXSHADER *shader = (D3DHAL_DP2VERTEXSHADER*)prim;
 						/* since there is no vertex shader support, there is alway FVF code */
 						ctx->state.fvf_shader = shader->dwHandle;
+						ctx->state.current.vertexshader = shader->dwHandle;
+						ctx->state.current.extraset[0] |= 1 << MESA_REC_EXTRA_VERTEXSHADER;
+
 						TRACE("fvf_shader = 0x%X", ctx->state.fvf_shader);
 						prim += sizeof(D3DHAL_DP2VERTEXSHADER);
 					}
@@ -1824,6 +1828,12 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					{
 						LPD3DHAL_DP2RENDERSTATE rs = (LPD3DHAL_DP2RENDERSTATE)prim;
 						MesaRecState(ctx, rs->RenderState, rs->dwState);
+#ifdef DEBUG
+						if(rs->RenderState == D3DRENDERSTATE_ALPHATESTENABLE)
+						{
+							TOPIC("STATESET", "record D3DRENDERSTATE_ALPHATESTENABLE(0x%X) to %d", rs->dwState, ctx->state.record->handle);
+						}
+#endif
 						prim += sizeof(D3DHAL_DP2RENDERSTATE);
 					}
 					NEXT_INST(0);
@@ -1838,7 +1848,18 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 	        NEXT_INST(0);
 					break;
 				COMMAND(D3DDP2OP_VIEWPORTINFO)
-					NEXT_INST_TC(D3DHAL_DP2VIEWPORTINFO, inst->wStateCount);
+					for(i = 0; i < inst->wStateCount; i++)
+					{
+						D3DHAL_DP2VIEWPORTINFO *viewport = (D3DHAL_DP2VIEWPORTINFO*)prim;
+						prim += sizeof(D3DHAL_DP2VIEWPORTINFO);
+
+						if(ctx->state.record != NULL)
+						{
+							ctx->state.record->viewport = *viewport;
+							ctx->state.record->extraset[0] |= 1 << MESA_REC_EXTRA_VIEWPORT;
+						}
+					}
+					NEXT_INST(0);
 					break;
 				COMMAND(D3DDP2OP_WINFO)
 					NEXT_INST_TC(D3DHAL_DP2WINFO, inst->wStateCount);
@@ -1858,7 +1879,18 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					NEXT_INST_TC(D3DHAL_DP2ZRANGE, inst->wStateCount);
 					break;
 				COMMAND(D3DDP2OP_SETMATERIAL)
-					NEXT_INST_TC(D3DHAL_DP2SETMATERIAL, inst->wStateCount);
+					for(i = 0; i < inst->wStateCount; i++)
+					{
+						LPD3DHAL_DP2SETMATERIAL material = (LPD3DHAL_DP2SETMATERIAL)prim;
+						prim += sizeof(D3DHAL_DP2SETMATERIAL);
+
+						if(ctx->state.record != NULL)
+						{
+							ctx->state.record->material = *material;
+							ctx->state.record->extraset[0] |= 1 << MESA_REC_EXTRA_MATERIAL;
+						}
+					}
+					NEXT_INST(0);
 					break;
 				COMMAND(D3DDP2OP_SETLIGHT)
 					for(i = 0; i < inst->wStateCount; i++)
@@ -1876,7 +1908,42 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					NEXT_INST_TC(D3DHAL_DP2CREATELIGHT, inst->wStateCount);
 					break;
 				COMMAND(D3DDP2OP_SETTRANSFORM)
-					NEXT_INST_TC(D3DHAL_DP2SETTRANSFORM, inst->wStateCount);
+					for(i = 0; i < inst->wStateCount; i++)
+					{
+						DWORD state = 0;
+						LPD3DHAL_DP2SETTRANSFORM stf = (LPD3DHAL_DP2SETTRANSFORM)prim;
+						prim += sizeof(D3DHAL_DP2SETTRANSFORM);
+						switch((DWORD)stf->xfrmType)
+						{
+							case D3DTRANSFORMSTATE_WORLD:
+							case D3DTRANSFORMSTATE_VIEW:
+							case D3DTRANSFORMSTATE_PROJECTION:
+							case D3DTRANSFORMSTATE_WORLD1:
+							case D3DTRANSFORMSTATE_WORLD2:
+							case D3DTRANSFORMSTATE_WORLD3:
+							case D3DTRANSFORMSTATE_TEXTURE0...D3DTRANSFORMSTATE_TEXTURE7:
+								state = stf->xfrmType;
+								break;
+							case D3DTS_WORLD:
+								state = D3DTRANSFORMSTATE_WORLD;
+								break;
+							case D3DTS_WORLD1:
+								state = D3DTRANSFORMSTATE_WORLD1;
+								break;
+							case D3DTS_WORLD2:
+								state = D3DTRANSFORMSTATE_WORLD2;
+								break;
+							case D3DTS_WORLD3:
+								state = D3DTRANSFORMSTATE_WORLD3;
+								break;
+						}
+						if(state > 0 && state <= MESA_REC_MAX_MATICES && ctx->state.record != NULL)
+						{
+							ctx->state.record->matices[state] = stf->matrix;
+							ctx->state.record->maticesset[0] |= 1 << state;
+						}
+					}
+					NEXT_INST(0);
 					break;
 				COMMAND(D3DDP2OP_EXT)
 					NEXT_INST_TC(D3DHAL_DP2EXT, inst->wStateCount);
@@ -1895,10 +1962,12 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 								ctx->state.recording = TRUE;
 								break;
 							case D3DHAL_STATESETBEGIN:
+								TOPIC("STATESET", "STATESET begin recording(%d) (!)", pStateSetOp->dwParam);
 								MesaRecStart(ctx, pStateSetOp->dwParam, D3DSBT_ALL);
 								ctx->state.recording = TRUE;
 								break;
 							case D3DHAL_STATESETEND:
+								TOPIC("STATESET", "STATESET end recording(%d)", pStateSetOp->dwParam);
 								MesaRecStop(ctx);
 								ctx->state.recording = FALSE;
 								break;
@@ -1906,11 +1975,14 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 								MesaRecDelete(ctx, pStateSetOp->dwParam);
 								break;
 							case D3DHAL_STATESETEXECUTE:
+								TOPIC("STATESET", "STATESET execure(%d) (!)", pStateSetOp->dwParam);
 								MesaRecApply(ctx, pStateSetOp->dwParam);
 								break;
 							case D3DHAL_STATESETCAPTURE:
-								MesaRecStart(ctx, pStateSetOp->dwParam, D3DSBT_ALL);
-								ctx->state.recording = FALSE;
+								TOPIC("STATESET", "STATESET capture TO %d (!)", pStateSetOp->dwParam);
+								MesaCapture(ctx, pStateSetOp->dwParam, D3DSBT_ALL);
+								//MesaRecStart(ctx, pStateSetOp->dwParam, D3DSBT_ALL);
+								//ctx->state.recording = FALSE;
 							default:
 								break;
 						}
@@ -1955,7 +2027,18 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					NEXT_INST_TC(D3DHAL_DP2VERTEXSHADER, inst->wStateCount);
 					break;
 		    COMMAND(D3DDP2OP_SETVERTEXSHADER)
-					NEXT_INST_TC(D3DHAL_DP2VERTEXSHADER, inst->wStateCount);
+					for(i = 0; i < inst->wStateCount; i++)
+					{
+						D3DHAL_DP2VERTEXSHADER *shader = (D3DHAL_DP2VERTEXSHADER*)prim;
+						prim += sizeof(D3DHAL_DP2VERTEXSHADER);
+						/* since there is no vertex shader support, there is alway FVF code */
+						if(ctx->state.record != NULL)
+						{
+							ctx->state.record->vertexshader = shader->dwHandle;
+							ctx->state.record->extraset[0] |= 1 << MESA_REC_EXTRA_VERTEXSHADER;
+						}
+					}
+					NEXT_INST(0);
 					break;
 		    COMMAND(D3DDP2OP_SETVERTEXSHADERCONST)
 					for(i = 0; i < inst->wStateCount; i++)

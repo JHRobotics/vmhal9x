@@ -200,14 +200,26 @@ typedef struct mesa_rec_tmu
 #define MESA_REC_MAX_TMU_STATE 32
 #define MESA_RECS_MAX 32
 
+#define MESA_REC_MAX_MATICES D3DTRANSFORMSTATE_TEXTURE7
+
+#define MESA_REC_EXTRA_VIEWPORT 0
+#define MESA_REC_EXTRA_MATERIAL 1
+#define MESA_REC_EXTRA_VERTEXSHADER 2
+
 typedef struct mesa_rec_state
 {
 	DWORD handle;
-//	DWORD statemask[8];
 	DWORD stateset[8]; // 8 x 32b
-//	DWORD tmumask[1];
-	DWORD state[256];
+	DWORD state[MESA_REC_MAX_STATE+1];
 	mesa_rec_tmu_t tmu[MESA_TMU_MAX];
+	DWORD maticesset[1];	
+	D3DMATRIX matices[MESA_REC_MAX_MATICES+1];
+
+	DWORD extraset[1];
+	D3DHAL_DP2VIEWPORTINFO viewport;
+	D3DHAL_DP2SETMATERIAL material;
+	DWORD vertexshader;
+	// TODO: missing: lights
 } mesa_rec_state_t;
 
 #define SURFACE_TABLES_PER_ENTRY 8 /* in theory there should by only 1 */
@@ -262,10 +274,12 @@ typedef struct mesa3d_ctx
 			GLenum srcRGB;
 			GLenum dstRGB;
 			BOOL edgeantialias;
+			GLenum blendop;
 			/* not in use */
 			GLenum srcAlpha;
 			GLenum dstAlpha;
 			BOOL lineantialias;
+			GLenum blendop_alpha;
 		} blend;
 		DWORD overrides[8]; // 256 bit set
 		DWORD stipple[32];
@@ -340,6 +354,7 @@ typedef struct mesa3d_ctx
 		DWORD bind_indices_stride; /* DX8 index stream */
 		DWORD fvf_shader;  /* DX8 FVF code set by SETVERTEXSHADER */
 		D3DSTATEBLOCKTYPE record_type;
+		mesa_rec_state_t current;
 	} state;
 	mesa_rec_state_t *records[MESA_RECS_MAX];
 	mesa_vertex_stream_t vstream[MESA_MAX_STREAM];
@@ -372,7 +387,7 @@ typedef struct mesa3d_ctx
 		BOOL identity_mode;
 		DWORD outdated_stack; // MesaApplyTransform -> changes
 		int weight;
-		GLfloat stored[DX_STORED_MATICES][16];
+//		GLfloat stored[DX_STORED_MATICES][16];
 	} matrix;
 
 	struct {
@@ -505,7 +520,7 @@ NUKED_LOCAL mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, surface_id si
 NUKED_LOCAL void MesaReloadTexture(mesa3d_texture_t *tex, int tmu);
 NUKED_LOCAL void MesaDestroyTexture(mesa3d_texture_t *tex, BOOL ctx_cleanup, surface_id surface_delete);
 NUKED_LOCAL void MesaApplyTransform(mesa3d_ctx_t *ctx, DWORD changes);
-NUKED_LOCAL void MesaApplyViewport(mesa3d_ctx_t *ctx, GLint x, GLint y, GLint w, GLint h);
+NUKED_LOCAL void MesaApplyViewport(mesa3d_ctx_t *ctx, GLint x, GLint y, GLint w, GLint h, BOOL stateset);
 NUKED_LOCAL void MesaApplyLighting(mesa3d_ctx_t *ctx);
 
 #define MESA_TF_PROJECTION 1
@@ -589,6 +604,7 @@ NUKED_LOCAL void SurfaceExInsertBuffer(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRA
 /* need GL block */
 NUKED_LOCAL mesa3d_texture_t *MesaTextureFromSurfaceHandle(mesa3d_ctx_t *ctx, DWORD surfaceHandle);
 NUKED_LOCAL void MesaApplyMaterial(mesa3d_ctx_t *ctx);
+NUKED_LOCAL void MesaApplyMaterialSet(mesa3d_ctx_t *ctx, D3DHAL_DP2SETMATERIAL *material);
 NUKED_LOCAL void MesaSetCull(mesa3d_ctx_t *ctx);
 NUKED_LOCAL void MesaReverseCull(mesa3d_ctx_t *ctx);
 
@@ -614,6 +630,8 @@ NUKED_LOCAL void MesaRecApply(mesa3d_ctx_t *ctx, DWORD handle);
 NUKED_LOCAL void MesaRecDelete(mesa3d_ctx_t *ctx, DWORD handle);
 NUKED_LOCAL void MesaRecState(mesa3d_ctx_t *ctx, DWORD state, DWORD value);
 NUKED_LOCAL void MesaRecTMUState(mesa3d_ctx_t *ctx, DWORD tmu, DWORD state, DWORD value);
+NUKED_LOCAL void MesaCaptureInit(mesa3d_ctx_t *ctx);
+NUKED_LOCAL void MesaCapture(mesa3d_ctx_t *ctx, DWORD handle, D3DSTATEBLOCKTYPE sbType);
 
 #define MESA_1OVER16       0.0625f
 #define MESA_1OVER255	     0.003921568627451f

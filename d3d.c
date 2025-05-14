@@ -553,7 +553,12 @@ DDENTRY_FPUSAVE(CreateSurfaceEx32, LPDDHAL_CREATESURFACEEXDATA, lpcsxd)
 	
 	if(surf->ddsCaps.dwCaps & DX7_SURFACE_NEST_TYPES)
 	{
-		SurfaceExInsert(entry, lpcsxd->lpDDLcl, surf);
+		if(!SurfaceExInsert(entry, lpcsxd->lpDDLcl, surf))
+		{
+			WARN("texture in private memory return DDERR_OUTOFMEMORY");
+			lpcsxd->ddRVal = DDERR_OUTOFMEMORY;
+			return DDHAL_DRIVER_HANDLED;
+		}
 	}
 	else
 	{
@@ -785,7 +790,7 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 			caps.SrcBlendCaps = myCaps6.dpcTriCaps.dwSrcBlendCaps;
 			caps.DestBlendCaps = myCaps6.dpcTriCaps.dwDestBlendCaps;
 			caps.AlphaCmpCaps = myCaps6.dpcTriCaps.dwAlphaCmpCaps;
-			caps.TextureCaps  = myCaps6.dpcTriCaps.dwTextureCaps;
+			caps.TextureCaps  = myCaps6.dpcTriCaps.dwTextureCaps | D3DPTEXTURECAPS_MIPMAP | D3DPTEXTURECAPS_CUBEMAP_POW2 /*| D3DPTEXTURECAPS_MIPCUBEMAP*/;
 			caps.TextureFilterCaps = myCaps6.dpcTriCaps.dwTextureFilterCaps;
 			caps.CubeTextureFilterCaps = myCaps6.dpcTriCaps.dwTextureFilterCaps;
 			caps.VolumeTextureFilterCaps = myCaps6.dpcTriCaps.dwTextureFilterCaps;
@@ -810,7 +815,7 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 			caps.TextureOpCaps = MYTEXOPCAPS;
 			caps.MaxTextureBlendStages = MESA_TMU_CNT();
 			caps.MaxSimultaneousTextures = MESA_TMU_CNT();
-			caps.VertexProcessingCaps = MYVERTEXPROCCAPS;
+			caps.VertexProcessingCaps = MYVERTEXPROCCAPS_DX8;
 
 			caps.MaxActiveLights = env.num_light;
 			caps.MaxUserClipPlanes = env.num_clips;
@@ -1966,7 +1971,7 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, LP
 		DDSCAPS_VIDEOMEMORY |
 	0;
 	lpHALFlags->zcaps = DDBD_16 | DDBD_24 | DDBD_32;
-	lpHALFlags->caps2 = DDCAPS2_WIDESURFACES;
+	lpHALFlags->caps2 = DDCAPS2_WIDESURFACES/* | DDCAPS2_CANMANAGETEXTURE*/;
 	/*
 		cap DDCAPS2_NO2DDURING3DSCENE should be theoretically safer to set,
 		BUT some games forbid to start with this flag set.

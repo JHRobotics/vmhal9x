@@ -860,7 +860,7 @@ NUKED_LOCAL mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DWORD dds_sid, DW
 	
 				MesaInitCtx(ctx);
 				//UpdateScreenCoords(ctx, (GLfloat)width, (GLfloat)height);
-				MesaApplyViewport(ctx, 0, 0, ctx->state.sw, ctx->state.sh);
+				MesaApplyViewport(ctx, 0, 0, ctx->state.sw, ctx->state.sh, FALSE);
 
 				valid = TRUE;
 			} while(0);
@@ -958,7 +958,7 @@ NUKED_LOCAL BOOL MesaSetTarget(mesa3d_ctx_t *ctx, surface_id dds_sid, surface_id
 	ctx->state.textarget = (dds->dwCaps & DDSCAPS_TEXTURE) ? TRUE : FALSE;
 
 	if(viewport_set)
-		MesaApplyViewport(ctx, 0, 0, width, height);
+		MesaApplyViewport(ctx, 0, 0, width, height, FALSE);
 
 	MesaDepthApply(ctx);
 	MesaStencilApply(ctx);
@@ -1044,6 +1044,7 @@ NUKED_LOCAL void MesaDestroyAllCtx(mesa3d_entry_t *entry)
 
 static void ApplyBlend(mesa3d_ctx_t *ctx)
 {
+#if 0
 	mesa3d_entry_t *entry = ctx->entry;
 	if(ctx->state.blend.alphablend || ctx->state.blend.edgeantialias)
 	{
@@ -1055,7 +1056,7 @@ static void ApplyBlend(mesa3d_ctx_t *ctx)
 		}
 		else
 		{
-			GL_CHECK(entry->proc.pglEnable(GL_LINE_SMOOTH));
+			GL_CHECK(entry->proc.pglDisable(GL_LINE_SMOOTH));
 		}
 		
 		if(!(ctx->state.blend.srcRGB == GL_SRC_COLOR && ctx->state.blend.dstRGB == GL_SRC_ALPHA)) /* from wine9x */
@@ -1071,11 +1072,49 @@ static void ApplyBlend(mesa3d_ctx_t *ctx)
 			GL_ONE,
 			GL_ZERO
 		));*/
+
+		GL_CHECK(entry->proc.pglBlendEquation(ctx->state.blend.blendop));
 	}
 	else
 	{
 		GL_CHECK(entry->proc.pglDisable(GL_BLEND));
 	}
+#endif
+	mesa3d_entry_t *entry = ctx->entry;
+
+	if(ctx->state.blend.edgeantialias)
+	{
+		GL_CHECK(entry->proc.pglEnable(GL_LINE_SMOOTH));
+	}
+	else
+	{
+		GL_CHECK(entry->proc.pglDisable(GL_LINE_SMOOTH));
+	}
+
+	if(ctx->state.blend.alphablend)
+	{
+		if(!(ctx->state.blend.srcRGB == GL_SRC_COLOR && ctx->state.blend.dstRGB == GL_SRC_ALPHA)) /* from wine9x */
+		{
+			GL_CHECK(entry->proc.pglBlendFunc(
+				ctx->state.blend.srcRGB,
+				ctx->state.blend.dstRGB
+			));
+		}
+	}
+	else
+	{
+		GL_CHECK(entry->proc.pglBlendFunc(GL_ONE, GL_ZERO));
+	}
+
+	GL_CHECK(entry->proc.pglBlendEquation(ctx->state.blend.blendop));
+
+/*
+	TOPIC("BLENDSTATE", "==========================");
+	TOPIC("BLENDSTATE", "ctx->state.blend.alphablend = %d", ctx->state.blend.alphablend);
+	TOPIC("BLENDSTATE", "ctx->state.blend.srcRGB = %d",     ctx->state.blend.srcRGB);
+	TOPIC("BLENDSTATE", "ctx->state.blend.dstRGB = %d",     ctx->state.blend.dstRGB);
+	TOPIC("BLENDSTATE", "ctx->state.blend.blendop = %d",    ctx->state.blend.blendop);
+*/
 }
 
 NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
@@ -1179,7 +1218,7 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 		MesaIdentity(ctx->state.tmu[i].matrix);
 	}
 
-//	entry->proc.pglEnable(GL_BLEND);
+	GL_CHECK(entry->proc.pglEnable(GL_BLEND));
 //	entry->proc.pglBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	ctx->state.blend.alphablend = FALSE;
 	ctx->state.blend.srcRGB     = GL_SRC_ALPHA;
@@ -1189,6 +1228,10 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 	ctx->state.blend.srcAlpha   = GL_ONE;
 	ctx->state.blend.dstAlpha   = GL_ZERO;
 	ctx->state.blend.lineantialias = FALSE;
+
+	ctx->state.blend.blendop = GL_FUNC_ADD;
+	ctx->state.blend.blendop_alpha = GL_FUNC_ADD;
+
 	ApplyBlend(ctx);
 
 	ctx->state.texperspective  = TRUE;
@@ -1218,6 +1261,8 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 	ctx->vstream[0].mem = NULL;
 
 	MesaDrawRefreshState(ctx);
+
+	MesaCaptureInit(ctx);
 }
 
 NUKED_LOCAL BOOL MesaSetCtx(mesa3d_ctx_t *ctx)
@@ -1886,6 +1931,7 @@ NUKED_LOCAL void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, vo
 		return;
 	}
 
+	BOOL invalid_state = FALSE;
 	struct mesa3d_tmustate *ts = &ctx->state.tmu[tmu];
 
 	switch(state)
@@ -2120,8 +2166,15 @@ NUKED_LOCAL void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, vo
 			break;
 		default:
 			WARN("Unknown D3DTSS: state=0x%X, tmu", state, tmu);
+			invalid_state = TRUE;
 			break;
 	} // switch
+	
+	if(!invalid_state && state < MESA_REC_MAX_TMU_STATE)
+	{
+		ctx->state.current.tmu[tmu].set[0] |= 1 << state;
+		ctx->state.current.tmu[tmu].state[state] = TSS_DWORD;
+	}
 }
 
 #undef RENDERSTATE
@@ -2169,6 +2222,7 @@ NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DHAL_DP2RENDERSTATE s
 {
 	D3DRENDERSTATETYPE type = state->RenderState;
 	TOPIC("READBACK", "state = %d", type);
+	BOOL wrong_state = FALSE;
 	
 	if(IS_OVERRIDE(type))
 	{
@@ -2355,6 +2409,7 @@ NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DHAL_DP2RENDERSTATE s
 			break;
 		RENDERSTATE(D3DRENDERSTATE_ALPHATESTENABLE) /* TRUE to enable alpha tests */
 			TOPIC("BLEND", "D3DRENDERSTATE_ALPHATESTENABLE = 0x%X", state->dwState);
+			TOPIC("STATESET", "set D3DRENDERSTATE_ALPHATESTENABLE = 0x%X", state->dwState);
 			ctx->state.alpha.enabled = state->dwState != 0 ? TRUE : FALSE;
 			ctx->state.tmu[0].update = TRUE;
 			break;
@@ -2820,23 +2875,55 @@ NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DHAL_DP2RENDERSTATE s
 				RENDERSTATE(D3DRS_POINTSIZE_MAX)
 					break;
 				RENDERSTATE(D3DRS_INDEXEDVERTEXBLENDENABLE)
+					TRACE("D3DRS_INDEXEDVERTEXBLENDENABLE=0x%X", state->dwState);
 					break;
 				RENDERSTATE(D3DRS_COLORWRITEENABLE)
+					TRACE("D3DRS_COLORWRITEENABLE=0x%X", state->dwState);
 					break;
 				RENDERSTATE(D3DRS_TWEENFACTOR)
 					break;
 				RENDERSTATE(D3DRS_BLENDOP)
+					TRACE("D3DRS_BLENDOP=0x%X", state->dwState);
+					switch(state->dwState)
+					{
+						case D3DBLENDOP_ADD:
+							ctx->state.blend.blendop = GL_FUNC_ADD;
+							break;
+						case D3DBLENDOP_SUBTRACT:
+							ctx->state.blend.blendop = GL_FUNC_SUBTRACT;
+							break;
+						case D3DBLENDOP_REVSUBTRACT:
+							 ctx->state.blend.blendop = GL_FUNC_REVERSE_SUBTRACT;
+							break;
+						case D3DBLENDOP_MIN:
+							ctx->state.blend.blendop = GL_MIN;
+							break;
+						case D3DBLENDOP_MAX:
+							ctx->state.blend.blendop = GL_MAX;
+							break;
+					}
+					ApplyBlend(ctx);
 					break;
 				RENDERSTATE(D3DRS_POSITIONORDER)
 					break;
 				RENDERSTATE(D3DRS_NORMALORDER)
 					break;
 				default:
+					wrong_state = TRUE;
 					WARN("Unknown render state: %d (0x%X)", type, type);
 					break;
 			}
 			/* NOP */
 			break;
+	}
+
+	if(!wrong_state && type <= MESA_REC_MAX_STATE)
+	{
+		DWORD mask_byte = type >> 5; // div 32
+		DWORD mask_bit  = 1 << (type & 31);
+
+		ctx->state.current.state[type] = state->dwState;
+		ctx->state.current.stateset[mask_byte] |= mask_bit;
 	}
 }
 
@@ -4529,4 +4616,24 @@ NUKED_LOCAL void MesaFreePals(mesa3d_ctx_t *ctx)
 		ctx->first_pal = ptr->next;
 		hal_free(HEAP_NORMAL, ptr);
 	}
+}
+
+NUKED_LOCAL void MesaApplyMaterialSet(mesa3d_ctx_t *ctx, D3DHAL_DP2SETMATERIAL *material)
+{
+	MESA_D3DCOLORVALUE_TO_FV(material->dcvDiffuse,  ctx->state.material.diffuse);
+	MESA_D3DCOLORVALUE_TO_FV(material->dcvAmbient,  ctx->state.material.ambient);
+	MESA_D3DCOLORVALUE_TO_FV(material->dcvEmissive, ctx->state.material.emissive);
+	MESA_D3DCOLORVALUE_TO_FV(material->dcvSpecular, ctx->state.material.specular);
+
+	if(material->dvPower < 0)
+		ctx->state.material.shininess = 0;
+	else if(material->dvPower > 128)
+		ctx->state.material.shininess = 128;
+	else
+		ctx->state.material.shininess = material->dvPower;
+
+	ctx->state.current.material = *material;
+	ctx->state.current.extraset[0] |= 1 << MESA_REC_EXTRA_MATERIAL;
+
+	MesaApplyMaterial(ctx);
 }

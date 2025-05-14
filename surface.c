@@ -31,12 +31,11 @@
 #include <ddrawi.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "ddrawi_ddk.h"
+#include "d3dhal_ddk.h"
 #include "vmdahal32.h"
 #include "vmhal9x.h"
 #include "mesa3d.h"
-#include "surface.h"
-#include "ddrawi_ddk.h"
-#include "d3dhal_ddk.h"
 
 #include "nocrt.h"
 #endif
@@ -912,6 +911,7 @@ NUKED_LOCAL BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL 
 		return FALSE;
 	}
 
+#if 1
 	/* system memory */
 	if(((surface->ddsCaps.dwCaps & (DDSCAPS_SYSTEMMEMORY | DDSCAPS_TEXTURE)) == 
 		(DDSCAPS_SYSTEMMEMORY | DDSCAPS_TEXTURE)) || surface->lpGbl->fpVidMem < 0x80000000)
@@ -965,6 +965,13 @@ NUKED_LOCAL BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL 
 		TOPIC("CUBE", "surface duplicate failure");
 		return FALSE;
 	}
+#else
+	if(((surface->ddsCaps.dwCaps & (DDSCAPS_SYSTEMMEMORY | DDSCAPS_TEXTURE)) == 
+		(DDSCAPS_SYSTEMMEMORY | DDSCAPS_TEXTURE)) || surface->lpGbl->fpVidMem < 0x80000000)
+	{
+		return FALSE;
+	}
+#endif
 
 	/* video memory */
 	surface_info_t *info = SurfaceGetInfoFromLcl(surface);

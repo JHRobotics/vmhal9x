@@ -113,5 +113,5 @@ MESA_API(glLineStipple, void, (GLint factor, GLushort pattern))
 MESA_API(glPolygonOffset, void, (GLfloat factor, GLfloat units))
 MESA_API(glColorMaterial, void, (GLenum face, GLenum mode))
 //MESA_API(glFinalCombinerInputNV, void, (GLenum variable, GLenum input,  GLenum mapping, GLenum componentUsage))
-
+MESA_API(glBlendEquation, void, (GLenum mode))
 MESA_API(glScalef, void, (GLfloat x, GLfloat y, GLfloat z))
