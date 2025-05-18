@@ -152,6 +152,10 @@ DDENTRY_FPUSAVE(Blt32, LPDDHAL_BLTDATA, pbd)
 			isInFront = TRUE;
 		}
 
+		TRACE("BLT isInFront=%d (src->fpVidMem=0x%X, dst->fpVidMem=0x%X, primary=0x%X)",
+			isInFront, src->fpVidMem, dst->fpVidMem,
+			(LPBYTE)ddhal->pFBHDA32->vram_pm32 + ddhal->pFBHDA32->surface);
+
 #ifdef D3DHAL
 		SurfaceFromMesa(srcx, FALSE);
 #endif
@@ -233,7 +237,7 @@ DDENTRY_FPUSAVE(Blt32, LPDDHAL_BLTDATA, pbd)
 			}
 			else
 			{
-				TRACE("Blt: stretchrop3: w = %l -> %l, h = %l -> %l",
+				TRACE("Blt: stretchrop3: w = %d -> %d, h = %d -> %d",
 					dwSrcWidth, dwDstWidth, dwSrcHeight, dwDstHeight);
 				
 				stretchrop3(ddhal->pFBHDA32->bpp, rop3_code,

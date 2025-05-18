@@ -42,6 +42,8 @@
 #include "nocrt.h"
 #endif
 
+//#define STRICT_DATA 1
+
 static void LightApply(mesa3d_ctx_t *ctx, DWORD id)
 {
 	TRACE_ENTRY
@@ -985,6 +987,9 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 							viewport->dwWidth,
 							viewport->dwHeight);
 
+						TOPIC("STATESET", "new wp=%d %d %d %d",
+							viewport->dwX, viewport->dwY, viewport->dwWidth, viewport->dwHeight);
+
 						MesaApplyViewport(ctx, viewport->dwX, viewport->dwY, viewport->dwWidth, viewport->dwHeight, TRUE);
 					}
 					NEXT_INST(0);
@@ -1323,7 +1328,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 						D3DHAL_DP2SETCLIPPLANE *plane = (D3DHAL_DP2SETCLIPPLANE*)prim;
 						prim += sizeof(D3DHAL_DP2SETCLIPPLANE);
 
-						TRACE("clip plane %d = (%f, %f, %f, %f)",
+						TOPIC("STATESET", "clip plane %d = (%f, %f, %f, %f)",
 							plane->dwIndex,
 							plane->plane[0],
 							plane->plane[1],
@@ -1361,7 +1366,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					{
 						D3DHAL_DP2CREATEVERTEXSHADER *shader = (D3DHAL_DP2CREATEVERTEXSHADER*)prim;
 						CHECK_LIMITS(D3DHAL_DP2CREATEVERTEXSHADER, 1);
-						prim += sizeof(D3DHAL_DP2VERTEXSHADER);
+						prim += sizeof(D3DHAL_DP2CREATEVERTEXSHADER);
 						CHECK_LIMITS_SIZE(shader->dwDeclSize + shader->dwCodeSize);
 						prim += shader->dwDeclSize + shader->dwCodeSize;
 					}
@@ -1858,6 +1863,8 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 							ctx->state.record->viewport = *viewport;
 							ctx->state.record->extraset[0] |= 1 << MESA_REC_EXTRA_VIEWPORT;
 						}
+						TOPIC("STATESET", "new wp=%d %d %d %d",
+							viewport->dwX, viewport->dwY, viewport->dwWidth, viewport->dwHeight);
 					}
 					NEXT_INST(0);
 					break;
@@ -2005,7 +2012,20 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					NEXT_INST_TC(D3DDP2OP_SETTEXLOD, inst->wStateCount);
 					break;
 				COMMAND(D3DDP2OP_SETCLIPPLANE)
-					NEXT_INST_TC(D3DHAL_DP2SETCLIPPLANE, inst->wStateCount);
+					for(i = 0; i < inst->wStateCount; i++)
+					{
+						D3DHAL_DP2SETCLIPPLANE *plane = (D3DHAL_DP2SETCLIPPLANE*)prim;
+						TOPIC("STATESET", "clip plane %d = (%f, %f, %f, %f)",
+							plane->dwIndex,
+							plane->plane[0],
+							plane->plane[1],
+							plane->plane[2],
+							plane->plane[3]
+						);
+						prim += sizeof(D3DHAL_DP2SETCLIPPLANE);
+					}
+					NEXT_INST(0);
+					//NEXT_INST_TC(D3DHAL_DP2SETCLIPPLANE, inst->wStateCount);
 					break;
 				// COMMAND(D3DDP2OP_RESERVED0)
 				// Used by the front-end only
@@ -2018,7 +2038,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					for(i = 0; i < inst->wStateCount; i++)
 					{
 						D3DHAL_DP2CREATEVERTEXSHADER *shader = (D3DHAL_DP2CREATEVERTEXSHADER*)prim;
-						prim += sizeof(D3DHAL_DP2VERTEXSHADER);
+						prim += sizeof(D3DHAL_DP2CREATEVERTEXSHADER);
 						prim += shader->dwDeclSize + shader->dwCodeSize;
 					}
 					NEXT_INST(0);

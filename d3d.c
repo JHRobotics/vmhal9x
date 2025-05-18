@@ -734,7 +734,7 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 #endif
 			
 			caps.PresentationIntervals = D3DPRESENT_INTERVAL_IMMEDIATE | D3DPRESENT_INTERVAL_ONE;
-			caps.CursorCaps = 0;//D3DCURSORCAPS_COLOR | D3DCURSORCAPS_LOWRES;
+			caps.CursorCaps = D3DCURSORCAPS_COLOR | D3DCURSORCAPS_LOWRES;
 			caps.DevCaps =
 				//D3DDEVCAPS_CANBLTSYSTONONLOCAL | // Device supports blits from system-memory textures to nonlocal video-memory textures. */
 				D3DDEVCAPS_CANRENDERAFTERFLIP | // Device can queue rendering commands after a page flip. Applications do not change their behavior if this flag is set; this capability simply means that the device is relatively fast.
@@ -784,18 +784,31 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 				// D3DPRASTERCAPS_ZBUFFERLESSHSR | // Device can perform hidden-surface removal (HSR) without requiring the application to sort polygons and without requiring the allocation of a depth-buffer. This leaves more video memory for textures. The method used to perform HSR is hardware-dependent and is transparent to the application. 
 				// Z-bufferless HSR is performed if no depth-buffer surface is associated with the rendering-target surface and the depth-buffer comparison test is enabled (that is, when the state value associated with the D3DRS_ZENABLE enumeration constant is set to TRUE). 
 				// D3DPRASTERCAPS_ZFOG | // Device supports z-based fog. 
-				D3DPRASTERCAPS_ZTEST | // Device can perform z-test operations. This effectively renders a primitive and indicates whether any z pixels have been rendered. 
+				//D3DPRASTERCAPS_ZTEST | // Device can perform z-test operations. This effectively renders a primitive and indicates whether any z pixels have been rendered. 
 			0;
 			caps.ZCmpCaps = myCaps6.dpcTriCaps.dwZCmpCaps;
 			caps.SrcBlendCaps = myCaps6.dpcTriCaps.dwSrcBlendCaps;
 			caps.DestBlendCaps = myCaps6.dpcTriCaps.dwDestBlendCaps;
 			caps.AlphaCmpCaps = myCaps6.dpcTriCaps.dwAlphaCmpCaps;
 			caps.TextureCaps  = myCaps6.dpcTriCaps.dwTextureCaps | D3DPTEXTURECAPS_MIPMAP | D3DPTEXTURECAPS_CUBEMAP_POW2 /*| D3DPTEXTURECAPS_MIPCUBEMAP*/;
-			caps.TextureFilterCaps = myCaps6.dpcTriCaps.dwTextureFilterCaps;
-			caps.CubeTextureFilterCaps = myCaps6.dpcTriCaps.dwTextureFilterCaps;
-			caps.VolumeTextureFilterCaps = myCaps6.dpcTriCaps.dwTextureFilterCaps;
+#if 1
+			caps.TextureFilterCaps =
+				D3DPTFILTERCAPS_MAGFLINEAR |
+				D3DPTFILTERCAPS_MAGFANISOTROPIC |
+				D3DPTFILTERCAPS_MAGFPOINT |
+				D3DPTFILTERCAPS_MINFANISOTROPIC |
+				D3DPTFILTERCAPS_MINFLINEAR |
+				D3DPTFILTERCAPS_MINFPOINT |
+				D3DPTFILTERCAPS_MIPFLINEAR |
+				D3DPTFILTERCAPS_MIPFPOINT;
+#endif
+			//caps.TextureFilterCaps = myCaps6.dpcTriCaps.dwTextureFilterCaps;
+			//caps.CubeTextureFilterCaps = myCaps6.dpcTriCaps.dwTextureFilterCaps;
+			//caps.VolumeTextureFilterCaps = myCaps6.dpcTriCaps.dwTextureFilterCaps;
+			caps.CubeTextureFilterCaps = caps.TextureFilterCaps;
+			caps.VolumeTextureFilterCaps = 0;
 			caps.LineCaps = D3DLINECAPS_ALPHACMP | D3DLINECAPS_BLEND | D3DLINECAPS_FOG;
-			caps.TextureAddressCaps = myCaps6.dpcTriCaps.dwTextureAddressCaps;
+			caps.TextureAddressCaps = myCaps6.dpcTriCaps.dwTextureAddressCaps | D3DPTADDRESSCAPS_MIRRORONCE;
 			caps.PresentationIntervals = 0;
 			caps.MaxTextureWidth = env.texture_max_width;
 			caps.MaxTextureHeight = env.texture_max_height;

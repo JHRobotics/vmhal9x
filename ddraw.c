@@ -110,11 +110,17 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 		for(i = 0; i < (int)pcsd->dwSCnt; i++)
 		{
 			LPDDRAWI_DDRAWSURFACE_LCL lpSurf = lplpSList[i];
-
 			DDPIXELFORMAT *fmt = &pcsd->lpDDSurfaceDesc->ddpfPixelFormat;
-			TOPIC("TARGET", "CreateSurface32 dwFlags=0x%X", lpSurf->lpGbl->ddpfSurface.dwFlags);
+			BOOL is_primary = (pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE) == 0 ? FALSE : TRUE;
 
-			if(fmt->dwFlags & DDPF_FOURCC)
+			/* JH: when allocating primary, fmt->dwFlags is not valid, also is important allocate primary
+			 * surface everytime by runtime! (vidmem=DDHAL_PLEASEALLOC_BLOCKSIZE)
+			 */
+
+			TOPIC("TARGET", "CreateSurface32 dwFlags=0x%X, fmt->dwFlags=0x%X, pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps=0x%X",
+				lpSurf->lpGbl->ddpfSurface.dwFlags, fmt->dwFlags, pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps);
+
+			if(!is_primary && (fmt->dwFlags & DDPF_FOURCC) != 0)
 			{
 				DWORD pitch;
 				DWORD size = SurfaceDataSize(lpSurf->lpGbl, &pitch);
@@ -129,16 +135,16 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 				lpSurf->lpGbl->dwBlockSizeX = size;
 				lpSurf->lpGbl->dwBlockSizeY = 1;
 				//lpSurf->lpGbl->fpVidMem     = DDHAL_PLEASEALLOC_BLOCKSIZE;
-				
-				TOPIC("ALLOC", "FourCC %d x %d = %d", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX);
-				
+
+				TOPIC("ALLOC", "FourCC(%08X) %d x %d = %d", fmt->dwFourCC, lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX);
+
 				if(!hal_valloc(pcsd->lpDD, lpSurf, FALSE))
 				{
 					WARN("DDERR_OUTOFVIDEOMEMORY (pass to HEL to solve this)");
 					lpSurf->lpGbl->fpVidMem = DDHAL_PLEASEALLOC_BLOCKSIZE;
 				}
 			}
-			else if(fmt->dwFlags & DDPF_RGB)
+			else if(!is_primary && (fmt->dwFlags & DDPF_RGB) != 0)
 			{
 				lpSurf->lpGbl->dwBlockSizeX = (DWORD)lpSurf->lpGbl->wHeight * lpSurf->lpGbl->lPitch;
 				lpSurf->lpGbl->dwBlockSizeY = 1;
@@ -160,7 +166,7 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 					pcsd->lpDDSurfaceDesc->dwFlags |= DDSD_PITCH;
 				}
 			}
-			else if(fmt->dwFlags & DDPF_ZBUFFER)
+			else if(!is_primary && (fmt->dwFlags & DDPF_ZBUFFER) != 0)
 			{
 				if(fmt->dwZBufferBitDepth >= 24)
 				{

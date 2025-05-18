@@ -209,7 +209,7 @@ NUKED_LOCAL void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD type/*, DWORD size*/)
 		type, ctx->state.fvf.stride
 	);
 }
-	
+
 NUKED_LOCAL void MesaFVFRecalc(mesa3d_ctx_t *ctx)
 {
 	int offset = 0; // in DW

@@ -102,9 +102,16 @@ NUKED_LOCAL void MesaBufferUploadColor(mesa3d_ctx_t *ctx, const void *src)
 		GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0+ctx->fbo_tmu));
 		GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
 		GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_CUBE_MAP));
+
+		GL_CHECK(entry->proc.pglMatrixMode(GL_TEXTURE));
+		GL_CHECK(entry->proc.pglPushMatrix());
+		GL_CHECK(entry->proc.pglLoadIdentity());
+
 		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.plane_color_tex));
 		//GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, ctx->state.sw, ctx->state.sh, 0, format, type, src));
 		GL_CHECK(entry->proc.pglTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, ctx->state.sw, ctx->state.sh, format, type, src));
+
+		GL_CHECK(entry->proc.pglPopMatrix());
 	}
 	else
 	{
@@ -126,6 +133,11 @@ NUKED_LOCAL void MesaBufferUploadColor(mesa3d_ctx_t *ctx, const void *src)
 		GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0+ctx->fbo_tmu));
 		GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
 		GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_CUBE_MAP));
+
+		GL_CHECK(entry->proc.pglMatrixMode(GL_TEXTURE));
+		GL_CHECK(entry->proc.pglPushMatrix());
+		GL_CHECK(entry->proc.pglLoadIdentity());
+
 		GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.color16_fb));
 		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ctx->fbo.color16_tex));
 		//GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, ctx->state.sw, ctx->state.sh, 0, format, type, src));
@@ -147,6 +159,8 @@ NUKED_LOCAL void MesaBufferUploadColor(mesa3d_ctx_t *ctx, const void *src)
 	  	GL_COLOR_BUFFER_BIT, GL_NEAREST));
 		
 		GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo.plane_fb));
+		
+		GL_CHECK(entry->proc.pglPopMatrix());
 	}
 	
 	if(ctx->fbo_tmu < ctx->tmu_count)

@@ -149,7 +149,7 @@ static surface_info_t *SurfaceCreateInfo(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL re
 		}
 	}
 
-	if((DWORD)surf->lpGbl < 0x80000000 && surf->lpGbl->fpVidMem < 0x80000000)
+	if((DWORD)surf->lpGbl < 0x80000000/* && surf->lpGbl->fpVidMem < 0x80000000 */)
 	{
 		ERR("no global lpGbl=0x%X", surf->lpGbl);
 		return NULL;
@@ -911,7 +911,7 @@ NUKED_LOCAL BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL 
 		return FALSE;
 	}
 
-#if 1
+#if 0
 	/* system memory */
 	if(((surface->ddsCaps.dwCaps & (DDSCAPS_SYSTEMMEMORY | DDSCAPS_TEXTURE)) == 
 		(DDSCAPS_SYSTEMMEMORY | DDSCAPS_TEXTURE)) || surface->lpGbl->fpVidMem < 0x80000000)
@@ -965,13 +965,21 @@ NUKED_LOCAL BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL 
 		TOPIC("CUBE", "surface duplicate failure");
 		return FALSE;
 	}
-#else
+#elif 0
 	if(((surface->ddsCaps.dwCaps & (DDSCAPS_SYSTEMMEMORY | DDSCAPS_TEXTURE)) == 
 		(DDSCAPS_SYSTEMMEMORY | DDSCAPS_TEXTURE)) || surface->lpGbl->fpVidMem < 0x80000000)
 	{
 		return FALSE;
 	}
+#else
+
 #endif
+
+	if(surface->dwReserved1 == 0)
+	{
+		TRACE("Created surface from user memory");
+		SurfaceCreate(surface);
+	}
 
 	/* video memory */
 	surface_info_t *info = SurfaceGetInfoFromLcl(surface);
@@ -1078,6 +1086,9 @@ DWORD SurfaceDataSize(LPDDRAWI_DDRAWSURFACE_GBL gbl, DWORD *outPitch)
 				case D3DFMT_A1R5G5B5:
 				case D3DFMT_X1R5G5B5:
 				case D3DFMT_A4R4G4B4:
+				case D3DFMT_X4R4G4B4:
+				case D3DFMT_A8P8:
+				case D3DFMT_A8L8:
 				case D3DFMT_D16_LOCKABLE:
 				case D3DFMT_D16:
 					blksize = 2;
@@ -1086,7 +1097,16 @@ DWORD SurfaceDataSize(LPDDRAWI_DDRAWSURFACE_GBL gbl, DWORD *outPitch)
 				case D3DFMT_A8R8G8B8:
 				case D3DFMT_D32:
 				case D3DFMT_S8D24:
+				case D3DFMT_D24X8:
 					blksize = 4;
+					break;
+				case D3DFMT_R8G8B8:
+					blksize = 3;
+					break;
+				case D3DFMT_R3G3B2:
+				case D3DFMT_A8:
+				case D3DFMT_L8:
+					blksize = 1;
 					break;
 				default:
 					return 0;

@@ -344,6 +344,55 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 					*compressed = FALSE;
 					return TRUE;
 					break;
+				case D3DFMT_X4R4G4B4:
+					*bpp = 32;
+					*internalformat = GL_RGB;
+					*format = GL_BGRA;
+					*type = GL_UNSIGNED_INT_8_8_8_8_REV;
+					*compressed = FALSE;
+					return TRUE;
+					break;
+				case D3DFMT_R8G8B8:
+					*bpp = 24;
+					*internalformat = GL_RGB;
+					*format = GL_RGB;
+					*type = GL_UNSIGNED_BYTE;
+					*compressed = FALSE;
+					return TRUE;
+					break;
+				case D3DFMT_A8:
+					*bpp = 8;
+					*internalformat = GL_ALPHA8;
+					*format = GL_ALPHA;
+					*type = GL_UNSIGNED_BYTE;
+					*compressed = FALSE;
+					return TRUE;
+					break;
+				case D3DFMT_L8:
+					*bpp = 8;
+					*internalformat = GL_LUMINANCE8;
+					*format = GL_LUMINANCE;
+					*type = GL_UNSIGNED_BYTE;
+					*compressed = FALSE;
+					return TRUE;
+					break;
+				case D3DFMT_A8L8:
+					*bpp = 16;
+					*internalformat = GL_LUMINANCE8_ALPHA8;
+					*format = GL_LUMINANCE_ALPHA;
+					*type = GL_UNSIGNED_BYTE;
+					*compressed = FALSE;
+					return TRUE;
+					break;
+				case D3DFMT_P8:
+				case D3DFMT_A8P8:
+					*bpp = 32;
+					*palette = TRUE;
+					*internalformat = GL_RGBA;
+					*format = GL_BGRA;
+					*type = GL_UNSIGNED_BYTE;
+					return TRUE;
+					break;
 				case D3DFMT_D16_LOCKABLE:
 				case D3DFMT_D16:
 					*internalformat = GL_DEPTH_COMPONENT;
@@ -363,6 +412,14 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 					break;
 				case D3DFMT_S8D24:
 					*internalformat = GL_DEPTH_STENCIL;
+					*format = GL_DEPTH_STENCIL;
+					*type = GL_UNSIGNED_INT_24_8;
+					*bpp = 32;
+					*compressed = FALSE;
+					return TRUE;
+					break;
+				case D3DFMT_D24X8:
+					*internalformat = GL_DEPTH_COMPONENT;
 					*format = GL_DEPTH_STENCIL;
 					*type = GL_UNSIGNED_INT_24_8;
 					*bpp = 32;
@@ -957,8 +1014,8 @@ NUKED_LOCAL BOOL MesaSetTarget(mesa3d_ctx_t *ctx, surface_id dds_sid, surface_id
 	//UpdateScreenCoords(ctx, (GLfloat)width, (GLfloat)height);
 	ctx->state.textarget = (dds->dwCaps & DDSCAPS_TEXTURE) ? TRUE : FALSE;
 
-	if(viewport_set)
-		MesaApplyViewport(ctx, 0, 0, width, height, FALSE);
+//	if(viewport_set)
+//		MesaApplyViewport(ctx, 0, 0, width, height, FALSE);
 
 	MesaDepthApply(ctx);
 	MesaStencilApply(ctx);
@@ -1216,6 +1273,7 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 		}
 		
 		MesaIdentity(ctx->state.tmu[i].matrix);
+		ctx->state.tmu[i].matrix_idx = TRUE;
 	}
 
 	GL_CHECK(entry->proc.pglEnable(GL_BLEND));
@@ -1240,7 +1298,7 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 
 //	entry->proc.pglEnable(GL_CULL_FACE);
 //	entry->proc.pglCullFace(GL_FRONT);
-	
+
 	ctx->state.stencil.sfail     = GL_KEEP;
 	ctx->state.stencil.dpfail    = GL_KEEP;
 	ctx->state.stencil.dppass    = GL_KEEP;
@@ -2165,7 +2223,7 @@ NUKED_LOCAL void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, vo
 		RENDERSTATE(D3DTSS_CONSTANT)
 			break;
 		default:
-			WARN("Unknown D3DTSS: state=0x%X, tmu", state, tmu);
+			WARN("Unknown D3DTSS: state=0x%X, tmu=%d", state, tmu);
 			invalid_state = TRUE;
 			break;
 	} // switch
@@ -3032,7 +3090,7 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 	{
 		if(!ts->image->cube)
 		{
-			if(!ts->nocoords)
+			if(!ts->nocoords || ts->coordscalc)
 			{
 				GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
 				GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_CUBE_MAP));
@@ -3793,7 +3851,7 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 				GL_TEXTURE_BORDER_COLOR, &(ts->border[0])));
 		}
 		
-		switch(ts->texaddr_u)
+		switch((DWORD)ts->texaddr_u)
 		{
 			case D3DTADDRESS_MIRROR:
 				GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT));
@@ -3804,9 +3862,9 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 			case D3DTADDRESS_BORDER:
 				GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER));
 				break;
-/*			case TADDRESS_MIRROR_ONCE:
+			case D3DTADDRESS_MIRRORONCE:
 				GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_WRAP_S, GL_MIRROR_CLAMP_TO_EDGE));
-				break;*/
+				break;
 			case D3DTADDRESS_WRAP:
 			default:
 				if(ts->wrap & D3DWRAPCOORD_0)
@@ -3820,7 +3878,7 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 				break;
 		}
 	
-		switch(ts->texaddr_v)
+		switch((DWORD)ts->texaddr_v)
 		{
 			case D3DTADDRESS_MIRROR:
 				GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT));
@@ -3830,6 +3888,9 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 				break;
 			case D3DTADDRESS_BORDER:
 				GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER));
+				break;
+			case D3DTADDRESS_MIRRORONCE:
+				GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_WRAP_T, GL_MIRROR_CLAMP_TO_EDGE));
 				break;
 			case D3DTADDRESS_WRAP:
 			default:
@@ -3844,7 +3905,7 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 				break;
 		}
 
-		switch(ts->texaddr_w)
+		switch((DWORD)ts->texaddr_w)
 		{
 			case D3DTADDRESS_MIRROR:
 				GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_WRAP_R, GL_MIRRORED_REPEAT));
@@ -3854,6 +3915,9 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 				break;
 			case D3DTADDRESS_BORDER:
 				GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_BORDER));
+				break;
+			case D3DTADDRESS_MIRRORONCE:
+				GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_WRAP_R, GL_MIRROR_CLAMP_TO_EDGE));
 				break;
 			case D3DTADDRESS_WRAP:
 			default:
@@ -3974,8 +4038,13 @@ NUKED_LOCAL void MesaDrawRefreshState(mesa3d_ctx_t *ctx)
 			mesa3d_entry_t *entry = ctx->entry;
 			
 			GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0 + i));
-			GL_CHECK(entry->proc.pglMatrixMode(GL_TEXTURE));
-			GL_CHECK(entry->proc.pglLoadMatrixf(&ctx->state.tmu[i].matrix[0]));
+
+			if(!ctx->matrix.identity_mode)
+			{
+				GL_CHECK(entry->proc.pglMatrixMode(GL_TEXTURE));
+				//GL_CHECK(entry->proc.pglLoadMatrixf(&ctx->state.tmu[i].matrix[0]));
+				MesaTMUApplyMatrix(ctx, i);
+			}
 
 			switch(ctx->state.tmu[i].mapping)
 			{

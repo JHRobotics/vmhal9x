@@ -146,6 +146,7 @@ struct mesa3d_tmustate
 	int coordscalc; /* D3DTSS_TEXTURETRANSFORMFLAGS */
 	BOOL projected;
 	GLfloat matrix[16];
+	BOOL matrix_idx;
 	
 	DWORD wrap;
 	
@@ -569,6 +570,7 @@ NUKED_LOCAL void MesaSpaceModelviewReset(mesa3d_ctx_t *ctx);
 //void MesaConvProjection(GLfloat m[16]);
 //void MesaConvView(GLfloat m[16]);
 NUKED_LOCAL void MesaVetexBlend(mesa3d_ctx_t *ctx, GLfloat coords[3], GLfloat *betas, int betas_cnt, GLfloat out[4]);
+NUKED_FAST void MesaTMUApplyMatrix(mesa3d_ctx_t *ctx, int tmu);
 
 /* vertex (needs GL_BLOCK + glBegin) */
 NUKED_LOCAL void MesaDrawVertex(mesa3d_ctx_t *ctx, LPD3DVERTEX vertex);

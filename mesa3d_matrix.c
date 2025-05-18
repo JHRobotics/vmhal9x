@@ -206,8 +206,7 @@ NUKED_LOCAL BOOL MesaUnprojectf(GLfloat winx, GLfloat winy, GLfloat winz, GLfloa
 }
 #endif
 
-#if 0
-NUKED_LOCAL BOOL MesaIsIdentity(GLfloat matrix[16])
+NUKED_FAST BOOL MesaIsIdentity(GLfloat matrix[16])
 {
 	int i = 0;
 	for(i = 0; i < 16; i++)
@@ -226,7 +225,6 @@ NUKED_LOCAL BOOL MesaIsIdentity(GLfloat matrix[16])
 	
 	return TRUE;
 }
-#endif
 
 NUKED_LOCAL void MesaIdentity(GLfloat matrix[16])
 {
@@ -380,6 +378,7 @@ NUKED_LOCAL void MesaApplyTransform(mesa3d_ctx_t *ctx, DWORD changes)
 
 NUKED_LOCAL void MesaSpaceIdentitySet(mesa3d_ctx_t *ctx)
 {
+	int tmu;
 	mesa3d_entry_t *entry = ctx->entry;
 	GL_CHECK(entry->proc.pglMatrixMode(GL_MODELVIEW));
 	GL_CHECK(entry->proc.pglPushMatrix());
@@ -388,6 +387,16 @@ NUKED_LOCAL void MesaSpaceIdentitySet(mesa3d_ctx_t *ctx)
 	GL_CHECK(entry->proc.pglPushMatrix());
 	GL_CHECK(entry->proc.pglLoadIdentity());
 
+	for(tmu = 0; tmu < ctx->tmu_count; tmu++)
+	{
+		if(!ctx->state.tmu[tmu].matrix_idx)
+		{
+			GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0+tmu));
+			GL_CHECK(entry->proc.pglMatrixMode(GL_TEXTURE));
+			GL_CHECK(entry->proc.pglLoadIdentity());
+		}
+	}
+
 	ctx->matrix.identity_mode = TRUE;
 }
 
@@ -395,11 +404,23 @@ NUKED_LOCAL void MesaSpaceIdentityReset(mesa3d_ctx_t *ctx)
 {
 	if(ctx->matrix.identity_mode)
 	{
+		int tmu;
 		mesa3d_entry_t *entry = ctx->entry;
 		GL_CHECK(entry->proc.pglMatrixMode(GL_PROJECTION));
 		GL_CHECK(entry->proc.pglPopMatrix());
 		GL_CHECK(entry->proc.pglMatrixMode(GL_MODELVIEW));
 		GL_CHECK(entry->proc.pglPopMatrix());
+
+		for(tmu = 0; tmu < ctx->tmu_count; tmu++)
+		{
+			if(!ctx->state.tmu[tmu].matrix_idx)
+			{
+				GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0+tmu));
+				GL_CHECK(entry->proc.pglMatrixMode(GL_TEXTURE));
+				MesaTMUApplyMatrix(ctx, tmu);
+				//GL_CHECK(entry->proc.pglLoadMatrixf(&ctx->state.tmu[tmu].matrix[0]));
+			}
+		}
 
 		ctx->matrix.identity_mode = FALSE;
 
@@ -458,6 +479,66 @@ NUKED_LOCAL void MesaVetexBlend(mesa3d_ctx_t *ctx, GLfloat coords[3], GLfloat *b
 	}
 	
 	matmultvecf(m, in4, out);
+}
+
+NUKED_FAST void MesaSetTextureMatrix(mesa3d_ctx_t *ctx, int tmu, GLfloat matrix[16])
+{
+	memcpy(ctx->state.tmu[tmu].matrix, matrix, sizeof(GLfloat[16]));
+	ctx->state.tmu[tmu].matrix_idx = MesaIsIdentity(matrix);
+}
+
+NUKED_FAST void MesaTMUApplyMatrix(mesa3d_ctx_t *ctx, int tmu)
+{
+	mesa3d_entry_t *entry = ctx->entry;
+	struct mesa3d_tmustate *ts = &ctx->state.tmu[tmu];
+	if(ts->coordscalc >= 2)
+	{
+		if(ts->projected)
+		{
+			GLfloat m[16];
+			memcpy(m, ts->matrix, sizeof(m));
+			switch(ts->coordscalc)
+			{
+				case 2:
+					/*
+					mat._14 = mat._12;
+					mat._24 = mat._22;
+					mat._34 = mat._32;
+					mat._44 = mat._42;
+					mat._12 = mat._22 = mat._32 = mat._42 = 0.0f;
+					*/
+					m[0*4 + 3] = m[0*4 + 1];
+					m[1*4 + 3] = m[1*4 + 1];
+					m[2*4 + 3] = m[2*4 + 1];
+					m[3*4 + 3] = m[3*4 + 1];
+					m[0*4 + 1] = m[1*4 + 1] = m[2*4 + 1] = m[3*4 + 1] = 0.0f;
+					break;
+				case 3:
+					/*
+					mat._14 = mat._13;
+					mat._24 = mat._23;
+					mat._34 = mat._33;
+					mat._44 = mat._43;
+					mat._13 = mat._23 = mat._33 = mat._43 = 0.0f;
+					*/
+					m[0*4 + 3] = m[0*4 + 2];
+					m[1*4 + 3] = m[1*4 + 2];
+					m[2*4 + 3] = m[2*4 + 2];
+					m[3*4 + 3] = m[3*4 + 2];
+					m[0*4 + 2] = m[1*4 + 2] = m[2*4 + 2] = m[3*4 + 2] = 0.0f;
+					break;
+			}
+			GL_CHECK(entry->proc.pglLoadMatrixf(&m[0]));
+		}
+		else
+		{
+			GL_CHECK(entry->proc.pglLoadMatrixf(&ts->matrix[0]));
+		}
+	}
+	else
+	{
+		GL_CHECK(entry->proc.pglLoadIdentity());
+	}
 }
 
 #define COPY_MATRIX(_srcdx, _dst) do{ \
@@ -530,13 +611,16 @@ NUKED_LOCAL void MesaSetTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *mat
 			MesaApplyTransform(ctx, MESA_TF_WORLD);
 			state_mtx = D3DTRANSFORMSTATE_WORLD2;
 			break;
-#if 0 /* disabled for now */
+#if 1 /* disabled for now */
 		case D3DTRANSFORMSTATE_TEXTURE0...D3DTRANSFORMSTATE_TEXTURE7:
 		{
 			DWORD tmu = state-D3DTRANSFORMSTATE_TEXTURE0;
-			memcpy(ctx->state.tmu[tmu].matrix, m, sizeof(m));
-			ctx->state.tmu[tmu].move = TRUE;
-			MesaDrawRefreshState(ctx);
+			if(memcpy(ctx->state.tmu[tmu].matrix, m, sizeof(m)) != 0)
+			{
+				MesaSetTextureMatrix(ctx, tmu, m);
+				ctx->state.tmu[tmu].move = TRUE;
+				MesaDrawRefreshState(ctx);
+			}
 			state_mtx = state;
 			break;
 		}
@@ -622,10 +706,14 @@ NUKED_LOCAL void MesaMultTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *ma
 			matmultf(ctx->matrix.world[3], m, ctx->matrix.world[3]);
 			MesaApplyTransform(ctx, MESA_TF_WORLD);
 			break;
-#if 0 /* disabled for now */
+#if 1 /* disabled for now */
 		case D3DTRANSFORMSTATE_TEXTURE0...D3DTRANSFORMSTATE_TEXTURE7:
 		{
-			matmultf(ctx->state.tmu[tmu].matrix, m, ctx->state.tmu[tmu].matrix);
+			DWORD tmu = state-D3DTRANSFORMSTATE_TEXTURE0;
+			matmultf(ctx->state.tmu[tmu].matrix, m, m);
+
+			MesaSetTextureMatrix(ctx, tmu, m);
+
 			ctx->state.tmu[tmu].move = TRUE;
 			MesaDrawRefreshState(ctx);
 			break;
