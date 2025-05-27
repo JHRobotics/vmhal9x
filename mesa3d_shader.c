@@ -23,8 +23,8 @@
  * OTHER DEALINGS IN THE SOFTWARE.                                            *
  *                                                                            *
  ******************************************************************************/
+#ifndef NUKED_SKIP
 #include <windows.h>
-#include <initguid.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <ddraw.h>
@@ -32,26 +32,98 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <math.h>
-#include "d3dhal_ddk.h"
 #include "ddrawi_ddk.h"
+#include "d3dhal_ddk.h"
 #include "vmdahal32.h"
-#include <d3d8caps.h>
 #include "vmhal9x.h"
 #include "mesa3d.h"
 #include "osmesa.h"
 
 #include "nocrt.h"
+#endif
 
-#define NUKED_SKIP
+NUKED_LOCAL void MesaVSCreate(mesa3d_ctx_t *ctx, D3DHAL_DP2CREATEVERTEXSHADER *shader, const BYTE *buffer)
+{
+	mesa_dx_shader_t **last_ptr = &ctx->shader.vs;
+	mesa_dx_shader_t *next = NULL;
 
-#include "mesa3d.c"
-#include "mesa3d_matrix.c"
-#include "mesa3d_draw.c"
-#include "mesa3d_draw6.c"
-#include "mesa3d_chroma.c"
-#include "mesa3d_dump.c"
-#include "mesa3d_buffer.c"
-#include "mesa3d_state.c"
-#include "mesa3d_shader.c"
-#include "surface.c"
-#include "d3d.c"
+	while((*last_ptr) != NULL)
+	{
+		if((*last_ptr)->handle == shader->dwHandle)
+		{
+			next = (*last_ptr)->next;
+			break;
+		}
+
+		last_ptr = &((*last_ptr)->next);
+	}
+
+	size_t s = sizeof(mesa_dx_shader_t) + shader->dwDeclSize + shader->dwCodeSize;
+	BYTE *buf = hal_alloc(HEAP_NORMAL, s, 0);
+	if(buf)
+	{
+		if((*last_ptr) != NULL)
+		{
+			hal_free(HEAP_NORMAL, *last_ptr);
+		}
+
+		mesa_dx_shader_t *vs = (mesa_dx_shader_t *)buf;
+		buf += sizeof(mesa_dx_shader_t);
+		vs->decl_size = shader->dwDeclSize;
+		vs->decl = buf;
+		buf += shader->dwDeclSize;
+		vs->code_size = shader->dwCodeSize;
+		vs->code = buf;
+		vs->handle = shader->dwHandle;
+
+		memcpy(vs->decl, buffer, vs->decl_size);
+		memcpy(vs->code, buffer+vs->decl_size, vs->code_size);
+
+		vs->next = next;
+		*last_ptr = vs;
+	}
+}
+
+NUKED_LOCAL void MesaVSDestroy(mesa3d_ctx_t *ctx, DWORD handle)
+{
+	mesa_dx_shader_t **ptr = &ctx->shader.vs;
+
+	while((*ptr) != NULL)
+	{
+		if((*ptr)->handle == handle)
+		{
+			mesa_dx_shader_t *vs = (*ptr);
+			*ptr = vs->next;
+			hal_free(HEAP_NORMAL, vs);
+		}
+		else
+		{
+			ptr = &((*ptr)->next);
+		}
+	}
+}
+
+NUKED_LOCAL void MesaVSDestroyAll(mesa3d_ctx_t *ctx)
+{
+	while(ctx->shader.vs != NULL)
+	{
+		mesa_dx_shader_t *vs = ctx->shader.vs;
+		ctx->shader.vs = vs->next;
+		hal_free(HEAP_NORMAL, vs);
+	}
+}
+
+NUKED_LOCAL mesa_dx_shader_t *MesaVSGet(mesa3d_ctx_t *ctx, DWORD handle)
+{
+	mesa_dx_shader_t *vs = ctx->shader.vs;
+	while(vs != NULL)
+	{
+		if(vs->handle == handle)
+		{
+			return vs;
+		}
+		vs = vs->next;
+	}
+
+	return NULL;
+}

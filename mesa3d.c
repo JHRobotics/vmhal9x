@@ -917,7 +917,7 @@ NUKED_LOCAL mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DWORD dds_sid, DW
 	
 				MesaInitCtx(ctx);
 				//UpdateScreenCoords(ctx, (GLfloat)width, (GLfloat)height);
-				MesaApplyViewport(ctx, 0, 0, ctx->state.sw, ctx->state.sh, FALSE);
+				MesaApplyViewport(ctx, 0, 0, ctx->state.sw, ctx->state.sh, TRUE);
 
 				valid = TRUE;
 			} while(0);
@@ -1014,8 +1014,8 @@ NUKED_LOCAL BOOL MesaSetTarget(mesa3d_ctx_t *ctx, surface_id dds_sid, surface_id
 	//UpdateScreenCoords(ctx, (GLfloat)width, (GLfloat)height);
 	ctx->state.textarget = (dds->dwCaps & DDSCAPS_TEXTURE) ? TRUE : FALSE;
 
-//	if(viewport_set)
-//		MesaApplyViewport(ctx, 0, 0, width, height, FALSE);
+	if(viewport_set)
+		MesaApplyViewport(ctx, 0, 0, width, height, FALSE);
 
 	MesaDepthApply(ctx);
 	MesaStencilApply(ctx);
@@ -1083,6 +1083,7 @@ NUKED_LOCAL void MesaDestroyCtx(mesa3d_ctx_t *ctx)
 	
 	MesaLightDestroyAll(ctx);
 	MesaFreePals(ctx);
+	MesaVSDestroyAll(ctx);
 	hal_free(HEAP_NORMAL, ctx);
 }
 
@@ -1313,14 +1314,16 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 	MesaDepthApply(ctx);
 	entry->proc.pglDepthFunc(GL_LESS);
 	MesaStencilApply(ctx);
-	
-	ctx->state.bind_vertices = -1;
+
+	ctx->state.bind_vertices = 0;
 	ctx->state.bind_indices = NULL;
 	ctx->vstream[0].mem = NULL;
 
+	ctx->shader.vs = NULL;
+
 	MesaDrawRefreshState(ctx);
 
-	MesaCaptureInit(ctx);
+	MesaRecCaptureInit(ctx);
 }
 
 NUKED_LOCAL BOOL MesaSetCtx(mesa3d_ctx_t *ctx)
@@ -2126,19 +2129,58 @@ NUKED_LOCAL void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, vo
 		}
 		/* D3DTEXTUREMAGFILTER filter to use for magnification */
 		RENDERSTATE(D3DTSS_MAGFILTER)
-			ts->dx_mag = (D3DTEXTUREMAGFILTER)TSS_DWORD;
-			TOPIC("MINMAG", "D3DTSS_MAGFILTER=%d", TSS_DWORD);
+			if(ctx->dxif >= MESA_CTX_IF_DX8)
+			{
+				switch(TSS_DWORD)
+				{
+					case D3DTEXF_POINT:          ts->dx_mag = D3DTFG_POINT;         break;
+					case D3DTEXF_LINEAR:         ts->dx_mag = D3DTFG_LINEAR;        break;
+					case D3DTEXF_ANISOTROPIC:    ts->dx_mag = D3DTFG_ANISOTROPIC;   break;
+					case D3DTEXF_FLATCUBIC:      ts->dx_mag = D3DTFG_FLATCUBIC;     break;
+					case D3DTEXF_GAUSSIANCUBIC:  ts->dx_mag = D3DTFG_GAUSSIANCUBIC; break;
+				}
+			}
+			else
+			{
+				ts->dx_mag = (D3DTEXTUREMAGFILTER)TSS_DWORD;
+			}
+			TOPIC("MINMAG", "D3DTSS_MAGFILTER=%d", ts->dx_mag);
 			ts->update = TRUE;
 			break;
 		/* D3DTEXTUREMINFILTER filter to use for minification */
 		RENDERSTATE(D3DTSS_MINFILTER)
-			ts->dx_min = (D3DTEXTUREMINFILTER)TSS_DWORD;
-			TOPIC("MINMAG", "D3DTSS_MINFILTER=%d", TSS_DWORD);
+			if(ctx->dxif >= MESA_CTX_IF_DX8)
+			{
+				switch(TSS_DWORD)
+				{
+					case D3DTEXF_POINT:     ts->dx_min = D3DTFN_POINT;       break;
+					case D3DTEXF_LINEAR:    ts->dx_min = D3DTFN_LINEAR;      break;
+					case D3DTEXF_FLATCUBIC: ts->dx_min = D3DTFN_ANISOTROPIC; break;
+				}
+			}
+			else
+			{
+				ts->dx_min = (D3DTEXTUREMINFILTER)TSS_DWORD;
+			}
+			TOPIC("MINMAG", "D3DTSS_MINFILTER=%d", ts->dx_min);
 			ts->update = TRUE;
 			break;
 		/* D3DTEXTUREMIPFILTER filter to use between mipmaps during minification */
 		RENDERSTATE(D3DTSS_MIPFILTER)
-			ts->dx_mip = (D3DTEXTUREMIPFILTER)TSS_DWORD;
+			if(ctx->dxif >= MESA_CTX_IF_DX8)
+			{
+				switch(TSS_DWORD)
+				{
+					case D3DTEXF_NONE:   ts->dx_mip = D3DTFP_NONE;   break;
+					case D3DTEXF_POINT:  ts->dx_mip = D3DTFP_POINT;  break;
+					case D3DTEXF_LINEAR: ts->dx_mip = D3DTFP_LINEAR; break;
+				}
+			}
+			else
+			{
+				ts->dx_mip = (D3DTEXTUREMIPFILTER)TSS_DWORD;
+			}
+			TOPIC("MINMAG", "D3DTSS_MIPFILTER=%d", ts->dx_mip);
 			ts->update = TRUE;
 			break;
 		/* D3DVALUE Mipmap LOD bias */
@@ -2989,7 +3031,7 @@ NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DHAL_DP2RENDERSTATE s
 
 NUKED_FAST GLenum MesaConvPrimType(D3DPRIMITIVETYPE dx_type)
 {
-	GLenum gl_type = GL_ZERO;
+	GLenum gl_type = GL_NOOP; /* GL_POINTS=0, so using some invalid value */
 	
 	switch(dx_type)
 	{
@@ -3121,7 +3163,11 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 		 * texture filtering
 		 */
 		BOOL use_anisotropic = FALSE;
-		if(ts->image->mipmap && ts->dx_mip != D3DTFP_NONE)
+		GLenum filter_min = GL_NEAREST;
+		GLenum filter_mag = GL_NEAREST;
+		TRACE("ts->image->mipmap=%d, ts->dx_mip=%d", ts->image->mipmap, ts->dx_mip);
+		
+		if(ts->image->mipmap && ts->dx_mip != D3DTFP_NONE) /* mipmap */
 		{
 			GLint maxlevel = ts->image->mipmap_level;
 			GLint minlevel = ts->mipmaxlevel;
@@ -3137,47 +3183,39 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 			switch(ts->dx_min)
 			{
 				case D3DTFN_ANISOTROPIC:
-					GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR));
+					filter_min = GL_LINEAR_MIPMAP_LINEAR;
 					use_anisotropic = TRUE;
 					break;
 				case D3DTFN_LINEAR:
 					switch(ts->dx_mip)
 					{
 						case D3DTFP_LINEAR:
-							GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR));
+							filter_min = GL_LINEAR_MIPMAP_LINEAR;
 							break;
 						case D3DTFP_POINT:
+							filter_min = GL_LINEAR_MIPMAP_NEAREST;
+							break;
 						default:
-							if(!entry->env.always_filter)
-							{
-								GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST));
-							}
-							else
-							{
-								GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR));
-							}
+							WARN("unknown ts->dx_mip = %d", ts->dx_mip);
 							break;
 					}
 					break;
 				case D3DTFN_POINT:
-				default:
 					switch(ts->dx_mip)
 					{
 						case D3DTFP_LINEAR:
-							GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_LINEAR));
+							filter_min = GL_NEAREST_MIPMAP_LINEAR;
 							break;
 						case D3DTFP_POINT:
+							filter_min = GL_NEAREST_MIPMAP_NEAREST;
+							break;
 						default:
-							if(!entry->env.always_filter)
-							{
-								GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST));
-							}
-							else
-							{
-								GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_LINEAR));
-							}
+							WARN("unknown ts->dx_mip = %d", ts->dx_mip);
 							break;
 					}
+					break;
+				default:
+					WARN("unknown ts->dx_min = %d (using mipmap)", ts->dx_min);
 					break;
 			}
 		}
@@ -3190,44 +3228,58 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 			{
 				case D3DTFN_ANISOTROPIC:
 					use_anisotropic = TRUE;
-					/* thru */
+					filter_min = GL_LINEAR;
+					break;
 				case D3DTFN_LINEAR:
-					GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
+					filter_min = GL_LINEAR;
 					break;
 				case D3DTFN_POINT:
+					filter_min = GL_NEAREST;
+					break;
 				default:
-					if(!entry->env.always_filter)
-					{
-						GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_NEAREST));
-					}
-					else
-					{
-						GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
-					}
+					WARN("unknown ts->dx_min = %d (using mipmap)", ts->dx_min);
 					break;
 			}
-		}
+		} /* non mipaps */
 
 		switch(ts->dx_mag)
 		{
 			case D3DTFG_ANISOTROPIC:
 				use_anisotropic = TRUE;
-				/* thru */
+				filter_mag = GL_LINEAR;
+				break;
 			case D3DTFG_LINEAR:
-				GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
+				filter_mag = GL_LINEAR;
 				break;
 			case D3DTFG_POINT:
+				filter_mag = GL_NEAREST;
+				break;
 			default:
-				if(!entry->env.always_filter)
-				{
-					GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
-				}
-				else
-				{
-					GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
-				}
+				WARN("unknown ts->dx_mag = %d (using mipmap)", ts->dx_mag);
 				break;
 		}
+
+		if(entry->env.filter_bug)
+		{
+			/* There is bug (Mesa 23.1.x) causing that
+				GL_LINEAR and GL_NEAREST are ignored for GL_TEXTURE_MIN_FILTER,
+				but since GL_TEXTURE_MAX_LEVEL is 0, we can use mipmap filter on
+				single level texture.
+			 */
+			switch(filter_min)
+			{
+				case GL_LINEAR:
+					filter_min = GL_LINEAR_MIPMAP_LINEAR;
+					break;
+				case GL_NEAREST:
+					filter_min = GL_NEAREST_MIPMAP_NEAREST;
+					break;
+			}
+		}
+		GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, filter_min));
+		GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MAG_FILTER, filter_mag));
+		
+		TRACE("GLFilter min=%X mag=%X", filter_min, filter_mag);
 
 		/* needs EXT_texture_filter_anisotropic */
 		if(entry->env.max_anisotropy > 1)
@@ -4124,7 +4176,7 @@ NUKED_LOCAL void MesaDraw5(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3DVERT
 
 	GLenum gl_ptype = MesaConvPrimType(dx_ptype);
 
-	if(gl_ptype != GL_ZERO)
+	if(gl_ptype != GL_NOOP)
 	{
 		TOPIC("GL", "glBegin(%d)", gl_ptype);
 		entry->proc.pglBegin(gl_ptype);
@@ -4222,7 +4274,7 @@ NUKED_LOCAL void MesaDraw5Index(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3
 
 	GLenum gl_ptype = MesaConvPrimType(dx_ptype);
 
-	if(gl_ptype != GL_ZERO)
+	if(gl_ptype != GL_NOOP)
 	{
 		TOPIC("GL", "glBegin(%d)", gl_ptype);
 		entry->proc.pglBegin(gl_ptype);

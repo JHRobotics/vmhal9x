@@ -1871,4 +1871,15 @@ typedef enum _D3DBLENDOP {
 
 #define D3DTADDRESS_MIRRORONCE 5
 
+typedef enum _D3DTEXTUREFILTERTYPE
+{
+    D3DTEXF_NONE            = 0,    // filtering disabled (valid for mip filter only)
+    D3DTEXF_POINT           = 1,    // nearest
+    D3DTEXF_LINEAR          = 2,    // linear interpolation
+    D3DTEXF_ANISOTROPIC     = 3,    // anisotropic
+    D3DTEXF_FLATCUBIC       = 4,    // cubic
+    D3DTEXF_GAUSSIANCUBIC   = 5,    // different cubic kernel
+    D3DTEXF_FORCE_DWORD     = 0x7fffffff,   // force 32-bit size enum
+} D3DTEXTUREFILTERTYPE;
+
 #endif /* _D3DHAL_H */

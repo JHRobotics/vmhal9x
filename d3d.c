@@ -741,8 +741,6 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 				D3DDEVCAPS_DRAWPRIMTLVERTEX  | //Device exports a DrawPrimitive-aware hardware abstraction layer (HAL). 
 				D3DDEVCAPS_EXECUTESYSTEMMEMORY | // Device can use execute buffers from system memory. 
 				D3DDEVCAPS_EXECUTEVIDEOMEMORY | // Device can use execute buffers from video memory. 
-				D3DDEVCAPS_HWRASTERIZATION | // Device has hardware acceleration for scene rasterization. 
-				D3DDEVCAPS_HWTRANSFORMANDLIGHT | // Device can support transformation and lighting in hardware. 
 				//D3DDEVCAPS_NPATCHES | // Device supports N patches. 
 				D3DDEVCAPS_PUREDEVICE | // Device can support rasterization, transform, lighting, and shading in hardware. (no need for final version of runtime)
 				//D3DDEVCAPS_QUINTICRTPATCHES | // Device supports quintic béziers and B-splines. 
@@ -790,7 +788,7 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 			caps.SrcBlendCaps = myCaps6.dpcTriCaps.dwSrcBlendCaps;
 			caps.DestBlendCaps = myCaps6.dpcTriCaps.dwDestBlendCaps;
 			caps.AlphaCmpCaps = myCaps6.dpcTriCaps.dwAlphaCmpCaps;
-			caps.TextureCaps  = myCaps6.dpcTriCaps.dwTextureCaps | D3DPTEXTURECAPS_MIPMAP | D3DPTEXTURECAPS_CUBEMAP_POW2 /*| D3DPTEXTURECAPS_MIPCUBEMAP*/;
+			caps.TextureCaps  = myCaps6.dpcTriCaps.dwTextureCaps | D3DPTEXTURECAPS_MIPMAP | D3DPTEXTURECAPS_CUBEMAP_POW2 | D3DPTEXTURECAPS_MIPCUBEMAP;
 #if 1
 			caps.TextureFilterCaps =
 				D3DPTFILTERCAPS_MAGFLINEAR |
@@ -830,7 +828,7 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 			caps.MaxSimultaneousTextures = MESA_TMU_CNT();
 			caps.VertexProcessingCaps = MYVERTEXPROCCAPS_DX8;
 
-			caps.MaxActiveLights = env.num_light;
+			caps.MaxActiveLights = 0; /* when TL sets this below */
 			caps.MaxUserClipPlanes = env.num_clips;
 			caps.MaxVertexBlendMatrices = 0;
 			caps.MaxVertexBlendMatrixIndex = 0;
@@ -843,13 +841,23 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 			caps.MaxPrimitiveCount = 0x0000FFFFF;
 			caps.MaxVertexIndex = 0x002000000;
 			/* A driver reports support for 32-bit indices by setting the value of the MaxVertexIndex field of D3DCAPS8 (currently also in D3DHAL_D3DEXTENDEDCAPS) to a value greater than 0xFFFF */
-			caps.MaxStreams = 1;
-			caps.MaxStreamStride = 256;
+			caps.MaxStreams = MESA_MAX_STREAM;
+			caps.MaxStreamStride = 65536;
 			caps.VertexShaderVersion = D3DVS_VERSION(0, 0);
 			caps.MaxVertexShaderConst = 0;
 			caps.PixelShaderVersion = D3DPS_VERSION(0, 0); // DX8
 			caps.MaxPixelShaderValue = 0;
-			
+			caps.ShadeCaps = myCaps6.dpcTriCaps.dwShadeCaps;
+
+			if(env.hw_tl)
+			{
+				caps.DevCaps =
+					D3DDEVCAPS_HWRASTERIZATION | // Device has hardware acceleration for scene rasterization. 
+					D3DDEVCAPS_HWTRANSFORMANDLIGHT | // Device can support transformation and lighting in hardware. 
+				0;
+				caps.MaxActiveLights = env.num_light;
+			}
+
 			TRACE("sizeof(D3DCAPS8) = %d, pgdi2->dwExpectedSize = %d",
 				 sizeof(D3DCAPS8), pgdi2->dwExpectedSize);
 
@@ -1377,6 +1385,12 @@ DDENTRY(ContextCreate32, LPD3DHAL_CONTEXTCREATEDATA, pccd)
 		if(ctx)
 		{
 			SurfaceAttachCtx(ctx);
+			// Return to the runtime the D3D context id that will be used to
+			// identify calls for this context from now on. Store prev value
+			// since that tells us which API are we being called from
+			// (5=DX9, 4=DX8, 3=DX7, 2=DX6, 1=DX5, 0=DX3)
+			ctx->dxif = pccd->dwhContext; // in: DX API version
+			
 			pccd->dwhContext = MESA_CTX_TO_HANDLE(ctx);
 			pccd->ddrval = DD_OK;
 

@@ -54,6 +54,14 @@ typedef struct _D3DHAL_DP2RENDERSTATE D3DHAL_DP2RENDERSTATE, *LPD3DHAL_DP2RENDER
 #define MESA_POSITIVEZ 4
 #define MESA_NEGATIVEZ 5
 
+/* magic numbers from DDK documenation / reference driver */
+#define MESA_CTX_IF_DX3 0
+#define MESA_CTX_IF_DX5 1
+#define MESA_CTX_IF_DX6 2
+#define MESA_CTX_IF_DX7 3
+#define MESA_CTX_IF_DX8 4
+#define MESA_CTX_IF_DX9 5
+
 #define DX_STORED_MATICES 256
 
 typedef struct mesa3d_texture
@@ -220,7 +228,7 @@ typedef struct mesa_rec_state
 	D3DHAL_DP2VIEWPORTINFO viewport;
 	D3DHAL_DP2SETMATERIAL material;
 	DWORD vertexshader;
-	// TODO: missing: lights
+	// TODO: missing: lights, clips
 } mesa_rec_state_t;
 
 #define SURFACE_TABLES_PER_ENTRY 8 /* in theory there should by only 1 */
@@ -233,13 +241,23 @@ typedef struct mesa_pal8
 	struct mesa_pal8 *next;
 } mesa_pal8_t;
 
+typedef struct mesa_dx_shader
+{
+	DWORD handle;
+	DWORD decl_size;
+	DWORD code_size;
+	BYTE *decl;
+	BYTE *code;
+	struct mesa_dx_shader *next;
+} mesa_dx_shader_t;
+
 typedef struct mesa3d_ctx
 {
 	LONG thread_lock;
 	mesa3d_texture_t *tex[MESA3D_MAX_TEXS];
 	struct mesa3d_entry *entry;
 	int id; /* mesa3d_entry.ctx[_id_] */
-	
+
 	/* offscreen context */
 	OSMesaContext *osctx;
 	void *osbuf;
@@ -260,6 +278,7 @@ typedef struct mesa3d_ctx
 	LPDDRAWI_DIRECTDRAW_GBL dd;
 	BOOL depth_stencil;	
 	int tmu_count;
+	int dxif; // DX app version
 
 	/* render state */
 	struct {
@@ -357,6 +376,9 @@ typedef struct mesa3d_ctx
 		D3DSTATEBLOCKTYPE record_type;
 		mesa_rec_state_t current;
 	} state;
+	struct {
+		mesa_dx_shader_t *vs;
+	} shader;
 	mesa_rec_state_t *records[MESA_RECS_MAX];
 	mesa_vertex_stream_t vstream[MESA_MAX_STREAM];
 
@@ -632,8 +654,8 @@ NUKED_LOCAL void MesaRecApply(mesa3d_ctx_t *ctx, DWORD handle);
 NUKED_LOCAL void MesaRecDelete(mesa3d_ctx_t *ctx, DWORD handle);
 NUKED_LOCAL void MesaRecState(mesa3d_ctx_t *ctx, DWORD state, DWORD value);
 NUKED_LOCAL void MesaRecTMUState(mesa3d_ctx_t *ctx, DWORD tmu, DWORD state, DWORD value);
-NUKED_LOCAL void MesaCaptureInit(mesa3d_ctx_t *ctx);
-NUKED_LOCAL void MesaCapture(mesa3d_ctx_t *ctx, DWORD handle, D3DSTATEBLOCKTYPE sbType);
+NUKED_LOCAL void MesaRecCaptureInit(mesa3d_ctx_t *ctx);
+NUKED_LOCAL void MesaRecCapture(mesa3d_ctx_t *ctx, DWORD handle);
 
 #define MESA_1OVER16       0.0625f
 #define MESA_1OVER255	     0.003921568627451f
@@ -661,6 +683,11 @@ NUKED_LOCAL void MesaFreePals(mesa3d_ctx_t *ctx);
 /* memory */
 NUKED_LOCAL void *MesaTempAlloc(mesa3d_ctx_t *ctx, DWORD w, DWORD size);
 NUKED_LOCAL void MesaTempFree(mesa3d_ctx_t *ctx, void *ptr);
+
+NUKED_LOCAL void MesaVSCreate(mesa3d_ctx_t *ctx, D3DHAL_DP2CREATEVERTEXSHADER *shader, const BYTE *buffer);
+NUKED_LOCAL void MesaVSDestroy(mesa3d_ctx_t *ctx, DWORD handle);
+NUKED_LOCAL void MesaVSDestroyAll(mesa3d_ctx_t *ctx);
+NUKED_LOCAL mesa_dx_shader_t *MesaVSGet(mesa3d_ctx_t *ctx, DWORD handle);
 
 #ifdef DEBUG
 /* heavy debug */

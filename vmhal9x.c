@@ -88,7 +88,7 @@ static VMHAL_enviroment_t VMHALenv = {
 	16, // max anisotropy
 	FALSE, // vertexblend
 	FALSE, // use palette
-	TRUE,  // always use GL_LINEAR
+	TRUE,  // filter bug
 };
 
 static DWORD CalcPitch(DWORD w, DWORD bpp)
@@ -304,9 +304,9 @@ static void ReadEnv(VMHAL_enviroment_t *dst)
 		dst->allow_palette = vmhal_setup_dw("hal", "palette") ? TRUE : FALSE;
 	}
 
-	if(vmhal_setup_str("hal", "filter", FALSE) != NULL)
+	if(vmhal_setup_str("hal", "filter_bug", FALSE) != NULL)
 	{
-		dst->always_filter = vmhal_setup_dw("hal", "filter") ? TRUE : FALSE;
+		dst->filter_bug = vmhal_setup_dw("hal", "filter_bug") ? TRUE : FALSE;
 	}
 }
 
@@ -368,8 +368,9 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 		globalHal->cb32.flags |= DDHALINFO_GETDRIVERINFO2;
 	}
 #endif
-	globalHal->cb32.DestroyDriver = DestroyDriver32;
-	
+	//globalHal->cb32.DestroyDriver = DestroyDriver32;
+	// JH: ^ one important thing, when driver is destroyed, pm16 SetInfo callback mus be set to NULL
+	//       and do it from pm16 driver is much more comfortable
 	globalHal->hInstance = (DWORD)dllHinst;
 	
 	if(globalHal->modes_count == 0)
@@ -430,7 +431,11 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 			RegCloseKey(reg);
 		}
 	}
-	
+
+	/* do cleanup */
+	Mesa3DCleanProc();
+	SurfaceDeleteAll();
+
 #ifdef D3DHAL
 	D3DHALCreateDriver(
 		&globalHal->d3dhal_global,

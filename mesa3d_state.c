@@ -356,7 +356,7 @@ NUKED_LOCAL void state_apply_mask(mesa_rec_state_t *rec, D3DSTATEBLOCKTYPE sbTyp
 
 	for(i = 0; i < MESA_TMU_MAX; i++)
 	{
-		rec->tmu->set[0] &= tmu_mask[0];
+		rec->tmu[i].set[0] &= tmu_mask[i];
 	}
 
 	rec->maticesset[0] &= maticesset[0];
@@ -378,6 +378,7 @@ NUKED_LOCAL void MesaApplyState(mesa3d_ctx_t *ctx, mesa_rec_state_t *rec)
 
 	if(rec->extraset[0] & (1 << MESA_REC_EXTRA_VIEWPORT))
 	{
+		TRACE("STATESET", "restoring dw=%d %d %d %d", rec->viewport.dwY, rec->viewport.dwWidth, rec->viewport.dwHeight);
 		MesaApplyViewport(ctx, rec->viewport.dwX, rec->viewport.dwY, rec->viewport.dwWidth, rec->viewport.dwHeight, TRUE);
 	}
 
@@ -436,12 +437,14 @@ NUKED_LOCAL mesa_rec_state_t *MesaRecLookup(mesa3d_ctx_t *ctx, DWORD handle, BOO
 		{
 			if(ctx->records[i]->handle == handle)
 			{
+#if 0
+				// JH: clear exist state on D3DHAL_STATESETBEGIN?
 				if(create)
 				{
 					memset(ctx->records[i], 0, sizeof(mesa_rec_state_t));
 					ctx->records[i]->handle = handle;
 				}
-
+#endif
 				return ctx->records[i];
 			}
 		}
@@ -456,7 +459,7 @@ NUKED_LOCAL mesa_rec_state_t *MesaRecLookup(mesa3d_ctx_t *ctx, DWORD handle, BOO
 		return NULL;
 	}
 
-	ctx->records[empty] = hal_alloc(HEAP_NORMAL, sizeof(mesa_rec_state_t), 0);
+	ctx->records[empty] = hal_calloc(HEAP_NORMAL, sizeof(mesa_rec_state_t), 0);
 	if(ctx->records[empty])
 	{
 		ctx->records[empty]->handle = handle;
@@ -528,12 +531,12 @@ NUKED_LOCAL void MesaRecDelete(mesa3d_ctx_t *ctx, DWORD handle)
 	} // for
 }
 
-NUKED_LOCAL void MesaCaptureInit(mesa3d_ctx_t *ctx)
+NUKED_LOCAL void MesaRecCaptureInit(mesa3d_ctx_t *ctx)
 {
 	memset(&ctx->state.current, 0, sizeof(mesa_rec_state_t));
 }
 
-NUKED_LOCAL void MesaCapture(mesa3d_ctx_t *ctx, DWORD handle, D3DSTATEBLOCKTYPE sbType)
+NUKED_LOCAL void MesaRecCapture(mesa3d_ctx_t *ctx, DWORD handle)
 {
 	TRACE_ENTRY
 
@@ -541,10 +544,20 @@ NUKED_LOCAL void MesaCapture(mesa3d_ctx_t *ctx, DWORD handle, D3DSTATEBLOCKTYPE 
 
 	if(rec)
 	{
-		memcpy(&rec->stateset, &ctx->state.current.stateset, sizeof(DWORD[8]));
-		memcpy(&rec->state,    &ctx->state.current.state,    sizeof(DWORD[256]));
-		memcpy(&rec->tmu,      &ctx->state.current.tmu,      sizeof(mesa_rec_tmu_t[MESA_TMU_MAX]));
-		state_apply_mask(rec, sbType);
+		int i;
+//		memcpy(&rec->stateset, &ctx->state.current.stateset, sizeof(DWORD[8]));
+		memcpy(&rec->state[0],    &ctx->state.current.state[0],    sizeof(DWORD[MESA_REC_MAX_STATE+1]));
+		memcpy(&rec->matices[0],  &ctx->state.current.matices[0],  sizeof(D3DMATRIX[MESA_REC_MAX_MATICES+1]));
+		
+		for(i = 0; i < MESA_TMU_MAX; i++)
+		{
+			//memcpy(&rec->tmu,      &ctx->state.current.tmu,      sizeof(mesa_rec_tmu_t[MESA_TMU_MAX]));
+			memcpy(&rec->tmu[i].state[0], &ctx->state.current.tmu[i].state[0], sizeof(DWORD[32]));
+		}
+		
+		rec->vertexshader = ctx->state.current.vertexshader;
+		memcpy(&rec->viewport, &ctx->state.current.viewport, sizeof(D3DHAL_DP2VIEWPORTINFO));
+		memcpy(&rec->material, &ctx->state.current.material, sizeof(D3DHAL_DP2SETMATERIAL));
 	}
 	else
 	{

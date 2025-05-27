@@ -253,7 +253,7 @@ NUKED_LOCAL void MesaFVFRecalc(mesa3d_ctx_t *ctx)
 	if(type & D3DFVF_RESERVED0)
 	{
 		ctx->state.fvf.begin = 1;
-		offset++;
+		//offset++;
 	}
 	else
 	{
@@ -507,6 +507,7 @@ NUKED_LOCAL void MesaDrawFVFBlock(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vert
 	switch(gl_ptype)
 	{
 		case GL_TRIANGLES:
+		{
 			entry->proc.pglBegin(GL_TRIANGLES);
 			while(cnt >= 3)
 			{
@@ -518,6 +519,7 @@ NUKED_LOCAL void MesaDrawFVFBlock(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vert
 			}
 			GL_CHECK(entry->proc.pglEnd());
 			break;
+		}
 		case GL_TRIANGLE_FAN:
 		{
 			vb = ((BYTE *)vertices) + offset + ((cnt - 1) * stride);
@@ -586,19 +588,24 @@ NUKED_LOCAL void MesaDrawFVFBlockIndex(
 
 	TRACE("MesaDrawFVFBlockIndex(vertives=0x%X, stride=%d index=0x%X, index_stride=%d)", 
 		vertices, stride, index, index_stride);
+
+	TOPIC("GL", "glBegin(%d)", gl_ptype);
+
 	switch(gl_ptype)
 	{
 		case GL_TRIANGLES:
+		{
+			DWORD i;
 			entry->proc.pglBegin(GL_TRIANGLES);
-			while(cnt >= 3)
+			for(i = 0; i < cnt; i += 3)
 			{
-				MesaDrawFVF_internal(entry, ctx, FVFINDEX(start+cnt-1));
-				MesaDrawFVF_internal(entry, ctx, FVFINDEX(start+cnt-2));
-				MesaDrawFVF_internal(entry, ctx, FVFINDEX(start+cnt-3));
-				cnt -= 3;
+				MesaDrawFVF_internal(entry, ctx, FVFINDEX(start+i+2));
+				MesaDrawFVF_internal(entry, ctx, FVFINDEX(start+i+1));
+				MesaDrawFVF_internal(entry, ctx, FVFINDEX(start+i+0));
 			}
 			GL_CHECK(entry->proc.pglEnd());
 			break;
+		}
 		case GL_TRIANGLE_FAN:
 		{
 			entry->proc.pglBegin(GL_TRIANGLE_FAN);

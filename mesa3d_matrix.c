@@ -253,7 +253,12 @@ NUKED_LOCAL void MesaApplyViewport(mesa3d_ctx_t *ctx, GLint x, GLint y, GLint w,
 	mesa3d_entry_t *entry = ctx->entry;
 	GL_CHECK(entry->proc.pglViewport(x, y, w, h));
 
-	ctx->entry->proc.pglGetIntegerv(GL_VIEWPORT, &ctx->matrix.viewport[0]);
+	//ctx->entry->proc.pglGetIntegerv(GL_VIEWPORT, &ctx->matrix.viewport[0]);
+	ctx->matrix.viewport[0] = x;
+	ctx->matrix.viewport[1] = y;
+	ctx->matrix.viewport[2] = w;
+	ctx->matrix.viewport[3] = h;
+	
 	TOPIC("MATRIX", "GL_VIEWPORT");
 	TOPIC("MATRIX", "[%d %d %d %d]", ctx->matrix.viewport[0], ctx->matrix.viewport[1], ctx->matrix.viewport[2], ctx->matrix.viewport[3]);
 
@@ -269,6 +274,7 @@ NUKED_LOCAL void MesaApplyViewport(mesa3d_ctx_t *ctx, GLint x, GLint y, GLint w,
 		ctx->state.current.viewport.dwWidth = w;
 		ctx->state.current.viewport.dwHeight = h;
 		ctx->state.current.extraset[0] |= 1 << MESA_REC_EXTRA_VIEWPORT;
+		TOPIC("STATESET", "save current viewport = %d %d %d %d", x, y, w, h);
 	}
 }
 

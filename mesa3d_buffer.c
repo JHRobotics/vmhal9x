@@ -216,7 +216,7 @@ NUKED_LOCAL void MesaBufferDownloadColor(mesa3d_ctx_t *ctx, void *dst)
 	if(front_surface)
 		FBHDA_access_end(0);
 		
-	TOPIC("READBACK", "%X <- download color!", dst);
+	TOPIC("READBACK", "%X <- download color (%d x %d)!", dst, ctx->state.sw, ctx->state.sh);
 }
 
 #include "mesa3d_zconv.h"
@@ -584,11 +584,18 @@ NUKED_LOCAL BOOL MesaBufferFBOSetup(mesa3d_ctx_t *ctx, int width, int height)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 	BOOL need_create = TRUE;
+	TRACE("MesaBufferFBOSetup(ctx, %d, %d)", width, height);
 	
 	if(ctx->fbo.width >= width && ctx->fbo.height >= height)
 	{
 		need_create = FALSE;
 	}
+#ifdef TRACE_ON
+	else
+	{
+		TRACE("creating FBO");
+	}
+#endif
 	
 	if(need_create)
 	{
@@ -794,12 +801,12 @@ NUKED_LOCAL void MesaBufferUploadTexturePalette(mesa3d_ctx_t *ctx, mesa3d_textur
 			ptr += pitch4;
 		}
 	}
-
+	
 	if(tex->cube)
 	{
 		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, 0));
 		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_CUBE_MAP, tex->gltex));
-		
+
 		GL_CHECK(entry->proc.pglTexImage2D(Mesa2GLSide[side], level, GL_RGBA,
 			w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data));
 	}
@@ -807,7 +814,7 @@ NUKED_LOCAL void MesaBufferUploadTexturePalette(mesa3d_ctx_t *ctx, mesa3d_textur
 	{
 		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, tex->gltex));
 		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_CUBE_MAP, 0));
-		
+
 		GL_CHECK(entry->proc.pglTexImage2D(GL_TEXTURE_2D, level, GL_RGBA,
 			w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data));
 	}
