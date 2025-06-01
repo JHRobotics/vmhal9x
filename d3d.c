@@ -736,7 +736,7 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 			caps.PresentationIntervals = D3DPRESENT_INTERVAL_IMMEDIATE | D3DPRESENT_INTERVAL_ONE;
 			caps.CursorCaps = D3DCURSORCAPS_COLOR | D3DCURSORCAPS_LOWRES;
 			caps.DevCaps =
-				//D3DDEVCAPS_CANBLTSYSTONONLOCAL | // Device supports blits from system-memory textures to nonlocal video-memory textures. */
+				//D3DDEVCAPS_CANBLTSYSTONONLOCAL | // Device supports blits from system-memory textures to nonlocal video-memory textures. (HWTL) */
 				D3DDEVCAPS_CANRENDERAFTERFLIP | // Device can queue rendering commands after a page flip. Applications do not change their behavior if this flag is set; this capability simply means that the device is relatively fast.
 				D3DDEVCAPS_DRAWPRIMTLVERTEX  | //Device exports a DrawPrimitive-aware hardware abstraction layer (HAL). 
 				D3DDEVCAPS_EXECUTESYSTEMMEMORY | // Device can use execute buffers from system memory. 
@@ -746,12 +746,14 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 				//D3DDEVCAPS_QUINTICRTPATCHES | // Device supports quintic béziers and B-splines. 
 				//D3DDEVCAPS_RTPATCHES | // Device supports rectangular and triangular patches. 
 				//D3DDEVCAPS_RTPATCHHANDLEZERO | // When this device capability is set, the hardware architecture does not require caching of any information, and uncached patches (handle zero) will be drawn as efficiently as cached ones. Note that setting D3DDEVCAPS_RTPATCHHANDLEZERO does not mean that a patch with handle zero can be drawn. A handle-zero patch can always be drawn whether this cap is set or not. 
-				//D3DDEVCAPS_SEPARATETEXTUREMEMORIES | // Device is texturing from separate memory pools. 
-				//D3DDEVCAPS_TEXTURENONLOCALVIDMEM | // Device can retrieve textures from non-local video memory. 
-				D3DDEVCAPS_TEXTURESYSTEMMEMORY | // Device can retrieve textures from system memory. 
+				//D3DDEVCAPS_SEPARATETEXTUREMEMORIES | // Device is texturing from separate memory pools. (HWTL)
+				//D3DDEVCAPS_TEXTURENONLOCALVIDMEM | // Device can retrieve textures from non-local video memory.  (= AGP memory)
+				//D3DDEVCAPS_TEXTURESYSTEMMEMORY | // Device can retrieve textures from system memory. 
 				D3DDEVCAPS_TEXTUREVIDEOMEMORY | // Device can retrieve textures from device memory. 
 				D3DDEVCAPS_TLVERTEXSYSTEMMEMORY | // Device can use buffers from system memory for transformed and lit vertices. 
 				D3DDEVCAPS_TLVERTEXVIDEOMEMORY | // Device can use buffers from video memory for transformed and lit vertices. 
+				D3DDEVCAPS_DRAWPRIMITIVES2 |
+				D3DDEVCAPS_DRAWPRIMITIVES2EX |
 			0;
 			caps.PrimitiveMiscCaps =
 				D3DPMISCCAPS_BLENDOP | // Device supports the alpha-blending operations defined in the D3DBLENDOP enumerated type. 
@@ -849,13 +851,25 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 			caps.MaxPixelShaderValue = 0;
 			caps.ShadeCaps = myCaps6.dpcTriCaps.dwShadeCaps;
 
-			if(env.hw_tl)
+			if(env.hwtl_ddi >= 8)
 			{
-				caps.DevCaps =
+				caps.DevCaps |=
 					D3DDEVCAPS_HWRASTERIZATION | // Device has hardware acceleration for scene rasterization. 
 					D3DDEVCAPS_HWTRANSFORMANDLIGHT | // Device can support transformation and lighting in hardware. 
-				0;
+					D3DDEVCAPS_CANBLTSYSTONONLOCAL |
+					0;
 				caps.MaxActiveLights = env.num_light;
+
+				/*
+				 * DDK 2k3:
+				 * If a driver sets the D3DDEVCAPS_SEPARATETEXTUREMEMORIES flag in the DevCaps member of the
+				 * D3DCAPS8 structure, it indicates to DirectX 8.0 and later versions of applications that
+				 * they are disabled from simultaneously using multiple textures
+				 */
+				if(env.texture_num_units == 1)
+				{
+					caps.DevCaps |= D3DDEVCAPS_SEPARATETEXTUREMEMORIES;
+				}
 			}
 
 			TRACE("sizeof(D3DCAPS8) = %d, pgdi2->dwExpectedSize = %d",
@@ -1077,7 +1091,7 @@ DDENTRY_FPUSAVE(GetDriverInfo32, LPDDHAL_GETDRIVERINFODATA, lpInput)
     T&L:
     dxcaps.dwMaxActiveLights = 0;
     */
-    if(env.hw_tl && env.ddi >= 7)
+    if(env.hwtl_ddi >= 7 && env.ddi >= 7)
   	{
 			dxcaps.dwMaxActiveLights = env.num_light;
 			dxcaps.wMaxUserClipPlanes = env.num_clips; // ref driver = 6
@@ -1953,7 +1967,7 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, LP
 			myGlobalD3DHal.hwCaps.dwDevCaps &= ~(CAPS_DX8);
 		}
 		
-		if(env.hw_tl)
+		if(env.hwtl_ddi >= 7)
 		{
 			myGlobalD3DHal.hwCaps.dwDevCaps |= 
 				D3DDEVCAPS_HWTRANSFORMANDLIGHT /* Device can support transformation and lighting in hardware and DRAWPRIMITIVES2EX must be also */

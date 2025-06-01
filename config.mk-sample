@@ -1,7 +1,7 @@
 # this is sample configuration file
 
-# enable D3D support (in development)
-#D3DHAL=1
+# enable D3D support
+D3DHAL=1
 
 # compiler for target (mingw)
 CC=gcc
@@ -14,6 +14,9 @@ HOST_CC=$(CC)
 
 # optimize for release
 RELEASE=1
+
+# compile D3D driver as one file
+CODENUKED=1
 
 # generate debug informations (not usable with RELEASE=1)
 #DEBUG=1

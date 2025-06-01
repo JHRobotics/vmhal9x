@@ -34,8 +34,8 @@
 #define VMHAL9X_STR(x) VMHAL9X_STR_(x)
 
 #define VMHAL9X_MAJOR 0
-#define VMHAL9X_MINOR 4
-#define VMHAL9X_PATCH 2024
+#define VMHAL9X_MINOR 8
+#define VMHAL9X_PATCH 2025
 #ifndef VMHAL9X_BUILD
 #define VMHAL9X_BUILD 0
 #endif
@@ -187,7 +187,7 @@ typedef struct _VMHAL_enviroment
 	BOOL dx8; // ... dx8
 	BOOL dx9; // ... dx9
 	DWORD ddi;
-	BOOL  hw_tl;
+	DWORD hwtl_ddi;
 	BOOL  readback; // readback surface color/depth
 	BOOL  touchdepth;
 	DWORD texture_max_width;

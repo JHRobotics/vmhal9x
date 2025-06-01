@@ -20,7 +20,7 @@ BLOCK "StringFileInfo"
 	BLOCK "040904b0"
 	{
 		VALUE "CompanyName", "JHRobotics"
-		VALUE "FileDescription", "DX/DD HAL driver for VM display"
+		VALUE "FileDescription", "VM display interface"
 		VALUE "FileVersion", VMHAL9X_VERSION_STR
 		VALUE "InternalName", "vmhal9x.dll"
 		VALUE "LegalCopyright", "(C) 2023-2025 Jaroslav Hensl"

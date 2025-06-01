@@ -328,8 +328,8 @@ typedef struct mesa3d_ctx
 			int pos_normal;
 			int pos_diffuse;
 			int pos_specular;
-			int pos_tmu[MESA_TMU_MAX]; // coords at pos
-			int coords[MESA_TMU_MAX]; // num coords for pos
+			int pos_coords[MESA_TMU_MAX]; // coords at pos
+			int num_coords[MESA_TMU_MAX]; // num coords for pos
 			int betas;
 		} fvf;
 		struct {
@@ -687,7 +687,9 @@ NUKED_LOCAL void MesaTempFree(mesa3d_ctx_t *ctx, void *ptr);
 NUKED_LOCAL void MesaVSCreate(mesa3d_ctx_t *ctx, D3DHAL_DP2CREATEVERTEXSHADER *shader, const BYTE *buffer);
 NUKED_LOCAL void MesaVSDestroy(mesa3d_ctx_t *ctx, DWORD handle);
 NUKED_LOCAL void MesaVSDestroyAll(mesa3d_ctx_t *ctx);
+#if 0
 NUKED_LOCAL mesa_dx_shader_t *MesaVSGet(mesa3d_ctx_t *ctx, DWORD handle);
+#endif
 
 #ifdef DEBUG
 /* heavy debug */

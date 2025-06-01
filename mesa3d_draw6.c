@@ -1013,12 +1013,11 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					CHECK_LIMITS(D3DHAL_DP2WINFO, inst->wStateCount);
 					for(i = 0; i < inst->wStateCount; i++)
 					{
+#if 0
 						D3DHAL_DP2WINFO *winfo = (D3DHAL_DP2WINFO*)prim;
-						prim += sizeof(D3DHAL_DP2WINFO);
-
 						TOPIC("DEPTH", "w-buffer range %f - %f", winfo->dvWNear, winfo->dvWFar);
 						//GL_CHECK(entry->proc.pglDepthRange(winfo->dvWNear, winfo->dvWFar));
-#if 0
+
 						/* scale projection if Wmax is too large */
 						GLfloat wmax = NOCRT_MAX(winfo->dvWNear, winfo->dvWFar);
 						if(wmax > ctx->matrix.wmax)
@@ -1033,6 +1032,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 							ctx->matrix.wmax = wmax;
 						}
 #endif
+						prim += sizeof(D3DHAL_DP2WINFO);
 					}
 					NEXT_INST(0);
 					break;
@@ -1107,12 +1107,14 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					CHECK_LIMITS(D3DHAL_DP2ZRANGE, inst->wStateCount);
 					for(i = 0; i < inst->wStateCount; i++)
 					{
+#ifdef TRACE_ON
 						D3DHAL_DP2ZRANGE *zrange = (D3DHAL_DP2ZRANGE*)prim;
-						prim += sizeof(D3DHAL_DP2ZRANGE);
 						TOPIC("DEPTH", "D3DDP2OP_ZRANGE = %f %f", zrange->dvMinZ, zrange->dvMaxZ);
 						// entry->glDepthRange(zrange->dvMinZ, zrange->dvMaxZ);
 						// ^JH: I only sees values 0.0 and 1.0, so nothing set when
 						// something sets here some junk
+#endif
+						prim += sizeof(D3DHAL_DP2ZRANGE);
 					}
 					NEXT_INST(0);
 					break;
@@ -1816,6 +1818,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					NEXT_INST(0);
 					break;
 				default:
+				{
 					if(inst->bCommand == D3DOP_EXIT)
 					{
 						// from permedia3: This was found to be required for a few D3DRM apps 
@@ -1831,18 +1834,18 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 						return D3DERR_COMMAND_UNPARSED;
 					}
 
+					void *resume_inst = NULL;
+					PFND3DPARSEUNKNOWNCOMMAND fn = (PFND3DPARSEUNKNOWNCOMMAND)entry->D3DParseUnknownCommand;
+					DWORD rc = fn((LPVOID)inst, &resume_inst);
+					if(rc != DD_OK || resume_inst == NULL)
 					{
-						void *resume_inst = NULL;
-						PFND3DPARSEUNKNOWNCOMMAND fn = (PFND3DPARSEUNKNOWNCOMMAND)entry->D3DParseUnknownCommand;
-						DWORD rc = fn((LPVOID)inst, &resume_inst);
-						if(rc != DD_OK || resume_inst == NULL)
-						{
-							*error_offset = (LPBYTE)inst - (LPBYTE)cmdBufferStart;
-							return rc;
-						}
-						inst = resume_inst;
+						*error_offset = (LPBYTE)inst - (LPBYTE)cmdBufferStart;
+						return rc;
 					}
+					inst = resume_inst;
+
 					break;
+				}
 			} // switch
 		}
 		else
@@ -1981,6 +1984,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					NEXT_INST(0);
 					break;
 				COMMAND(D3DDP2OP_SETLIGHT)
+					WARN("record D3DDP2OP_SETLIGHT");
 					for(i = 0; i < inst->wStateCount; i++)
 					{
 						LPD3DHAL_DP2SETLIGHT lightset = (LPD3DHAL_DP2SETLIGHT)prim;
@@ -1993,6 +1997,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					NEXT_INST(0);
 					break;
 				COMMAND(D3DDP2OP_CREATELIGHT)
+					WARN("record D3DDP2OP_CREATELIGHT");
 					NEXT_INST_TC(D3DHAL_DP2CREATELIGHT, inst->wStateCount);
 					break;
 				COMMAND(D3DDP2OP_SETTRANSFORM)
@@ -2095,6 +2100,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 				COMMAND(D3DDP2OP_SETCLIPPLANE)
 					for(i = 0; i < inst->wStateCount; i++)
 					{
+#ifdef TRACE_ON
 						D3DHAL_DP2SETCLIPPLANE *plane = (D3DHAL_DP2SETCLIPPLANE*)prim;
 						TOPIC("STATESET", "clip plane %d = (%f, %f, %f, %f)",
 							plane->dwIndex,
@@ -2103,6 +2109,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 							plane->plane[2],
 							plane->plane[3]
 						);
+#endif
 						prim += sizeof(D3DHAL_DP2SETCLIPPLANE);
 					}
 					NEXT_INST(0);
@@ -2260,6 +2267,14 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					NEXT_INST_TC(D3DHAL_DP2ADDDIRTYBOX, inst->wStateCount);
 					break;
 				default:
+				{
+					if(inst->bCommand == D3DOP_EXIT)
+					{
+						WARN("D3DOP_EXIT in record!");
+						inst = (LPD3DHAL_DP2COMMAND)cmdBufferEnd;
+						break;
+					}
+
 					WARN("Unknown command: 0x%X", inst->bCommand);
 
 					if(!entry->D3DParseUnknownCommand)
@@ -2268,18 +2283,17 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 						return D3DERR_COMMAND_UNPARSED;
 					}
 
+					void *resume_inst = NULL;
+					PFND3DPARSEUNKNOWNCOMMAND fn = (PFND3DPARSEUNKNOWNCOMMAND)entry->D3DParseUnknownCommand;
+					DWORD rc = fn((LPVOID)inst, &resume_inst);
+					if(rc != DD_OK || resume_inst == NULL)
 					{
-						void *resume_inst = NULL;
-						PFND3DPARSEUNKNOWNCOMMAND fn = (PFND3DPARSEUNKNOWNCOMMAND)entry->D3DParseUnknownCommand;
-						DWORD rc = fn((LPVOID)inst, &resume_inst);
-						if(rc != DD_OK || resume_inst == NULL)
-						{
-							*error_offset = (LPBYTE)inst - (LPBYTE)cmdBufferStart;
-							return rc;
-						}
-						inst = resume_inst;
+						*error_offset = (LPBYTE)inst - (LPBYTE)cmdBufferStart;
+						return rc;
 					}
+					inst = resume_inst;
 					break;
+				}
 			} // switch
 		} // recoring
 	} // while

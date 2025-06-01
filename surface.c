@@ -911,12 +911,13 @@ NUKED_LOCAL BOOL SurfaceExInsert(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRAW_LCL 
 		return FALSE;
 	}
 
-#if 0
+#if 1
 	/* system memory */
-	if(((surface->ddsCaps.dwCaps & (DDSCAPS_SYSTEMMEMORY | DDSCAPS_TEXTURE)) == 
-		(DDSCAPS_SYSTEMMEMORY | DDSCAPS_TEXTURE)) || surface->lpGbl->fpVidMem < 0x80000000)
+/*	if(((surface->ddsCaps.dwCaps & (DDSCAPS_SYSTEMMEMORY | DDSCAPS_TEXTURE)) == 
+		(DDSCAPS_SYSTEMMEMORY | DDSCAPS_TEXTURE)) || surface->lpGbl->fpVidMem < 0x80000000)*/
 /*	if(((surface->ddsCaps.dwCaps & (DDSCAPS_TEXTURE)) == 
 		(DDSCAPS_TEXTURE)) && surface->lpGbl->fpVidMem < 0x80000000) *//* JH: OK, copy textures only when they're in private memory, all others like buffer leave where they're */
+	if(surface->lpSurfMore && (surface->lpSurfMore->ddsCapsEx.dwCaps2 & DDCAPS2_CANMANAGETEXTURE))
 	{
 		LPDDRAWI_DDRAWSURFACE_LCL scopy = SurfaceDuplicate(surface);
 		if(scopy)

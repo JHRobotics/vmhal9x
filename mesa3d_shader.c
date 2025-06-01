@@ -113,6 +113,8 @@ NUKED_LOCAL void MesaVSDestroyAll(mesa3d_ctx_t *ctx)
 	}
 }
 
+#if 0
+/* not in use yet */
 NUKED_LOCAL mesa_dx_shader_t *MesaVSGet(mesa3d_ctx_t *ctx, DWORD handle)
 {
 	mesa_dx_shader_t *vs = ctx->shader.vs;
@@ -127,3 +129,4 @@ NUKED_LOCAL mesa_dx_shader_t *MesaVSGet(mesa3d_ctx_t *ctx, DWORD handle)
 
 	return NULL;
 }
+#endif

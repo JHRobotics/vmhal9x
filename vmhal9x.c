@@ -71,17 +71,17 @@ static VMHAL_enviroment_t VMHALenv = {
 	FALSE, /* runtime dx7 */
 	FALSE, /* runtime dx8 */
 	FALSE, /* runtime dx9 */
-#ifndef DEBUG
-  7,
-#else
 	8, // DDI (maximum)
+#ifndef DEBUG
+	7, // HW T&L
+#else
+	8, // HW T&L
 #endif
-	TRUE, // HW T&L
 	TRUE, // readback
 	TRUE, // touchdepth
 	16384, // tex w  (can be query by GL_MAX_TEXTURE_SIZE)
 	16384, // tex h
-	8 /*9*/, // tex units
+	8, // tex units
 	8, // lights (GL min. is 8)
 	6, // clip planes (GL min. is 6), GL_MAX_CLIP_PLANES
 	TRUE, // use float32 in Z buffer (eg 64-bit F32_S8_X24 depth plane), on FALSE 32-bit S24_S8 depth plane
@@ -272,16 +272,9 @@ static void ReadEnv(VMHAL_enviroment_t *dst)
 		dst->ddi = vmhal_setup_dw("hal", "ddi"); 
 	}
 	
-	if(dst->ddi >= 7)
+	if(vmhal_setup_str("hal", "hwtl", FALSE) != NULL)
 	{
-		if(vmhal_setup_str("hal", "hwtl", FALSE) != NULL)
-		{
-			dst->hw_tl = vmhal_setup_dw("hal", "hwtl") ? TRUE : FALSE;
-		}
-	}
-	else
-	{
-		dst->hw_tl = FALSE;
+		dst->hwtl_ddi = vmhal_setup_dw("hal", "hwtl") ;
 	}
 	
 	if(vmhal_setup_str("hal", "readback", FALSE) != NULL)

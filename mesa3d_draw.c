@@ -165,7 +165,7 @@ NUKED_LOCAL void MesaDrawTLVertex(mesa3d_ctx_t *ctx, LPD3DTLVERTEX vertex)
 NUKED_LOCAL void MesaDrawLVertex(mesa3d_ctx_t *ctx, LPD3DLVERTEX vertex)
 {
 	mesa3d_entry_t *entry = ctx->entry;
-	
+
 	if(ctx->state.tmu[0].image)
 	{
 		entry->proc.pglMultiTexCoord2f(GL_TEXTURE0, CONV_U_TO_S(vertex->tu), CONV_V_TO_T(vertex->tv));
@@ -196,7 +196,7 @@ NUKED_LOCAL void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD type/*, DWORD size*/)
 		/* not need to recalculate */
 		return;
 	}
-	
+
 	ctx->state.fvf.type = type;
 	MesaFVFRecalc(ctx);
 /*
@@ -293,31 +293,41 @@ NUKED_LOCAL void MesaFVFRecalc(mesa3d_ctx_t *ctx)
 		ctx->state.fvf.pos_specular = 0;
 	}
 	
-	int tc = (type & D3DFVF_TEXCOUNT_MASK) >> D3DFVF_TEXCOUNT_SHIFT;
-	for(i = 0; i < ctx->tmu_count; i++)
+	int tc = (type & D3DFVF_TEXCOUNT_MASK) >> D3DFVF_TEXCOUNT_SHIFT; /* 0 = no coord, 1 = one tex coord */
+	for(i = 0; i < MESA_TMU_MAX; i++)
 	{
-		if(tc > i)
+		if(i < tc)
 		{
-			ctx->state.fvf.pos_tmu[i] = offset;
-			DWORD coords = (type >> ((2*i) + 16)) & 3;
-			switch(coords)
+			ctx->state.fvf.pos_coords[i] = offset;
+			DWORD coords_format = (type >> ((2*i) + 16)) & 3;
+			switch(coords_format)
 			{
 				case D3DFVF_TEXTUREFORMAT1:
-					ctx->state.fvf.coords[i] = 1;
+					ctx->state.fvf.num_coords[i] = 1;
 					break;
 				case D3DFVF_TEXTUREFORMAT2:
-					ctx->state.fvf.coords[i] = 2;
+					ctx->state.fvf.num_coords[i] = 2;
 					break;
 				case D3DFVF_TEXTUREFORMAT3:
-					ctx->state.fvf.coords[i] = 3;
+					ctx->state.fvf.num_coords[i] = 3;
 					break;
 				case D3DFVF_TEXTUREFORMAT4:
-					ctx->state.fvf.coords[i] = 4;
+					ctx->state.fvf.num_coords[i] = 4;
 					break;
 			}
-			
-			offset += ctx->state.fvf.coords[i];
-			
+			offset += ctx->state.fvf.num_coords[i];
+		}
+		else
+		{
+			ctx->state.fvf.num_coords[i] = 0;
+			ctx->state.fvf.pos_coords[i] = 0;
+		}
+	}
+
+	for(i = 0; i < ctx->tmu_count; i++)
+	{
+		if(ctx->state.tmu[i].coordindex < tc)
+		{
 			if(ctx->state.tmu[i].nocoords)
 			{
 				ctx->state.tmu[i].nocoords = FALSE;
@@ -327,32 +337,14 @@ NUKED_LOCAL void MesaFVFRecalc(mesa3d_ctx_t *ctx)
 		}
 		else
 		{
-			#if 0
-			if(tc >= 1)
+			if(!ctx->state.tmu[i].nocoords)
 			{
-				/* JH: OK, there is 2 ways, how handle state when have coords for less TMU,
-				   than has texture attached:
-				   - first come from 3dlab (reference) driver and use coord index 0
-				   - second is stochastic (from testing) and disable these TMUs
-				 */
-				ctx->state.fvf.pos_tmu[i] = ctx->state.fvf.pos_tmu[0];
-				ctx->state.fvf.coords[i]  = ctx->state.fvf.coords[0];
-			}
-			else
-			#endif
-			{
-				if(!ctx->state.tmu[i].nocoords)
-				{
-					ctx->state.tmu[i].nocoords = TRUE;
-					ctx->state.tmu[i].update = TRUE;
-					refresh = TRUE;
-				}
-				
-				ctx->state.fvf.pos_tmu[i] = 0;
-				ctx->state.fvf.coords[i]  = 0;
+				ctx->state.tmu[i].nocoords = TRUE;
+				ctx->state.tmu[i].update = TRUE;
+				refresh = TRUE;
 			}
 		}
-	}
+	} // for
 	
 	if(refresh)
 	{
@@ -361,6 +353,11 @@ NUKED_LOCAL void MesaFVFRecalc(mesa3d_ctx_t *ctx)
 
 	ctx->state.fvf.stride = offset * sizeof(D3DVALUE);
 }
+
+#define DEF_DIFFUSE 0xFF000000
+#define DEF_SPECULAR 0xFFFFFFFF
+
+static GLfloat def_texcoords[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 
 NUKED_INLINE void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, FVF_t *vertex)
 {
@@ -374,66 +371,70 @@ NUKED_INLINE void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx,
 		if(ctx->state.tmu[i].active)
 		{
 			int coordindex = ctx->state.tmu[i].coordindex;
-			int coordnum = ctx->state.fvf.coords[coordindex];
-			if(ctx->state.fvf.pos_tmu[coordindex] && coordnum > 0)
+			int coordnum = ctx->state.fvf.num_coords[coordindex];
+			int coordpos = ctx->state.fvf.pos_coords[coordindex];
+			GLfloat *coords = def_texcoords;
+
+			if(coordpos > 0 && coordnum > 0)
 			{
-				if(ctx->state.tmu[i].projected)
+				coords = &fv[coordpos];
+			}
+			else if(coordnum == 0)
+			{
+				coordnum = 2;
+			}
+
+			if(ctx->state.tmu[i].projected)
+			{
+				GLfloat s, t, r, w;
+				switch(coordnum)
 				{
-					GLfloat s, t, r, w;
-					int p = ctx->state.fvf.pos_tmu[coordindex];
-					switch(coordnum)
-					{
-						case 2:
-							s = fv[p];
-							w = fv[p+1];
-							if(w != 0.0)
-							{
-								entry->proc.pglMultiTexCoord1f(GL_TEXTURE0 + i, s/w);
-							}
-							break;
-						case 3:
-							s = fv[p];
-							t = fv[p+1];
-							w = fv[p+2];
-							if(w != 0.0)
-							{
-								entry->proc.pglMultiTexCoord2f(GL_TEXTURE0 + i, s/w, t/w);
-							}
-							break;
-						case 4:
-							s = fv[p];
-							t = fv[p+1];
-							r = fv[p+2];
-							w = fv[p+3];
-							if(w != 0.0)
-							{
-								entry->proc.pglMultiTexCoord3f(GL_TEXTURE0 + i, s/w, t/w, r/w);
-							}
-							break;
-					}
+					case 2:
+						s = coords[0];
+						w = coords[1];
+						if(w != 0.0)
+						{
+							entry->proc.pglMultiTexCoord1f(GL_TEXTURE0 + i, s/w);
+						}
+						break;
+					case 3:
+						s = coords[0];
+						t = coords[1];
+						w = coords[2];
+						if(w != 0.0)
+						{
+							entry->proc.pglMultiTexCoord2f(GL_TEXTURE0 + i, s/w, t/w);
+						}
+						break;
+					case 4:
+						s = coords[0];
+						t = coords[1];
+						r = coords[2];
+						w = coords[3];
+						if(w != 0.0)
+						{
+							entry->proc.pglMultiTexCoord3f(GL_TEXTURE0 + i, s/w, t/w, r/w);
+						}
+						break;
 				}
-				else
+			}
+			else
+			{
+				switch(coordnum)
 				{
-					switch(coordnum)
-					{
-						case 1:
-							entry->proc.pglMultiTexCoord1fv(GL_TEXTURE0 + i,
-								&fv[ctx->state.fvf.pos_tmu[coordindex]]);
-							break;
-						case 2:
-							entry->proc.pglMultiTexCoord2fv(GL_TEXTURE0 + i,
-								&fv[ctx->state.fvf.pos_tmu[coordindex]]);
-							break;
-						case 3:
-							entry->proc.pglMultiTexCoord3fv(GL_TEXTURE0 + i,
-								&fv[ctx->state.fvf.pos_tmu[coordindex]]);
-							break;
-						case 4:
-							entry->proc.pglMultiTexCoord4fv(GL_TEXTURE0 + i,
-								&fv[ctx->state.fvf.pos_tmu[coordindex]]);
-							break;
-					} // switch(coordnum)
-				}
+					case 1:
+						entry->proc.pglMultiTexCoord1fv(GL_TEXTURE0 + i, coords);
+						break;
+					case 2:
+						entry->proc.pglMultiTexCoord2fv(GL_TEXTURE0 + i, coords);
+						break;
+					case 3:
+						entry->proc.pglMultiTexCoord3fv(GL_TEXTURE0 + i, coords);
+						break;
+					case 4:
+						entry->proc.pglMultiTexCoord4fv(GL_TEXTURE0 + i, coords);
+						break;
+				} // switch(coordnum)
 			}
 		} // image
 	}
@@ -441,6 +442,13 @@ NUKED_INLINE void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx,
 	if(ctx->state.fvf.pos_diffuse)
 	{
 		LoadColor1(entry, ctx, dw[ctx->state.fvf.pos_diffuse]);
+	}
+	else
+	{
+		if(ctx->dxif >= 8)
+		{
+			LoadColor1(entry, ctx, DEF_DIFFUSE);
+		}
 	}
 
 	if(ctx->state.fvf.pos_specular)
@@ -450,7 +458,7 @@ NUKED_INLINE void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx,
 	else
 	{
 		// FIXME: optimize for load black
-		//LoadColor2(entry, ctx, 0x00000000);
+		//LoadColor2(entry, ctx, DEF_SPECULAR);
 	}
 
 	if((ctx->state.fvf.type & D3DFVF_POSITION_MASK) == D3DFVF_XYZRHW)

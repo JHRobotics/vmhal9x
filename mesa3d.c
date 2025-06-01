@@ -622,7 +622,7 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 				return TRUE;
 			}
 		}
-		WARN("No know pixel format");
+		WARN("No know pixel format fmt.dwFlags=%X");
 		return FALSE;
 	// } // HASPIXELFORMAT
 #if 0
@@ -3078,12 +3078,14 @@ NUKED_FAST DWORD MesaConvPrimVertex(D3DPRIMITIVETYPE dx_type, DWORD prim_count)
 	return 0;
 }
 
-NUKED_INLINE void D3DTA2GL(DWORD dxarg, GLint *gl_src, GLint *gl_op)
+NUKED_INLINE void D3DTA2GL(DWORD dxarg, GLint *gl_src, GLint *gl_op, BOOL active_image)
 {
 	switch(dxarg & D3DTA_SELECTMASK)
 	{
-		case D3DTA_CURRENT:
 		case D3DTA_TEMP:
+			WARN("D3DTA_TEMP");
+			/* TRU */
+		case D3DTA_CURRENT:
 			*gl_src = GL_PREVIOUS;
 			break;
 		case D3DTA_DIFFUSE:
@@ -3092,10 +3094,19 @@ NUKED_INLINE void D3DTA2GL(DWORD dxarg, GLint *gl_src, GLint *gl_op)
 		case D3DTA_TFACTOR:
 			*gl_src = GL_CONSTANT_EXT;
 			break;
-		case D3DTA_TEXTURE:
 		case D3DTA_SPECULAR: /* not possible, fail to texture */
+			WARN("D3DTA_SPECULAR");
+			/* TRU */
+		case D3DTA_TEXTURE:
 		default:
-			*gl_src = GL_TEXTURE;
+			if(active_image)
+			{
+				*gl_src = GL_TEXTURE;
+			}
+			else
+			{
+				*gl_src = GL_PREVIOUS;
+			}
 			break;
 	}
 	
@@ -3139,6 +3150,10 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 				GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, ts->image->gltex));
 				GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_CUBE_MAP, 0));	
 				ts->active = TRUE;
+			}
+			else
+			{
+				TOPIC("TEXCOORDS", "wrong cords fvf=0x%X ts->coordscalc=%d ts->coordindex=%d tmu=%d", ctx->state.fvf.type, ts->coordscalc, ts->coordindex, tmu);
 			}
 		}
 		else
@@ -3328,12 +3343,12 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 	GLint alpha_arg4_source = GL_ZERO;
 	GLint alpha_arg4_op = GL_ONE_MINUS_SRC_ALPHA;
 
-	D3DTA2GL(ts->color_arg1, &color_arg1_source, &color_arg1_op);
-	D3DTA2GL(ts->color_arg2, &color_arg2_source, &color_arg2_op);
-	D3DTA2GL(ts->color_arg3, &color_arg3_source, &color_arg3_op);
-	D3DTA2GL(ts->alpha_arg1|D3DTA_ALPHAREPLICATE, &alpha_arg1_source, &alpha_arg1_op);
-	D3DTA2GL(ts->alpha_arg2|D3DTA_ALPHAREPLICATE, &alpha_arg2_source, &alpha_arg2_op);
-	D3DTA2GL(ts->alpha_arg3|D3DTA_ALPHAREPLICATE, &alpha_arg3_source, &alpha_arg3_op);
+	D3DTA2GL(ts->color_arg1,                      &color_arg1_source, &color_arg1_op, ts->active);
+	D3DTA2GL(ts->color_arg2,                      &color_arg2_source, &color_arg2_op, ts->active);
+	D3DTA2GL(ts->color_arg3,                      &color_arg3_source, &color_arg3_op, ts->active);
+	D3DTA2GL(ts->alpha_arg1|D3DTA_ALPHAREPLICATE, &alpha_arg1_source, &alpha_arg1_op, ts->active);
+	D3DTA2GL(ts->alpha_arg2|D3DTA_ALPHAREPLICATE, &alpha_arg2_source, &alpha_arg2_op, ts->active);
+	D3DTA2GL(ts->alpha_arg3|D3DTA_ALPHAREPLICATE, &alpha_arg3_source, &alpha_arg3_op, ts->active);
 
 	GLfloat color_mult = 1.0f;
 	GLfloat alpha_mult = 1.0f;
@@ -3840,7 +3855,7 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 			break;
 	}
 
-	if(use_nv4)
+	if(use_nv4 && (color_fn == GL_ADD || alpha_fn == GL_ADD))
 	{
 		GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE4_NV));
 	}

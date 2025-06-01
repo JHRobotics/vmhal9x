@@ -92,7 +92,7 @@ VMHAL9X_OBJS = $(NOCRT_OBJS) vmhal9x.c.o ddraw.c.o 3d_accel.c.o flip32.c.o \
   blt32.c.o rop3.c.o transblt.c.o debug.c.o dump.c.o fill.c.o memory.c.o \
   hotpatch.c.o wine.c.o vmhal9x.res
 
-VMDISP9X_OBJS = $(NOCRT_OBJS) vmdisp9x.c.o regex/re.c.o vmsetup.c.o
+VMDISP9X_OBJS = $(NOCRT_OBJS) vmdisp9x.c.o regex/re.c.o vmsetup.c.o vmdisp9x.res
 
 ifdef D3DHAL
   ifdef CODENUKED
