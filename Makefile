@@ -135,5 +135,5 @@ clean:
 	-$(RM) vmdisp9x.dll
 	-$(RM) libvmdisp9x.a
 	-$(RM) libddraw.a
-	-$(RM) $(VMHAL9X_OBJS)
+	-$(RM) $(WINETRAY_OBJ)
 	-$(RM) tray3d.exe
