@@ -34,7 +34,7 @@ OBJ := .o
 LIBSUFFIX := .a
 LIBPREFIX := lib
 
-DEPS=libddraw.a Makefile config.mk vmhal9x.h mesa3d.h mesa3d_api.h surface.h x86.h memory.h 3d_accel.h
+DEPS= Makefile config.mk vmhal9x.h mesa3d.h mesa3d_api.h surface.h x86.h memory.h 3d_accel.h
 RUNPATH=$(if $(filter $(OS),Windows_NT),.\,./)
 
 HOST_SUFFIX=
@@ -46,7 +46,7 @@ DLLFLAGS = -o $@ -shared -Wl,--dll,--out-implib,lib$(@:dll=a),--exclude-all-symb
 
 EXEFLAGS = -o $@ -static -nostdlib -nodefaultlibs -lgcc -luser32 -lkernel32 -lgdi32 -lole32 -lshell32 -Wl,-subsystem,windows
 
-LIBS = -luser32 -lkernel32 -lgcc -lgdi32 -ladvapi32 -lddraw
+LIBS = -luser32 -lkernel32 -lgcc -lgdi32 -ladvapi32
 CFLAGS = -std=$(CSTD) -Wall -ffreestanding -fno-exceptions -ffast-math -nostdlib -DNOCRT -DNOCRT_FILE -DNOCRT_FLOAT -DNOCRT_MEM -DNOCRT_CALC -Inocrt -Iregex $(TUNE) -DVMHAL9X_BUILD=$(VERSION_BUILD)
 LDFLAGS = -static -nostdlib -nodefaultlibs -L.
 
@@ -135,3 +135,5 @@ clean:
 	-$(RM) vmdisp9x.dll
 	-$(RM) libvmdisp9x.a
 	-$(RM) libddraw.a
+	-$(RM) $(VMHAL9X_OBJS)
+	-$(RM) tray3d.exe
