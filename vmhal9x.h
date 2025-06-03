@@ -26,9 +26,6 @@
 #ifndef __VMHAL9X_H__INCLUDED__
 #define __VMHAL9X_H__INCLUDED__
 
-#include "x86.h"
-#include "memory.h"
-
 /* version */
 #define VMHAL9X_STR_(x) #x
 #define VMHAL9X_STR(x) VMHAL9X_STR_(x)
@@ -51,6 +48,12 @@
 
 #define VMHAL9X_VERSION_NUM \
  	VMHAL9X_MAJOR,VMHAL9X_MINOR,VMHAL9X_PATCH,VMHAL9X_BUILD
+
+#ifndef VERSION_ONLY
+
+#include "x86.h"
+#include "memory.h"
+
 
 /* debuging macros */
 #ifndef DDDEBUG
@@ -207,5 +210,7 @@ typedef struct _VMHAL_enviroment
 BOOL GetVMHALenv(VMHAL_enviroment_t *dst);
 void VMHALenv_RuntimeVer(int ver);
 //extern VMHAL_enviroment_t VMHALenv;
+
+#endif /* VERSION_ONLY */
 
 #endif /* __VMHAL9X_H__INCLUDED__ */

@@ -1,0 +1,49 @@
+#ifdef WINDRES
+#undef RC_INVOKED
+#endif
+#ifndef RC_INVOKED
+
+/* shutdown some MinGW warnings */
+#define _XMMINTRIN_H_INCLUDED
+
+#include "tray3d.h"
+#include "winuser.h"
+
+#define VERSION_ONLY
+#include "../vmhal9x.h"
+
+ICON_MAIN ICON "computer.ico"
+
+/* task icons can be only 4bpp on 9x */
+TRAY_ICON_RED ICON "monred.ico"
+TRAY_ICON_GREEN ICON "mongreen.ico"
+TRAY_ICON_GRAY ICON "mongray.ico"
+
+1 VERSIONINFO
+FILEVERSION VMHAL9X_VERSION_NUM
+PRODUCTVERSION VMHAL9X_VERSION_NUM
+FILEOS 0x40004
+FILETYPE 0x2
+{
+BLOCK "StringFileInfo"
+{
+	BLOCK "040904b0"
+	{
+		VALUE "CompanyName", "JHRobotics"
+		VALUE "FileDescription", "DirectX/Draw live patcher"
+		VALUE "FileVersion", VMHAL9X_VERSION_STR
+		VALUE "InternalName", "tray3d.exe"
+		VALUE "LegalCopyright", "(C) 2023-2025 Jaroslav Hensl"
+		VALUE "OriginalFilename", "tray3d.exe"
+		VALUE "PrivateBuild", VMHAL9X_VERSION_STR
+		VALUE "ProductName", "DX/DD HAL driver for VM display"
+		VALUE "ProductVersion", VMHAL9X_VERSION_STR
+	}
+}
+
+BLOCK "VarFileInfo"
+{
+	VALUE "Translation", 0x0409, 0x04B0  
+}
+}
+#endif

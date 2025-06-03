@@ -58,7 +58,9 @@ static const GLfloat black[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 #define OS_FORMAT  OSMESA_RGBA
 #define OS_TYPE    GL_UNSIGNED_BYTE
 
+#ifdef DEBUG
 #define OPENGL_BLOCK_LOCK
+#endif
 
 static char *MesaLibName()
 {
