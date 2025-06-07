@@ -44,7 +44,7 @@ endif
 
 DLLFLAGS = -o $@ -shared -Wl,--dll,--out-implib,lib$(@:dll=a),--exclude-all-symbols,--exclude-libs=pthread,--disable-dynamicbase,--disable-nxcompat,--subsystem,windows,--image-base,$(BASE_$@)$(TUNE_LD)
 
-EXEFLAGS = -o $@ -static -nostdlib -nodefaultlibs -lgcc -luser32 -lkernel32 -lgdi32 -lole32 -lshell32 -Wl,-subsystem,windows
+EXEFLAGS = -o $@ -static -nostdlib -nodefaultlibs -lgcc -luser32 -lkernel32 -lgdi32 -lole32 -lshell32 -Wl,-subsystem,windows$(TUNE_LD)
 
 LIBS = -luser32 -lkernel32 -lgcc -lgdi32 -ladvapi32
 CFLAGS = -std=$(CSTD) -Wall -ffreestanding -fno-exceptions -ffast-math -nostdlib -DNOCRT -DNOCRT_FILE -DNOCRT_FLOAT -DNOCRT_MEM -DNOCRT_CALC -Inocrt -Iregex $(TUNE) -DVMHAL9X_BUILD=$(VERSION_BUILD)
@@ -54,7 +54,7 @@ ifdef RELEASE
   CFLAGS += -O3 -fomit-frame-pointer -DNDEBUG
 
   ifdef LTO
-    CFLAGS += -flto=auto -fno-fat-lto-objects -pipe -Werror=implicit-function-declaration
+    CFLAGS += -flto=auto -pipe -Werror=implicit-function-declaration
     LDFLAGS := $(CFLAGS) $(LDFLAGS)
   endif
 

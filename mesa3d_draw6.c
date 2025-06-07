@@ -327,13 +327,13 @@ NUKED_LOCAL void MesaTLRecalcModelview(mesa3d_ctx_t *ctx)
 NUKED_INLINE void draw_fvf(mesa3d_ctx_t *ctx, DWORD fvf)
 {
 	BOOL sr = FALSE;
-	if(ctx->state.fvf.type != fvf)
+	if(ctx->state.vertex.code != fvf)
 	{
 		MesaFVFSet(ctx, fvf);
 		sr = TRUE;
 	}
 	
-	if((fvf & D3DFVF_POSITION_MASK) == D3DFVF_XYZRHW)
+	if(ctx->state.vertex.xyzrhw)
 	{
 		MesaSpaceIdentitySet(ctx);
 	}
@@ -349,9 +349,6 @@ NUKED_INLINE void draw_fvf_end(mesa3d_ctx_t *ctx)
 {
 	MesaSpaceIdentityReset(ctx);
 }
-
-/* from permedia driver, fast detection if handle is FVF code or shader handle */
-#define RDVSD_ISLEGACY(handle) (!(handle & D3DFVF_RESERVED0))
 
 #define COMMAND(_s) case _s: TRACE("render: %s", #_s);
 
@@ -908,11 +905,11 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 
 	    		prim += sizeof(D3DHAL_DP2TRIANGLEFAN_IMM);
 	    		PRIM_ALIGN;
-					CHECK_LIMITS_SIZE(ctx->state.fvf.stride*count);
+					CHECK_LIMITS_SIZE(ctx->state.vertex.stride*count);
 
 					RENDER_BEGIN(fvf);
 	    		MesaDrawFVFs(ctx, GL_TRIANGLE_FAN, prim, 0, count);
-					prim += ctx->state.fvf.stride * count;
+					prim += ctx->state.vertex.stride * count;
 					//PRIM_ALIGN;
 					RENDER_END;
 	        NEXT_INST(0);
@@ -931,11 +928,11 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					// Primitives in an IMM instruction are stored in the
 					// command buffer and are DWORD aligned
 					PRIM_ALIGN;
-					CHECK_LIMITS_SIZE(ctx->state.fvf.stride * count);
+					CHECK_LIMITS_SIZE(ctx->state.vertex.stride * count);
 
 					RENDER_BEGIN(fvf);
 					MesaDrawFVFs(ctx, GL_LINES, prim, 0, count);
-					prim += ctx->state.fvf.stride * count;
+					prim += ctx->state.vertex.stride * count;
 					//PRIM_ALIGN;
 					RENDER_END;
 					NEXT_INST(0);
@@ -1440,21 +1437,13 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					for(i = 0; i < inst->wStateCount; i++)
 					{
 						D3DHAL_DP2VERTEXSHADER *shader = (D3DHAL_DP2VERTEXSHADER*)prim;
-						//mesa_dx_shader_t *vs = MesaVSGet(ctx, shader->dwHandle);
-						//if(vs == NULL)
-						if(RDVSD_ISLEGACY(shader->dwHandle))
-						{
-							/* if dwHandle is not associated with existing shader it is FVF code */
-							ctx->state.fvf_shader = shader->dwHandle;
-							ctx->state.current.vertexshader = shader->dwHandle;
-							ctx->state.current.extraset[0] |= 1 << MESA_REC_EXTRA_VERTEXSHADER;
 
-							TRACE("fvf code = 0x%X", ctx->state.fvf_shader);
-						}
-						else
-						{
-							TRACE("shader handle = 0x%X", shader->dwHandle);
-						}
+						/* dwHandle can be FVF code or shader handle, but decide this later */
+						ctx->state.fvf_shader = shader->dwHandle;
+						ctx->state.current.vertexshader = shader->dwHandle;
+						ctx->state.current.extraset[0] |= 1 << MESA_REC_EXTRA_VERTEXSHADER;
+						TRACE("fvf code = 0x%X", ctx->state.fvf_shader);
+
 						prim += sizeof(D3DHAL_DP2VERTEXSHADER);
 					}
 					NEXT_INST(0);
@@ -1489,13 +1478,13 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 									ctx->vstream[vsrc->dwStream].VBHandle = vsrc->dwVBHandle;
 									ctx->vstream[vsrc->dwStream].stride = vsrc->dwStride;
 									ctx->vstream[vsrc->dwStream].mem = buffer;
-									ctx->state.bind_vertices = vsrc->dwStream;
+//									ctx->state.bind_vertices = vsrc->dwStream;
 
 									TRACE("D3DHAL_DP2SETSTREAMSOURCE: stream=%d mem=0x%X", vsrc->dwStream, ctx->vstream[vsrc->dwStream].mem);
 								}
 								else
 								{
-									ERR("INVALID vertex buffer handle %d", vsrc->dwVBHandle );
+									ERR("INVALID vertex buffer handle %d", vsrc->dwVBHandle);
 								}
 							}
 							else
@@ -1524,7 +1513,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 							ctx->vstream[um->dwStream].stride   = um->dwStride;
 							ctx->vstream[um->dwStream].mem      = UMVertices;
 
-							ctx->state.bind_vertices = um->dwStream;
+//							ctx->state.bind_vertices = um->dwStream;
 						}
 					}
 					NEXT_INST(0);
@@ -1903,12 +1892,12 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 				COMMAND(D3DDP2OP_TRIANGLEFAN_IMM)
 	    		prim += sizeof(D3DHAL_DP2TRIANGLEFAN_IMM);
 	    		PRIM_ALIGN;
-					prim += ctx->state.fvf.stride * (inst->wPrimitiveCount + 2);
+					prim += ctx->state.vertex.stride * (inst->wPrimitiveCount + 2);
 	        NEXT_INST(0);
 					break;
 				COMMAND(D3DDP2OP_LINELIST_IMM)
 				  PRIM_ALIGN;
-					prim += ctx->state.fvf.stride * (inst->wPrimitiveCount * 2);
+					prim += ctx->state.vertex.stride * (inst->wPrimitiveCount * 2);
 	        NEXT_INST(0);
 					break;
 				COMMAND(D3DDP2OP_RENDERSTATE)

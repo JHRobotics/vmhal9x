@@ -251,6 +251,19 @@ typedef struct mesa_dx_shader
 	struct mesa_dx_shader *next;
 } mesa_dx_shader_t;
 
+typedef enum /* map of D3DVSDT_ types */
+{
+	MESA_VDT_NONE,
+	MESA_VDT_FLOAT1,
+	MESA_VDT_FLOAT2,
+	MESA_VDT_FLOAT3,
+	MESA_VDT_FLOAT4,
+	MESA_VDT_D3DCOLOR,
+	MESA_VDT_UBYTE4,
+	MESA_VDT_USHORT2,
+	MESA_VDT_USHORT4,
+} mesa_vertex_data_t;
+
 typedef struct mesa3d_ctx
 {
 	LONG thread_lock;
@@ -322,16 +335,27 @@ typedef struct mesa3d_ctx
 			BOOL range;
 		} fog;
 		struct {
+			DWORD code; /* fvf code or shader handle */
 			DWORD stride;
-			DWORD type;
-			int begin;
-			int pos_normal;
-			int pos_diffuse;
-			int pos_specular;
-			int pos_coords[MESA_TMU_MAX]; // coords at pos
-			int num_coords[MESA_TMU_MAX]; // num coords for pos
+			BOOL shader; /* is vertex shader */
+			BOOL xyzrhw; /* software transformed vertex in screen coordinates */
+			struct {
+				int xyzw;
+				int normal;
+				int diffuse;
+				int specular;
+				int texcoords[MESA_TMU_MAX];
+			} pos;
+			struct {
+				mesa_vertex_data_t xyzw;
+				mesa_vertex_data_t normal;
+				mesa_vertex_data_t diffuse;
+				mesa_vertex_data_t specular;
+				mesa_vertex_data_t texcoords[MESA_TMU_MAX];
+			} type;
 			int betas;
-		} fvf;
+			int texcoords;
+		} vertex;
 		struct {
 			BOOL enabled;
 			GLenum sfail;
@@ -687,9 +711,11 @@ NUKED_LOCAL void MesaTempFree(mesa3d_ctx_t *ctx, void *ptr);
 NUKED_LOCAL void MesaVSCreate(mesa3d_ctx_t *ctx, D3DHAL_DP2CREATEVERTEXSHADER *shader, const BYTE *buffer);
 NUKED_LOCAL void MesaVSDestroy(mesa3d_ctx_t *ctx, DWORD handle);
 NUKED_LOCAL void MesaVSDestroyAll(mesa3d_ctx_t *ctx);
-#if 0
 NUKED_LOCAL mesa_dx_shader_t *MesaVSGet(mesa3d_ctx_t *ctx, DWORD handle);
-#endif
+NUKED_LOCAL BOOL MesaVSSetVertex(mesa3d_ctx_t *ctx, mesa_dx_shader_t *vs);
+
+/* from permedia driver, fast detection if handle is FVF code or shader handle */
+#define RDVSD_ISLEGACY(handle) (!(handle & D3DFVF_RESERVED0))
 
 #ifdef DEBUG
 /* heavy debug */
@@ -700,6 +726,8 @@ NUKED_LOCAL int mesa_dump_key();
 NUKED_LOCAL void mesa_dump(mesa3d_ctx_t *ctx);
 NUKED_LOCAL void mesa_dump_inc();
 NUKED_LOCAL void mesa_dump(mesa3d_ctx_t *ctx);
+
+NUKED_LOCAL void MesaVSDump(mesa_dx_shader_t *vs);
 #endif
 
 #endif /* __MESA3D_H__INCLUDED__ */

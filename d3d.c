@@ -338,15 +338,6 @@ DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 	DWORD rc = DD_OK;
 
 	GL_BLOCK_BEGIN(pd->dwhContext)
-/*
-		MesaFVFSet(ctx, pd->dwVertexType, pd->dwVertexSize);
-		if((pd->dwVertexType & D3DFVF_POSITION_MASK) == D3DFVF_XYZRHW)
-		{
-			MesaSpaceIdentitySet(ctx);
-		}
-		MesaApplyLighting(ctx);
-		MesaApplyMaterial(ctx);
-*/
 		LPBYTE UMVertices = pd->lpVertices;
 		if(UMVertices != NULL)
 		{

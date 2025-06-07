@@ -425,11 +425,11 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 		}
 	}
 
+#ifdef D3DHAL
 	/* do cleanup */
 	Mesa3DCleanProc();
 	SurfaceDeleteAll();
 
-#ifdef D3DHAL
 	D3DHALCreateDriver(
 		&globalHal->d3dhal_global,
 		&globalHal->d3dhal_callbacks,

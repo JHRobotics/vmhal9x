@@ -1882,4 +1882,80 @@ typedef enum _D3DTEXTUREFILTERTYPE
     D3DTEXF_FORCE_DWORD     = 0x7fffffff,   // force 32-bit size enum
 } D3DTEXTUREFILTERTYPE;
 
+/*
+ * DX shaders
+ */
+#define D3DVSD_TOKEN_NOP         0 // NOP or extension
+#define D3DVSD_TOKEN_STREAM      1 // stream selector
+#define D3DVSD_TOKEN_STREAMDATA  2 // stream data definition (map to vertex input memory)
+#define D3DVSD_TOKEN_TESSELLATOR 3 // vertex input memory from tessellator
+#define D3DVSD_TOKEN_CONSTMEM    4 // constant memory from shader
+#define D3DVSD_TOKEN_EXT         5 // extension
+#define D3DVSD_TOKEN_END         7 // end-of-array (requires all DWORD bits to be 1)
+
+#define D3DVSD_TOKENTYPESHIFT   29
+#define D3DVSD_TOKENTYPEMASK    (7 << D3DVSD_TOKENTYPESHIFT)
+
+#define D3DVSD_STREAMNUMBERSHIFT 0
+#define D3DVSD_STREAMNUMBERMASK (0xF << D3DVSD_STREAMNUMBERSHIFT)
+
+#define D3DVSD_DATALOADTYPESHIFT 28
+#define D3DVSD_DATALOADTYPEMASK (0x1 << D3DVSD_DATALOADTYPESHIFT)
+
+#define D3DVSD_DATATYPESHIFT 16
+#define D3DVSD_DATATYPEMASK (0xF << D3DVSD_DATATYPESHIFT)
+
+#define D3DVSD_SKIPCOUNTSHIFT 16
+#define D3DVSD_SKIPCOUNTMASK (0xF << D3DVSD_SKIPCOUNTSHIFT)
+
+#define D3DVSD_VERTEXREGSHIFT 0
+#define D3DVSD_VERTEXREGMASK (0x1F << D3DVSD_VERTEXREGSHIFT)
+
+#define D3DVSD_VERTEXREGINSHIFT 20
+#define D3DVSD_VERTEXREGINMASK (0xF << D3DVSD_VERTEXREGINSHIFT)
+
+#define D3DVSD_CONSTCOUNTSHIFT 25
+#define D3DVSD_CONSTCOUNTMASK (0xF << D3DVSD_CONSTCOUNTSHIFT)
+
+#define D3DVSD_CONSTADDRESSSHIFT 0
+#define D3DVSD_CONSTADDRESSMASK (0x7F << D3DVSD_CONSTADDRESSSHIFT)
+
+#define D3DVSD_CONSTRSSHIFT 16
+#define D3DVSD_CONSTRSMASK (0x1FFF << D3DVSD_CONSTRSSHIFT)
+
+#define D3DVSD_EXTCOUNTSHIFT 24
+#define D3DVSD_EXTCOUNTMASK (0x1F << D3DVSD_EXTCOUNTSHIFT)
+
+#define D3DVSD_EXTINFOSHIFT 0
+#define D3DVSD_EXTINFOMASK (0xFFFFFF << D3DVSD_EXTINFOSHIFT)
+
+// bit declarations for _Type fields
+#define D3DVSDT_FLOAT1      0x00    // 1D float expanded to (value, 0., 0., 1.)
+#define D3DVSDT_FLOAT2      0x01    // 2D float expanded to (value, value, 0., 1.)
+#define D3DVSDT_FLOAT3      0x02    // 3D float expanded to (value, value, value, 1.)
+#define D3DVSDT_FLOAT4      0x03    // 4D float
+#define D3DVSDT_D3DCOLOR    0x04    // 4D packed unsigned bytes mapped to 0. to 1. range
+                                    // Input is in D3DCOLOR format (ARGB) expanded to (R, G, B, A)
+#define D3DVSDT_UBYTE4      0x05    // 4D unsigned byte
+#define D3DVSDT_SHORT2      0x06    // 2D signed short expanded to (value, value, 0., 1.)
+#define D3DVSDT_SHORT4      0x07    // 4D signed short
+
+#define D3DVSDE_POSITION        0
+#define D3DVSDE_BLENDWEIGHT     1
+#define D3DVSDE_BLENDINDICES    2
+#define D3DVSDE_NORMAL          3
+#define D3DVSDE_PSIZE           4
+#define D3DVSDE_DIFFUSE         5
+#define D3DVSDE_SPECULAR        6
+#define D3DVSDE_TEXCOORD0       7
+#define D3DVSDE_TEXCOORD1       8
+#define D3DVSDE_TEXCOORD2       9
+#define D3DVSDE_TEXCOORD3       10
+#define D3DVSDE_TEXCOORD4       11
+#define D3DVSDE_TEXCOORD5       12
+#define D3DVSDE_TEXCOORD6       13
+#define D3DVSDE_TEXCOORD7       14
+#define D3DVSDE_POSITION2       15
+#define D3DVSDE_NORMAL2         16
+
 #endif /* _D3DHAL_H */

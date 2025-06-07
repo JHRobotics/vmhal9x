@@ -29,7 +29,7 @@ CODENUKED=1
 #
 # filter debug messages by topic:
 #TUNE += -DDEBUG_TOPIC=BLEND
-# outpu thread id in debug log
+# output thread id in debug log
 #TUNE += -DDEBUG_THREAD
 
 # extra compiler option:
@@ -42,3 +42,6 @@ TUNE=-march=pentium2 -mtune=core2
 
 # faster code generation
 TUNE += -pipe
+
+# Remove all debug symbols, so reduce file size by a lot, turn off only if you wish debug
+TUNE_LD=,--strip-all

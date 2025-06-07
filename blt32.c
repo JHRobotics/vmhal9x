@@ -317,10 +317,11 @@ DDENTRY_FPUSAVE(Blt32, LPDDHAL_BLTDATA, pbd)
 			rop3(bpp, 0xF0, (void*)dst->fpVidMem, (void*)dst->fpVidMem, dwFillColor,
 				pbd->rDest.left, pbd->rDest.top, pbd->rDest.left, pbd->rDest.top, dwDstWidth, dwDstHeight, dst->lPitch, dst->lPitch);
 		}
+		TOPIC("DEPTHCONV", "Blt32 - DDBLT_COLORFILL | DDBLT_DEPTHFILL");
+
+#ifdef D3DHAL
 		SurfaceZToMesa(dstx, dwFillColor);
 
-		TOPIC("DEPTHCONV", "Blt32 - DDBLT_COLORFILL | DDBLT_DEPTHFILL");
-#ifdef D3DHAL
 		SurfaceToMesa(dstx, FALSE);
 #endif
 	}

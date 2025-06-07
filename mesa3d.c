@@ -1971,8 +1971,7 @@ NUKED_LOCAL void MesaApplyLighting(mesa3d_ctx_t *ctx)
 	   
 	   Update: no, only D3DFVF_XYZRHW means no lighting!
 	 */
-	//if(ctx->state.material.lighting && ctx->state.fvf.pos_normal)
-	if(ctx->state.material.lighting && (ctx->state.fvf.type & D3DFVF_POSITION_MASK) != D3DFVF_XYZRHW)
+	if(ctx->state.material.lighting && !ctx->state.vertex.xyzrhw)
 	{
 		ctx->entry->proc.pglEnable(GL_LIGHTING);
 	}
@@ -2355,24 +2354,28 @@ NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DHAL_DP2RENDERSTATE s
 	switch(type)
 	{
 		RENDERSTATE(D3DRENDERSTATE_TEXTUREHANDLE) /* Texture handle */
+		{
 			ctx->state.tmu[0].image = NULL;
-			if(!ctx->state.recording)
+			if(state->dwState != 0)
 			{
-				if(state->dwState != 0)
+				if(ctx->entry->runtime_ver >= 7)
 				{
-					if(ctx->entry->runtime_ver >= 7)
-					{
-						ctx->state.tmu[0].image = MesaTextureFromSurfaceHandle(ctx, state->dwState);
-					}
-					else
-					{
-						ctx->state.tmu[0].image = MESA_HANDLE_TO_TEX(state->dwState);
-					}
+					ctx->state.tmu[0].image = MesaTextureFromSurfaceHandle(ctx, state->dwState);
+				}
+				else
+				{
+					ctx->state.tmu[0].image = MESA_HANDLE_TO_TEX(state->dwState);
 				}
 			}
 			TRACE("D3DRENDERSTATE_TEXTUREHANDLE = %X", state->dwState);
-			ctx->state.tmu[0].reload = TRUE;
+
+			int i;
+			for(i = 0; i < ctx->tmu_count; i++)
+			{
+				ctx->state.tmu[i].reload = TRUE;
+			}
 			break;
+		}
 		RENDERSTATE(D3DRENDERSTATE_ANTIALIAS) /* D3DANTIALIASMODE */
 		{
 			D3DANTIALIASMODE mode = (D3DANTIALIASMODE)state->dwState;
@@ -3141,7 +3144,7 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 	GLenum target = GL_TEXTURE_2D;
 
 	ts->active = FALSE;
-	if(ts->image)
+	if(ts->image && ctx->state.tmu[0].image) /* texturing active only when unit 0 is active */
 	{
 		if(!ts->image->cube)
 		{
@@ -3155,7 +3158,7 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 			}
 			else
 			{
-				TOPIC("TEXCOORDS", "wrong cords fvf=0x%X ts->coordscalc=%d ts->coordindex=%d tmu=%d", ctx->state.fvf.type, ts->coordscalc, ts->coordindex, tmu);
+				TOPIC("TEXCOORDS", "wrong cords fvf=0x%X ts->coordscalc=%d ts->coordindex=%d tmu=%d", ctx->state.vertex.code, ts->coordscalc, ts->coordindex, tmu);
 			}
 		}
 		else
