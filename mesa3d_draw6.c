@@ -332,7 +332,7 @@ NUKED_INLINE void draw_fvf(mesa3d_ctx_t *ctx, DWORD fvf)
 		MesaFVFSet(ctx, fvf);
 		sr = TRUE;
 	}
-	
+
 	if(ctx->state.vertex.xyzrhw)
 	{
 		MesaSpaceIdentitySet(ctx);
@@ -340,6 +340,7 @@ NUKED_INLINE void draw_fvf(mesa3d_ctx_t *ctx, DWORD fvf)
 
 	if(sr)
 	{
+		MesaDrawFVFdefaults(ctx);
 		MesaApplyLighting(ctx);
 		MesaApplyMaterial(ctx);
 	}

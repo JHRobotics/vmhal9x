@@ -2013,32 +2013,32 @@ NUKED_LOCAL void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, vo
 		/* D3DTEXTUREOP - per-stage blending controls for color channels */
 		RENDERSTATE(D3DTSS_COLOROP)
 			ts->color_op = TSS_DWORD;
-			ts->reload = TRUE;
+			ts->update = TRUE;
 			break;
 		/* D3DTA_* (texture arg) */
 		RENDERSTATE(D3DTSS_COLORARG1)
 			ts->color_arg1 = TSS_DWORD;
-			ts->reload = TRUE;
+			ts->update = TRUE;
 			break;
 		/* D3DTA_* (texture arg) */
 		RENDERSTATE(D3DTSS_COLORARG2)
 			ts->color_arg2 = TSS_DWORD;
-			ts->reload = TRUE;
+			ts->update = TRUE;
 			break;
 		/* D3DTEXTUREOP - per-stage blending controls for alpha channel */
 		RENDERSTATE(D3DTSS_ALPHAOP)
 			ts->alpha_op = TSS_DWORD;
-			ts->reload = TRUE;
+			ts->update = TRUE;
 			break;
 		/* D3DTA_* (texture arg) */
 		RENDERSTATE(D3DTSS_ALPHAARG1)
 			ts->alpha_arg1 = TSS_DWORD;
-			ts->reload = TRUE;
+			ts->update = TRUE;
 			break;
 		/* D3DTA_* (texture arg) */
 		RENDERSTATE(D3DTSS_ALPHAARG2)
 			ts->alpha_arg2 = TSS_DWORD;
-			ts->reload = TRUE;
+			ts->update = TRUE;
 			break;
 		/* D3DVALUE (bump mapping matrix) */
 		RENDERSTATE(D3DTSS_BUMPENVMAT00)
@@ -2099,7 +2099,7 @@ NUKED_LOCAL void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, vo
 			}
 
 			ts->move = TRUE;
-			MesaFVFRecalc(ctx);
+			MesaFVFRecalcCoords(ctx);
 
 			TOPIC("MAPPING", "TEXCOORDINDEX 0x%X for unit %d", TSS_DWORD, tmu);
 			break;
@@ -2237,8 +2237,7 @@ NUKED_LOCAL void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, vo
 				ts->projected = FALSE;
 			}
 			
-			MesaFVFRecalc(ctx);
-			
+			MesaFVFRecalcCoords(ctx);
 			break;
 		}
 		RENDERSTATE(D3DTSS_ADDRESSW)
@@ -2369,11 +2368,7 @@ NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DHAL_DP2RENDERSTATE s
 			}
 			TRACE("D3DRENDERSTATE_TEXTUREHANDLE = %X", state->dwState);
 
-			int i;
-			for(i = 0; i < ctx->tmu_count; i++)
-			{
-				ctx->state.tmu[i].reload = TRUE;
-			}
+			ctx->state.tmu[0].reload = TRUE;
 			break;
 		}
 		RENDERSTATE(D3DRENDERSTATE_ANTIALIAS) /* D3DANTIALIASMODE */
@@ -2732,7 +2727,7 @@ NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DHAL_DP2RENDERSTATE s
 		{
 			D3DCOLOR c = (D3DCOLOR)state->dwState;
 			MESA_D3DCOLOR_TO_FV(c, ctx->state.tmu[0].border);
-			ctx->state.tmu[0].reload = TRUE;
+			ctx->state.tmu[0].update = TRUE;
 			break;
 		}
 		RENDERSTATE(D3DRENDERSTATE_TEXTUREADDRESSU) /* Texture addressing mode for U coordinate */
@@ -4096,6 +4091,7 @@ NUKED_LOCAL void MesaDrawRefreshState(mesa3d_ctx_t *ctx)
 				MesaReloadTexture(ctx->state.tmu[i].image, i);
 			}
 			ctx->state.tmu[i].update = TRUE;
+			ctx->state.tmu[i].move   = TRUE;
 			ctx->state.tmu[i].reload = FALSE;
 		}
 		
@@ -4110,6 +4106,7 @@ NUKED_LOCAL void MesaDrawRefreshState(mesa3d_ctx_t *ctx)
 			mesa3d_entry_t *entry = ctx->entry;
 			
 			GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0 + i));
+			GL_CHECK(entry->proc.pglMultiTexCoord4f(GL_TEXTURE0 + i, MESA_DEF_TEXCOORDS));
 
 			if(!ctx->matrix.identity_mode)
 			{

@@ -238,7 +238,6 @@ NUKED_LOCAL BOOL MesaVSSetVertex(mesa3d_ctx_t *ctx, mesa_dx_shader_t *vs)
 		ctx->state.vertex.type.texcoords[i] = MESA_VDT_NONE;
 	}
 
-	ctx->state.vertex.texcoords = 0;
 	ctx->state.vertex.betas = 0;
 
 	for(i = 0; i < cnt; i++,decl++)
@@ -289,11 +288,6 @@ NUKED_LOCAL BOOL MesaVSSetVertex(mesa3d_ctx_t *ctx, mesa_dx_shader_t *vs)
 						D3DVSD2Mesa(data_type, &ctx->state.vertex.type.texcoords[p], &next);
 						ctx->state.vertex.pos.texcoords[p] = offset;
 						offset += next;
-
-						if(p+1 > ctx->state.vertex.texcoords)
-						{
-							ctx->state.vertex.texcoords = p+1;
-						}
 						break;
 					default:
 						D3DVSD2Mesa(data_type, NULL, &next);

@@ -354,7 +354,6 @@ typedef struct mesa3d_ctx
 				mesa_vertex_data_t texcoords[MESA_TMU_MAX];
 			} type;
 			int betas;
-			int texcoords;
 		} vertex;
 		struct {
 			BOOL enabled;
@@ -626,8 +625,10 @@ NUKED_LOCAL void MesaDrawTLVertex(mesa3d_ctx_t *ctx, LPD3DTLVERTEX vertex);
 NUKED_LOCAL void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD type/*, DWORD size*/);
 NUKED_LOCAL void MesaDrawFVFIndex(mesa3d_ctx_t *ctx, void *vertices, int index);
 NUKED_LOCAL void MesaFVFRecalc(mesa3d_ctx_t *ctx);
+NUKED_LOCAL void MesaFVFRecalcCoords(mesa3d_ctx_t *ctx);
 
 /* drawing sequence (needs GL_BLOCK) */
+NUKED_FAST  void MesaDrawFVFdefaults(mesa3d_ctx_t *ctx);
 NUKED_LOCAL void MesaDrawFVFs(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vertices, DWORD start, DWORD cnt);
 NUKED_LOCAL void MesaDrawFVFBlock(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vertices, DWORD offset, DWORD cnt, DWORD stride);
 NUKED_LOCAL void MesaDrawFVFBlockIndex(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vertices, DWORD stride, void *index, DWORD index_stride, DWORD start, DWORD cnt);
@@ -729,5 +730,7 @@ NUKED_LOCAL void mesa_dump(mesa3d_ctx_t *ctx);
 
 NUKED_LOCAL void MesaVSDump(mesa_dx_shader_t *vs);
 #endif
+
+#define MESA_DEF_TEXCOORDS 0.0f, 0.0f, 0.0f, 1.0f
 
 #endif /* __MESA3D_H__INCLUDED__ */
