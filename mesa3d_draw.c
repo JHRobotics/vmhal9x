@@ -76,13 +76,13 @@ typedef struct _FVF
 	};
 } FVF_t;
 
-static void LoadColor1(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, DWORD color)
+NUKED_INLINE void LoadColor1(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, DWORD color, BOOL localonly)
 {
 	GLfloat cv[4];
 	MESA_D3DCOLOR_TO_FV(color, cv);
 	entry->proc.pglColor4fv(&cv[0]);
 
-	if(ctx->state.material.lighting && ctx->state.material.color_vertex)
+	if(!localonly && ctx->state.material.lighting && ctx->state.material.color_vertex)
 	{
 		if((ctx->state.material.untracked & (MESA_MAT_DIFFUSE_C1 | MESA_MAT_AMBIENT_C1)) == 
 			(MESA_MAT_DIFFUSE_C1 | MESA_MAT_AMBIENT_C1))
@@ -110,7 +110,7 @@ static void LoadColor1(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, DWORD color)
 	}
 }
 
-static void LoadColor2(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, DWORD color)
+NUKED_INLINE void LoadColor2(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, DWORD color)
 {
 	GLfloat cv[4];
 	MESA_D3DCOLOR_TO_FV(color, cv);
@@ -154,7 +154,7 @@ NUKED_LOCAL void MesaDrawTLVertex(mesa3d_ctx_t *ctx, LPD3DTLVERTEX vertex)
 		TOPIC("TEX", "glTexCoord2f(%f, %f)", vertex->tu, vertex->tv);
 	}
 
-	LoadColor1(entry, ctx, vertex->color);
+	LoadColor1(entry, ctx, vertex->color, FALSE);
 	LoadColor2(entry, ctx, vertex->specular);
 
 	GLfloat v[4];
@@ -171,7 +171,7 @@ NUKED_LOCAL void MesaDrawLVertex(mesa3d_ctx_t *ctx, LPD3DLVERTEX vertex)
 		entry->proc.pglMultiTexCoord2f(GL_TEXTURE0, CONV_U_TO_S(vertex->tu), CONV_V_TO_T(vertex->tv));
 	}
 
-	LoadColor1(entry, ctx, vertex->color);
+	LoadColor1(entry, ctx, vertex->color, FALSE);
 	LoadColor2(entry, ctx, vertex->specular);
 
 	entry->proc.pglVertex3f(vertex->x, vertex->y, vertex->z);
@@ -398,7 +398,9 @@ NUKED_LOCAL void MesaFVFRecalc(mesa3d_ctx_t *ctx)
 		}
 
 		TOPIC("SHADER", "shader handle = 0x%X", fvf_code);
+#ifdef DEBUG
 		MesaVSDump(vs);
+#endif
 		MesaVSSetVertex(ctx, vs);
 	}
 
@@ -439,9 +441,10 @@ NUKED_LOCAL void MesaFVFRecalcCoords(mesa3d_ctx_t *ctx)
 	}
 }
 
-
 #define DEF_DIFFUSE  0xFFFFFFFF
 #define DEF_SPECULAR 0x00000000
+
+#if 0
 
 NUKED_INLINE void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, FVF_t *vertex)
 {
@@ -837,6 +840,8 @@ NUKED_FAST void MesaDrawFVFdefaults(mesa3d_ctx_t *ctx)
 	}
 }
 
+#endif
+
 NUKED_FAST void MesaVertexReadStream(mesa3d_ctx_t *ctx, mesa3d_vertex_t *v, int index)
 {
 	int i;
@@ -1214,7 +1219,7 @@ NUKED_FAST void MesaVertexReadBuffer(mesa3d_ctx_t *ctx, mesa3d_vertex_t *v, BYTE
 	}
 	else
 	{
-		v->diffuse = DEF_SPECULAR;
+		v->specular = DEF_SPECULAR;
 	}
 
 	if(ctx->state.vertex.xyzrhw)
@@ -1223,8 +1228,8 @@ NUKED_FAST void MesaVertexReadBuffer(mesa3d_ctx_t *ctx, mesa3d_vertex_t *v, BYTE
 		SV_UNPROJECT(v->xyzw, fv[0], fv[1], fv[2], fv[3]);
 
 		v->normal[0] = 0.0f;
-		v->normal[0] = 0.0f;
-		v->normal[0] = 1.0f;
+		v->normal[1] = 0.0f;
+		v->normal[2] = 1.0f;
 	}
 	else
 	{
@@ -1344,8 +1349,11 @@ NUKED_FAST void MesaVertexDraw(mesa3d_ctx_t *ctx, mesa3d_vertex_t *v)
 	}
 
 	entry->proc.pglNormal3fv(&v->normal[0]);
-	LoadColor1(entry, ctx, v->diffuse);
-	LoadColor2(entry, ctx, v->specular);
+	LoadColor1(entry, ctx, v->diffuse, ctx->state.vertex.type.diffuse == MESA_VDT_D3DCOLOR ? FALSE : TRUE);
+	if(ctx->state.vertex.type.specular == MESA_VDT_D3DCOLOR)
+	{
+		LoadColor2(entry, ctx, v->specular);
+	}
 
 	entry->proc.pglVertex4fv(&v->xyzw[0]);
 }
@@ -1414,6 +1422,39 @@ NUKED_LOCAL void MesaVertexDrawStream(mesa3d_ctx_t *ctx, GLenum gltype, DWORD st
 #define VERTEX_GET(_n) MesaVertexReadStream(ctx, &v, INDEX_GET(_n))
 
 NUKED_LOCAL void MesaVertexDrawStreamIndex(mesa3d_ctx_t *ctx, GLenum gltype, DWORD start, int base, DWORD cnt, void *index, DWORD index_stride8)
+{
+	TOPIC("GL", "glBegin(%d)", gltype);
+	mesa3d_entry_t *entry = ctx->entry;
+	mesa3d_vertex_t v;
+	int i;
+
+	WORD  *windex =  (WORD*)index;
+	DWORD *dindex = (DWORD*)index;
+
+	VETREX_DRAW_SWITCH
+}
+
+#undef VERTEX_GET
+#undef INDEX_GET
+
+#define VERTEX_GET(_n) MesaVertexReadBuffer(ctx, &v, ptr, _n, stride)
+
+NUKED_LOCAL void MesaVertexDrawBlock(mesa3d_ctx_t *ctx, GLenum gltype, BYTE *ptr, DWORD start, DWORD cnt, DWORD stride)
+{
+	TOPIC("GL", "glBegin(%d)", gltype);
+	mesa3d_entry_t *entry = ctx->entry;
+	mesa3d_vertex_t v;
+	int i;
+
+	VETREX_DRAW_SWITCH
+}
+
+#undef VERTEX_GET
+
+#define INDEX_GET(_p) (index_stride8 == 4 ? dindex[_p] : ((DWORD)windex[_p]))
+#define VERTEX_GET(_n) MesaVertexReadBuffer(ctx, &v, ptr, INDEX_GET(_n), stride)
+
+NUKED_LOCAL void MesaVertexDrawBlockIndex(mesa3d_ctx_t *ctx, GLenum gltype, BYTE *ptr, DWORD start, DWORD cnt, DWORD stride, void *index, DWORD index_stride8)
 {
 	TOPIC("GL", "glBegin(%d)", gltype);
 	mesa3d_entry_t *entry = ctx->entry;

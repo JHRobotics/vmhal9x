@@ -345,7 +345,7 @@ NUKED_INLINE void draw_fvf(mesa3d_ctx_t *ctx, DWORD fvf)
 
 	if(sr)
 	{
-		MesaDrawFVFdefaults(ctx);
+		//MesaDrawFVFdefaults(ctx);
 		MesaApplyLighting(ctx);
 		MesaApplyMaterial(ctx);
 	}
@@ -455,7 +455,8 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 						D3DHAL_DP2POINTS *points = (D3DHAL_DP2POINTS*)prim;
 						CHECK_DATA2(points->wVStart, points->wCount);
 
-						MesaDrawFVFs(ctx, GL_POINTS, vertices, points->wVStart, points->wCount);
+						//MesaDrawFVFs(ctx, GL_POINTS, vertices, points->wVStart, points->wCount);
+						MesaVertexDrawBlock(ctx, GL_POINTS, vertices, points->wVStart, points->wCount, ctx->state.vertex.stride);
 						prim += sizeof(D3DHAL_DP2POINTS);
 					}
 					RENDER_END;
@@ -477,7 +478,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					CHECK_DATA2(start, inst->wPrimitiveCount*2);
 
 					RENDER_BEGIN(fvf);
-					MesaDrawFVFs(ctx, GL_LINES, vertices, start, inst->wPrimitiveCount*2);
+					MesaVertexDrawBlock(ctx, GL_LINES, vertices, start, inst->wPrimitiveCount*2, ctx->state.vertex.stride);
 					RENDER_END;
 					NEXT_INST(sizeof(D3DHAL_DP2LINELIST));
 					break;
@@ -496,7 +497,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					CHECK_DATA2(start, inst->wPrimitiveCount*1);
 
 					RENDER_BEGIN(fvf);
-					MesaDrawFVFs(ctx, GL_LINE_STRIP, vertices, start, inst->wPrimitiveCount+1);
+					MesaVertexDrawBlock(ctx, GL_LINE_STRIP, vertices, start, inst->wPrimitiveCount+1, ctx->state.vertex.stride);
 					RENDER_END;
 					NEXT_INST(sizeof(D3DHAL_DP2LINESTRIP));
 					break;
@@ -517,7 +518,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					CHECK_DATA2(start, inst->wPrimitiveCount*3);
 
 					RENDER_BEGIN(fvf);
-					MesaDrawFVFs(ctx, GL_TRIANGLES, vertices, start, inst->wPrimitiveCount*3);
+					MesaVertexDrawBlock(ctx, GL_TRIANGLES, vertices, start, inst->wPrimitiveCount*3, ctx->state.vertex.stride);
 					RENDER_END;
 					NEXT_INST(sizeof(D3DHAL_DP2TRIANGLELIST));
 					break;
@@ -541,7 +542,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					CHECK_DATA2(start, inst->wPrimitiveCount+2)
 
 					RENDER_BEGIN(fvf);
-					MesaDrawFVFs(ctx, GL_TRIANGLE_STRIP, vertices, start, inst->wPrimitiveCount+2);
+					MesaVertexDrawBlock(ctx, GL_TRIANGLE_STRIP, vertices, start, inst->wPrimitiveCount+2, ctx->state.vertex.stride);
 					RENDER_END;
 					NEXT_INST(sizeof(D3DHAL_DP2TRIANGLESTRIP));
 					break;
@@ -558,7 +559,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					CHECK_DATA2(start, inst->wPrimitiveCount+2)
 
 					RENDER_BEGIN(fvf);
-					MesaDrawFVFs(ctx, GL_TRIANGLE_FAN, vertices, start, inst->wPrimitiveCount+2);
+					MesaVertexDrawBlock(ctx, GL_TRIANGLE_FAN, vertices, start, inst->wPrimitiveCount+2, ctx->state.vertex.stride);
 					RENDER_END;
 					NEXT_INST(sizeof(D3DHAL_DP2TRIANGLEFAN));
 					break;
@@ -577,14 +578,19 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					entry->proc.pglBegin(GL_LINES);
 					for(i = 0; i < inst->wPrimitiveCount; i++)
 					{
+						mesa3d_vertex_t v;
 #ifdef STRICT_DATA
 						start = ((D3DHAL_DP2INDEXEDLINELIST*)prim)->wV1;
 						CHECK_DATA_BREAK(start);
-						MesaDrawFVFIndex(ctx, vertices, start);
+						//MesaDrawFVFIndex(ctx, vertices, start);
+						MesaVertexReadBuffer(ctx, &v, vertices, start, ctx->state.vertex.stride);
+						MesaVertexDraw(ctx, &v);
 
 						start = ((D3DHAL_DP2INDEXEDLINELIST*)prim)->wV2;
 						CHECK_DATA_BREAK(start);
-						MesaDrawFVFIndex(ctx, vertices, start);
+						//MesaDrawFVFIndex(ctx, vertices, start);
+						MesaVertexReadBuffer(ctx, &v, vertices, start, ctx->state.vertex.stride);
+						MesaVertexDraw(ctx, &v);
 #else
 						WORD s1, s2;
 						s1 = ((D3DHAL_DP2INDEXEDLINELIST*)prim)->wV1;
@@ -592,8 +598,12 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 
 						if(VALID_DATA(s1) && VALID_DATA(s2))
 						{
-							MesaDrawFVFIndex(ctx, vertices, s1);
-							MesaDrawFVFIndex(ctx, vertices, s2);
+							MesaVertexReadBuffer(ctx, &v, vertices, s1, ctx->state.vertex.stride);
+							MesaVertexDraw(ctx, &v);
+							MesaVertexReadBuffer(ctx, &v, vertices, s2, ctx->state.vertex.stride);
+							MesaVertexDraw(ctx, &v);
+							//MesaDrawFVFIndex(ctx, vertices, s1);
+							//MesaDrawFVFIndex(ctx, vertices, s2);
 						}
 #endif
 						prim += sizeof(D3DHAL_DP2INDEXEDLINELIST);
@@ -629,14 +639,19 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					entry->proc.pglBegin(GL_LINE_STRIP);
 					for(i = 0; i < inst->wPrimitiveCount+1; i++)
 					{
+						mesa3d_vertex_t v;
 						start = base + ((D3DHAL_DP2INDEXEDLINESTRIP*)prim)->wV[0];
 #ifdef STRICT_DATA
 						CHECK_DATA_BREAK(start);
-						MesaDrawFVFIndex(ctx, vertices, start);
+						//MesaDrawFVFIndex(ctx, vertices, start);
+						MesaVertexReadBuffer(ctx, &v, vertices, start, ctx->state.vertex.stride);
+						MesaVertexDraw(ctx, &v);
 #else
 						if(VALID_DATA(start))
 						{
-							MesaDrawFVFIndex(ctx, vertices, start);
+							//MesaDrawFVFIndex(ctx, vertices, start);
+							MesaVertexReadBuffer(ctx, &v, vertices, start, ctx->state.vertex.stride);
+							MesaVertexDraw(ctx, &v);
 						}
 #endif
 						prim += sizeof(WORD);
@@ -672,18 +687,25 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					entry->proc.pglBegin(GL_TRIANGLES);
 					for(i = 0; i < inst->wPrimitiveCount; i++)
 					{
+						mesa3d_vertex_t v;
 #ifdef STRICT_DATA
 						start = ((D3DHAL_DP2INDEXEDTRIANGLELIST*)prim)->wV3;
 						CHECK_DATA_BREAK(start);
-						MesaDrawFVFIndex(ctx, vertices, start);
+						//MesaDrawFVFIndex(ctx, vertices, start);
+						MesaVertexReadBuffer(ctx, &v, vertices, start, ctx->state.vertex.stride);
+						MesaVertexDraw(ctx, &v);
 
 						start = ((D3DHAL_DP2INDEXEDTRIANGLELIST*)prim)->wV2;
 						CHECK_DATA_BREAK(start);
-						MesaDrawFVFIndex(ctx, vertices, start);
+						//MesaDrawFVFIndex(ctx, vertices, start);
+						MesaVertexReadBuffer(ctx, &v, vertices, start, ctx->state.vertex.stride);
+						MesaVertexDraw(ctx, &v);
 
 						start = ((D3DHAL_DP2INDEXEDTRIANGLELIST*)prim)->wV1;
 						CHECK_DATA_BREAK(start);
-						MesaDrawFVFIndex(ctx, vertices, start);
+						//MesaDrawFVFIndex(ctx, vertices, start);
+						MesaVertexReadBuffer(ctx, &v, vertices, start, ctx->state.vertex.stride);
+						MesaVertexDraw(ctx, &v);
 #else
 						WORD s1, s2, s3;
 						s1 = ((D3DHAL_DP2INDEXEDTRIANGLELIST*)prim)->wV3;
@@ -691,9 +713,15 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					  s3 = ((D3DHAL_DP2INDEXEDTRIANGLELIST*)prim)->wV1;
 					  if(VALID_DATA(s1) && VALID_DATA(s2) && VALID_DATA(s3))
 					  {
-							MesaDrawFVFIndex(ctx, vertices, s1);
-							MesaDrawFVFIndex(ctx, vertices, s2);
-							MesaDrawFVFIndex(ctx, vertices, s3);
+							//MesaDrawFVFIndex(ctx, vertices, s1);
+							//MesaDrawFVFIndex(ctx, vertices, s2);
+							//MesaDrawFVFIndex(ctx, vertices, s3);
+							MesaVertexReadBuffer(ctx, &v, vertices, s1, ctx->state.vertex.stride);
+							MesaVertexDraw(ctx, &v);
+							MesaVertexReadBuffer(ctx, &v, vertices, s2, ctx->state.vertex.stride);
+							MesaVertexDraw(ctx, &v);
+							MesaVertexReadBuffer(ctx, &v, vertices, s3, ctx->state.vertex.stride);
+							MesaVertexDraw(ctx, &v);
 					  }
 #endif
 						prim += sizeof(D3DHAL_DP2INDEXEDTRIANGLELIST);
@@ -735,12 +763,15 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					RENDER_BEGIN(fvf);
 					if(count >= 3)
 					{
+						mesa3d_vertex_t v;
 						MesaReverseCull(ctx);
 
 						entry->proc.pglBegin(GL_TRIANGLE_STRIP);
 						for(i = 0; i < count; i++)
 						{
-							MesaDrawFVFIndex(ctx, vertices, base+pos[i]);
+							MesaVertexReadBuffer(ctx, &v, vertices, base+pos[i], ctx->state.vertex.stride);
+							MesaVertexDraw(ctx, &v);
+							//MesaDrawFVFIndex(ctx, vertices, base+pos[i]);
 						}
 						entry->proc.pglEnd();
 
@@ -750,6 +781,8 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					NEXT_INST(0);
 					break;
 				COMMAND(D3DDP2OP_INDEXEDTRIANGLEFAN)
+				{
+					mesa3d_vertex_t v;
 					// The D3DHAL_DP2INDEXEDTRIANGLEFAN structure is used to
 					// draw indexed triangle fans. The sequence of triangles
 					// rendered will be (wV[1], wV[2],wV[0]), (wV[2], wV[3],
@@ -769,16 +802,22 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 
 					RENDER_BEGIN(fvf);
 					entry->proc.pglBegin(GL_TRIANGLE_FAN);
-					MesaDrawFVFIndex(ctx, vertices, base+pos[0]);
+					//MesaDrawFVFIndex(ctx, vertices, base+pos[0]);
+					MesaVertexReadBuffer(ctx, &v, vertices, base+pos[0], ctx->state.vertex.stride);
+					MesaVertexDraw(ctx, &v);
 					for(i = inst->wPrimitiveCount+1; i >= 1; i--)
 					{
 #ifdef STRICT_DATA
 						CHECK_DATA_BREAK(base+pos[i]);
-						MesaDrawFVFIndex(ctx, vertices, base+pos[i]);
+						//MesaDrawFVFIndex(ctx, vertices, base+pos[i]);
+						MesaVertexReadBuffer(ctx, &v, vertices, base+pos[i], ctx->state.vertex.stride);
+						MesaVertexDraw(ctx, &v);
 #else
 						if(VALID_DATA(base+pos[i]))
 						{
-							MesaDrawFVFIndex(ctx, vertices, base+pos[i]);
+							//MesaDrawFVFIndex(ctx, vertices, base+pos[i]);
+							MesaVertexReadBuffer(ctx, &v, vertices, base+pos[i], ctx->state.vertex.stride);
+							MesaVertexDraw(ctx, &v);
 						}
 #endif
 					}
@@ -790,6 +829,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					RENDER_END;
 					NEXT_INST(0);
 					break;
+				}
 				COMMAND(D3DDP2OP_INDEXEDTRIANGLELIST2)
 					// The D3DHAL_DP2INDEXEDTRIANGLELIST2 structure specifies
 					// unconnected triangles to render with a vertex buffer.
@@ -812,18 +852,25 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					entry->proc.pglBegin(GL_TRIANGLES);
 					for(i = inst->wPrimitiveCount; i > 0; i--)
 					{
+						mesa3d_vertex_t v;
 #ifdef STRICT_DATA
 						start = base + ((D3DHAL_DP2INDEXEDTRIANGLELIST2*)prim)->wV3;
 						CHECK_DATA_BREAK(start);
-						MesaDrawFVFIndex(ctx, vertices, start);
+						//MesaDrawFVFIndex(ctx, vertices, start);
+						MesaVertexReadBuffer(ctx, &v, vertices, start, ctx->state.vertex.stride);
+						MesaVertexDraw(ctx, &v);
 
 						start = base + ((D3DHAL_DP2INDEXEDTRIANGLELIST2*)prim)->wV2;
 						CHECK_DATA_BREAK(start);
-						MesaDrawFVFIndex(ctx, vertices, start);
+						//MesaDrawFVFIndex(ctx, vertices, start);
+						MesaVertexReadBuffer(ctx, &v, vertices, start, ctx->state.vertex.stride);
+						MesaVertexDraw(ctx, &v);
 
 						start = base + ((D3DHAL_DP2INDEXEDTRIANGLELIST2*)prim)->wV1;
 						CHECK_DATA_BREAK(start);
-						MesaDrawFVFIndex(ctx, vertices, start);
+						//MesaDrawFVFIndex(ctx, vertices, start);
+						MesaVertexReadBuffer(ctx, &v, vertices, start, ctx->state.vertex.stride);
+						MesaVertexDraw(ctx, &v);
 #else
 						WORD s1, s2, s3;
 						s1 = base + ((D3DHAL_DP2INDEXEDTRIANGLELIST2*)prim)->wV3;
@@ -832,9 +879,15 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 
 						if(VALID_DATA(s1) && VALID_DATA(s2) && VALID_DATA(s3))
 						{
-							MesaDrawFVFIndex(ctx, vertices, s1);
-							MesaDrawFVFIndex(ctx, vertices, s2);
-							MesaDrawFVFIndex(ctx, vertices, s3);
+							//MesaDrawFVFIndex(ctx, vertices, s1);
+							//MesaDrawFVFIndex(ctx, vertices, s2);
+							//MesaDrawFVFIndex(ctx, vertices, s3);
+							MesaVertexReadBuffer(ctx, &v, vertices, s1, ctx->state.vertex.stride);
+							MesaVertexDraw(ctx, &v);
+							MesaVertexReadBuffer(ctx, &v, vertices, s2, ctx->state.vertex.stride);
+							MesaVertexDraw(ctx, &v);
+							MesaVertexReadBuffer(ctx, &v, vertices, s3, ctx->state.vertex.stride);
+							MesaVertexDraw(ctx, &v);
 						}
 #endif
 						prim += sizeof(D3DHAL_DP2INDEXEDTRIANGLELIST2);
@@ -869,14 +922,19 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					entry->proc.pglBegin(GL_LINES);
 					for(i = 0; i < inst->wPrimitiveCount; i++)
 					{
+						mesa3d_vertex_t v;
 #ifdef STRICT_DATA
 						start = base + ((D3DHAL_DP2INDEXEDLINELIST*)prim)->wV1;
 						CHECK_DATA_BREAK(start);
-						MesaDrawFVFIndex(ctx, vertices, start);
+						//MesaDrawFVFIndex(ctx, vertices, start);
+						MesaVertexReadBuffer(ctx, &v, vertices, start, ctx->state.vertex.stride);
+						MesaVertexDraw(ctx, &v);
 
 						start = base + ((D3DHAL_DP2INDEXEDLINELIST*)prim)->wV2;
 						CHECK_DATA_BREAK(start);
-						MesaDrawFVFIndex(ctx, vertices, start);
+						//MesaDrawFVFIndex(ctx, vertices, start);
+						MesaVertexReadBuffer(ctx, &v, vertices, start, ctx->state.vertex.stride);
+						MesaVertexDraw(ctx, &v);
 #else
 						WORD s1, s2;
 						s1 = base + ((D3DHAL_DP2INDEXEDLINELIST*)prim)->wV1;
@@ -884,8 +942,12 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 
 						if(VALID_DATA(s1) && VALID_DATA(s2))
 						{
-							MesaDrawFVFIndex(ctx, vertices, s1);
-							MesaDrawFVFIndex(ctx, vertices, s2);
+							MesaVertexReadBuffer(ctx, &v, vertices, s1, ctx->state.vertex.stride);
+							MesaVertexDraw(ctx, &v);
+							MesaVertexReadBuffer(ctx, &v, vertices, s2, ctx->state.vertex.stride);
+							MesaVertexDraw(ctx, &v);
+							//MesaDrawFVFIndex(ctx, vertices, s1);
+							//MesaDrawFVFIndex(ctx, vertices, s2);
 						}
 #endif
 						prim += sizeof(D3DHAL_DP2INDEXEDLINELIST);
@@ -918,7 +980,9 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					CHECK_LIMITS_SIZE(ctx->state.vertex.stride*count);
 
 					RENDER_BEGIN(fvf);
-	    		MesaDrawFVFs(ctx, GL_TRIANGLE_FAN, prim, 0, count);
+	    		//MesaDrawFVFs(ctx, GL_TRIANGLE_FAN, prim, 0, count);
+	    		MesaVertexDrawBlock(ctx, GL_TRIANGLE_FAN, prim, 0, count, ctx->state.vertex.stride);
+
 					prim += ctx->state.vertex.stride * count;
 					//PRIM_ALIGN;
 					RENDER_END;
@@ -941,7 +1005,8 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					CHECK_LIMITS_SIZE(ctx->state.vertex.stride * count);
 
 					RENDER_BEGIN(fvf);
-					MesaDrawFVFs(ctx, GL_LINES, prim, 0, count);
+					//MesaDrawFVFs(ctx, GL_LINES, prim, 0, count);
+					MesaVertexDrawBlock(ctx, GL_LINES, prim, 0, count, ctx->state.vertex.stride);
 					prim += ctx->state.vertex.stride * count;
 					//PRIM_ALIGN;
 					RENDER_END;
@@ -1670,7 +1735,8 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 
 						if(verticesDX8 && verticesDX8_stride)
 						{
-							MesaDrawFVFBlock(ctx, GL_TRIANGLE_FAN, verticesDX8, fan->FirstVertexOffset, MesaConvPrimVertex(D3DPT_TRIANGLEFAN, fan->PrimitiveCount), verticesDX8_stride);
+							//MesaDrawFVFBlock(ctx, GL_TRIANGLE_FAN, verticesDX8, fan->FirstVertexOffset, MesaConvPrimVertex(D3DPT_TRIANGLEFAN, fan->PrimitiveCount), verticesDX8_stride);
+							MesaVertexDrawBlock(ctx, GL_TRIANGLE_FAN, verticesDX8+fan->FirstVertexOffset, 0, MesaConvPrimVertex(D3DPT_TRIANGLEFAN, fan->PrimitiveCount), verticesDX8_stride);
 						}
 
 						prim += sizeof(D3DHAL_CLIPPEDTRIANGLEFAN);
@@ -1695,12 +1761,16 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 								Stream zero contains transform and lit vertices and is the
 								only stream that should be accessed.
 							*/
-							void *verticesDX8 = ctx->vstream[0].mem.ptr;
+							BYTE *verticesDX8 = ctx->vstream[0].mem.ptr;
 							DWORD verticesDX8_stride = ctx->vstream[0].stride;
 
 							if(verticesDX8 && verticesDX8_stride)
 							{
+#if 0
 								MesaDrawFVFBlock(ctx, prim, verticesDX8, draw->FirstVertexOffset, MesaConvPrimVertex(draw->primType, draw->PrimitiveCount), verticesDX8_stride);
+#else
+								MesaVertexDrawBlock(ctx, prim, verticesDX8+draw->FirstVertexOffset, 0, MesaConvPrimVertex(draw->primType, draw->PrimitiveCount), verticesDX8_stride);
+#endif
 							}
 						}
 					}
@@ -1723,15 +1793,21 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 								transform and lit vertices and is the only stream that should be accessed.
 								The indexed primitives are specified by one or more 
 							*/
-							void *verticesDX8 = ctx->vstream[0].mem.ptr;
+							BYTE *verticesDX8 = ctx->vstream[0].mem.ptr;
 							DWORD verticesDX8_stride = ctx->vstream[0].stride;
 
 							if(verticesDX8 && verticesDX8_stride && ctx->state.bind_indices)
 							{
+#if 0
 								MesaDrawFVFBlockIndex(ctx, prim,
 									((BYTE*)verticesDX8)+draw->BaseVertexOffset, verticesDX8_stride,
 									((BYTE*)ctx->state.bind_indices)+draw->StartIndexOffset, ctx->state.bind_indices_stride,
 									0, MesaConvPrimVertex(draw->primType, draw->PrimitiveCount));
+#else
+								MesaVertexDrawBlockIndex(ctx, prim,
+									verticesDX8+draw->BaseVertexOffset, 0, MesaConvPrimVertex(draw->primType, draw->PrimitiveCount), verticesDX8_stride,
+									((BYTE*)ctx->state.bind_indices)+draw->StartIndexOffset, ctx->state.bind_indices_stride);
+#endif
 							}
 						}
 					}

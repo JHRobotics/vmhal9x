@@ -128,6 +128,7 @@ NUKED_LOCAL mesa_dx_shader_t *MesaVSGet(mesa3d_ctx_t *ctx, DWORD handle)
 	return NULL;
 }
 
+#ifdef DEBUG
 NUKED_LOCAL void MesaVSDump(mesa_dx_shader_t *vs)
 {
 	size_t i;
@@ -167,6 +168,7 @@ NUKED_LOCAL void MesaVSDump(mesa_dx_shader_t *vs)
 		TOPIC("SHADER", "CODE (0): -");
 	}
 }
+#endif
 
 NUKED_FAST void D3DVSD2Mesa(DWORD vsdt, mesa_vertex_data_t *out_dt, DWORD *out_dsize)
 {

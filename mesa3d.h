@@ -650,15 +650,14 @@ NUKED_LOCAL void MesaDrawLVertex(mesa3d_ctx_t *ctx, LPD3DLVERTEX vertex);
 NUKED_LOCAL void MesaDrawTLVertex(mesa3d_ctx_t *ctx, LPD3DTLVERTEX vertex);
 /* DX6 */
 NUKED_LOCAL void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD type/*, DWORD size*/);
-NUKED_LOCAL void MesaDrawFVFIndex(mesa3d_ctx_t *ctx, void *vertices, int index);
 NUKED_LOCAL void MesaFVFRecalc(mesa3d_ctx_t *ctx);
 NUKED_LOCAL void MesaFVFRecalcCoords(mesa3d_ctx_t *ctx);
 
 /* drawing sequence (needs GL_BLOCK) */
-NUKED_FAST  void MesaDrawFVFdefaults(mesa3d_ctx_t *ctx);
-NUKED_LOCAL void MesaDrawFVFs(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vertices, DWORD start, DWORD cnt);
-NUKED_LOCAL void MesaDrawFVFBlock(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vertices, DWORD offset, DWORD cnt, DWORD stride);
-NUKED_LOCAL void MesaDrawFVFBlockIndex(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vertices, DWORD stride, void *index, DWORD index_stride, DWORD start, DWORD cnt);
+//NUKED_FAST  void MesaDrawFVFdefaults(mesa3d_ctx_t *ctx);
+//NUKED_LOCAL void MesaDrawFVFs(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vertices, DWORD start, DWORD cnt);
+//NUKED_LOCAL void MesaDrawFVFBlock(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vertices, DWORD offset, DWORD cnt, DWORD stride);
+//NUKED_LOCAL void MesaDrawFVFBlockIndex(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vertices, DWORD stride, void *index, DWORD index_stride, DWORD start, DWORD cnt);
 
 /* scene capture, need GL block */
 NUKED_LOCAL void MesaSceneBegin(mesa3d_ctx_t *ctx);
@@ -699,6 +698,8 @@ NUKED_FAST void MesaVertexDraw(mesa3d_ctx_t *ctx, mesa3d_vertex_t *v);
 /* need GL block */
 NUKED_LOCAL void MesaVertexDrawStream(mesa3d_ctx_t *ctx, GLenum gltype, DWORD start, DWORD cnt);
 NUKED_LOCAL void MesaVertexDrawStreamIndex(mesa3d_ctx_t *ctx, GLenum gltype, DWORD start, int base, DWORD cnt, void *index, DWORD index_stride8);
+NUKED_LOCAL void MesaVertexDrawBlock(mesa3d_ctx_t *ctx, GLenum gltype, BYTE *ptr, DWORD start, DWORD cnt, DWORD stride);
+NUKED_LOCAL void MesaVertexDrawBlockIndex(mesa3d_ctx_t *ctx, GLenum gltype, BYTE *ptr, DWORD start, DWORD cnt, DWORD stride, void *index, DWORD index_stride8);
 
 /* chroma to alpha conversion */
 NUKED_LOCAL void *MesaChroma32(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
