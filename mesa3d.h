@@ -196,7 +196,12 @@ typedef struct mesa_vertex_stream
 	DWORD VBHandle; /* DX surface ID */
 //	surface_id sid;
 	DWORD stride;
-	void *mem; /* direct pointer to (surface) memory */
+	union
+	{
+		BYTE *ptr;
+		DWORD *dw;
+		GLfloat *fv;
+	} mem;  /* direct pointer to (surface) memory */
 } mesa_vertex_stream_t;
 
 typedef struct mesa_rec_tmu
@@ -336,7 +341,7 @@ typedef struct mesa3d_ctx
 		} fog;
 		struct {
 			DWORD code; /* fvf code or shader handle */
-			DWORD stride;
+			DWORD stride; /* only valid for fvf code */
 			BOOL shader; /* is vertex shader */
 			BOOL xyzrhw; /* software transformed vertex in screen coordinates */
 			struct {
@@ -353,6 +358,18 @@ typedef struct mesa3d_ctx
 				mesa_vertex_data_t specular;
 				mesa_vertex_data_t texcoords[MESA_TMU_MAX];
 			} type;
+			struct {
+				GLfloat *xyzw;
+				DWORD    xyzw_stride32;
+				GLfloat *normal;
+				DWORD    normal_stride32;
+				DWORD   *diffuse;
+				DWORD    diffuse_stride32;
+				DWORD   *specular;
+				DWORD    specular_stride32;
+				GLfloat *texcoords[MESA_TMU_MAX];
+				DWORD    texcoords_stride32[MESA_TMU_MAX];
+			} ptr;
 			int betas;
 		} vertex;
 		struct {
@@ -392,10 +409,11 @@ typedef struct mesa3d_ctx
 		struct mesa3d_tmustate tmu[MESA_TMU_MAX];
 		BOOL recording;
 		mesa_rec_state_t *record;
-		int bind_vertices; /* DX8 vertex stream */
+		/*int bind_vertices;*/ /* DX8 vertex stream */
 		void *bind_indices; /* DX8 index stream */
 		DWORD bind_indices_stride; /* DX8 index stream */
 		DWORD fvf_shader;  /* DX8 FVF code set by SETVERTEXSHADER */
+		BOOL  fvf_shader_dirty; /* some stream changes, so need recals pointers */
 		D3DSTATEBLOCKTYPE record_type;
 		mesa_rec_state_t current;
 	} state;
@@ -453,6 +471,15 @@ typedef struct mesa3d_ctx
 	
 	mesa_pal8_t *first_pal;
 } mesa3d_ctx_t;
+
+typedef struct _mesa3d_vertex_t
+{
+	GLfloat xyzw[4];
+	GLfloat normal[3];
+	DWORD   diffuse;
+	DWORD   specular;
+	GLfloat texcoords[MESA_TMU_MAX][4];
+} mesa3d_vertex_t;
 
 /* maximum for 24bit signed zbuff = (1<<23) - 1 */
 #define GL_WRANGE_MAX 8388607
@@ -663,6 +690,15 @@ NUKED_LOCAL void MesaTLRecalcModelview(mesa3d_ctx_t *ctx);
 /* mesa DX to GL constants */
 NUKED_FAST GLenum MesaConvPrimType(D3DPRIMITIVETYPE dx_type);
 NUKED_FAST DWORD MesaConvPrimVertex(D3DPRIMITIVETYPE dx_type, DWORD prim_count);
+
+/* unified vertex */
+NUKED_FAST void MesaVertexReadStream(mesa3d_ctx_t *ctx, mesa3d_vertex_t *v, int index);
+NUKED_FAST void MesaVertexReadBuffer(mesa3d_ctx_t *ctx, mesa3d_vertex_t *v, BYTE *buf, int index, DWORD stride8);
+/* need GL block + glBegin */
+NUKED_FAST void MesaVertexDraw(mesa3d_ctx_t *ctx, mesa3d_vertex_t *v);
+/* need GL block */
+NUKED_LOCAL void MesaVertexDrawStream(mesa3d_ctx_t *ctx, GLenum gltype, DWORD start, DWORD cnt);
+NUKED_LOCAL void MesaVertexDrawStreamIndex(mesa3d_ctx_t *ctx, GLenum gltype, DWORD start, int base, DWORD cnt, void *index, DWORD index_stride8);
 
 /* chroma to alpha conversion */
 NUKED_LOCAL void *MesaChroma32(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);

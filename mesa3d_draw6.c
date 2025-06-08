@@ -332,6 +332,11 @@ NUKED_INLINE void draw_fvf(mesa3d_ctx_t *ctx, DWORD fvf)
 		MesaFVFSet(ctx, fvf);
 		sr = TRUE;
 	}
+	else if(ctx->state.fvf_shader_dirty)
+	{
+		MesaFVFSet(ctx, fvf);
+		// sr = FALSE;
+	}
 
 	if(ctx->state.vertex.xyzrhw)
 	{
@@ -415,10 +420,14 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 	WORD *pos;
 
 	/* update user memory vertex if set */
-	if(ctx->vstream[ctx->state.bind_vertices].VBHandle == 0
-		&& ctx->vstream[ctx->state.bind_vertices].mem != NULL)
+	if(ctx->vstream[0].VBHandle == 0
+		&& ctx->vstream[0].mem.ptr != NULL)
 	{
-		ctx->vstream[ctx->state.bind_vertices].mem = UMVertices;
+		if(ctx->vstream[0].mem.ptr != UMVertices)
+		{
+			ctx->state.fvf_shader_dirty = TRUE;
+			ctx->vstream[0].mem.ptr = UMVertices;
+		}
 	}
 
 	while((LPBYTE)inst < cmdBufferEnd)
@@ -1478,10 +1487,11 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 //	    					ctx->vstream[vsrc->dwStream].sid = sid;
 									ctx->vstream[vsrc->dwStream].VBHandle = vsrc->dwVBHandle;
 									ctx->vstream[vsrc->dwStream].stride = vsrc->dwStride;
-									ctx->vstream[vsrc->dwStream].mem = buffer;
+									ctx->vstream[vsrc->dwStream].mem.ptr = buffer;
+									ctx->state.fvf_shader_dirty = TRUE;
 //									ctx->state.bind_vertices = vsrc->dwStream;
 
-									TRACE("D3DHAL_DP2SETSTREAMSOURCE: stream=%d mem=0x%X", vsrc->dwStream, ctx->vstream[vsrc->dwStream].mem);
+									TRACE("D3DHAL_DP2SETSTREAMSOURCE: stream=%d mem=0x%X", vsrc->dwStream, ctx->vstream[vsrc->dwStream].mem.ptr);
 								}
 								else
 								{
@@ -1491,7 +1501,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 							else
 							{
 								ctx->vstream[vsrc->dwStream].VBHandle = 0;
-								ctx->vstream[vsrc->dwStream].mem = NULL;
+								ctx->vstream[vsrc->dwStream].mem.ptr = NULL;
 								TRACE("D3DHAL_DP2SETSTREAMSOURCE: stream=%d invalidated", vsrc->dwStream);
 							}
 						}
@@ -1512,7 +1522,8 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 						{
 							ctx->vstream[um->dwStream].VBHandle = 0;
 							ctx->vstream[um->dwStream].stride   = um->dwStride;
-							ctx->vstream[um->dwStream].mem      = UMVertices;
+							ctx->vstream[um->dwStream].mem.ptr  = UMVertices;
+							ctx->state.fvf_shader_dirty = TRUE;
 
 //							ctx->state.bind_vertices = um->dwStream;
 						}
@@ -1550,9 +1561,12 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 						GLenum prim = MesaConvPrimType(draw->primType);
 						if(prim != GL_NOOP)
 						{
+#if 1
 							/* using active stream */
-							void *verticesDX8 = ctx->vstream[ctx->state.bind_vertices].mem;
-							DWORD verticesDX8_stride = ctx->vstream[ctx->state.bind_vertices].stride;
+							MesaVertexDrawStream(ctx, prim, draw->VStart, MesaConvPrimVertex(draw->primType, draw->PrimitiveCount));
+#else
+							void *verticesDX8 = ctx->vstream[0].mem.ptr;
+							DWORD verticesDX8_stride = ctx->vstream[0].stride;
 
 							if(verticesDX8 && verticesDX8_stride)
 							{
@@ -1563,6 +1577,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 							{
 								WARN("verticesDX8 = %p, verticesDX8_stride=%d", verticesDX8, verticesDX8_stride);
 							}
+#endif
 						}
 					}
 					RENDER_END;
@@ -1580,8 +1595,17 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 						if(prim != GL_NOOP)
 						{
 							/* using active stream */
-							void *verticesDX8 = ctx->vstream[ctx->state.bind_vertices].mem;
-							DWORD verticesDX8_stride = ctx->vstream[ctx->state.bind_vertices].stride;
+#if 1
+							if(ctx->state.bind_indices)
+							{
+								MesaVertexDrawStreamIndex(ctx, prim,
+									draw->StartIndex, draw->BaseVertexIndex, MesaConvPrimVertex(draw->primType, draw->PrimitiveCount),
+									ctx->state.bind_indices, ctx->state.bind_indices_stride
+								);
+							}
+#else
+							void *verticesDX8 = ctx->vstream[0].mem.ptr;
+							DWORD verticesDX8_stride = ctx->vstream[0].stride;
 
 							if(ctx->state.bind_indices && verticesDX8 && verticesDX8_stride)
 							{
@@ -1590,6 +1614,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 									ctx->state.bind_indices, ctx->state.bind_indices_stride,
 									draw->StartIndex, MesaConvPrimVertex(draw->primType, draw->PrimitiveCount));
 							}
+#endif
 						}
 					}
 					RENDER_END;
@@ -1640,7 +1665,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					for(i = 0; i < inst->wStateCount; i++)
 					{
 						D3DHAL_CLIPPEDTRIANGLEFAN *fan = (D3DHAL_CLIPPEDTRIANGLEFAN*)prim;
-						void *verticesDX8 = ctx->vstream[0].mem;
+						void *verticesDX8 = ctx->vstream[0].mem.ptr;
 						DWORD verticesDX8_stride = ctx->vstream[0].stride;
 
 						if(verticesDX8 && verticesDX8_stride)
@@ -1670,7 +1695,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 								Stream zero contains transform and lit vertices and is the
 								only stream that should be accessed.
 							*/
-							void *verticesDX8 = ctx->vstream[0].mem;
+							void *verticesDX8 = ctx->vstream[0].mem.ptr;
 							DWORD verticesDX8_stride = ctx->vstream[0].stride;
 
 							if(verticesDX8 && verticesDX8_stride)
@@ -1698,7 +1723,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 								transform and lit vertices and is the only stream that should be accessed.
 								The indexed primitives are specified by one or more 
 							*/
-							void *verticesDX8 = ctx->vstream[0].mem;
+							void *verticesDX8 = ctx->vstream[0].mem.ptr;
 							DWORD verticesDX8_stride = ctx->vstream[0].stride;
 
 							if(verticesDX8 && verticesDX8_stride && ctx->state.bind_indices)
@@ -2131,14 +2156,14 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 						prim += sizeof(D3DHAL_DP2VERTEXSHADER);
 						//mesa_dx_shader_t *vs = MesaVSGet(ctx, shader->dwHandle);
 						//if(vs == NULL)
-						if(RDVSD_ISLEGACY(shader->dwHandle))
-						{
+						//if(RDVSD_ISLEGACY(shader->dwHandle))
+						//{
 							if(ctx->state.record != NULL)
 							{
 								ctx->state.record->vertexshader = shader->dwHandle;
 								ctx->state.record->extraset[0] |= 1 << MESA_REC_EXTRA_VERTEXSHADER;
 							}
-						}
+						//}
 					}
 					NEXT_INST(0);
 					break;

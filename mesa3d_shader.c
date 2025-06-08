@@ -228,7 +228,9 @@ NUKED_LOCAL BOOL MesaVSSetVertex(mesa3d_ctx_t *ctx, mesa_dx_shader_t *vs)
 	DWORD offset = 0;
 	int p;
 
-	ctx->state.bind_vertices = 0;
+	DWORD stream = 0;
+
+	//ctx->state.bind_vertices = 0;
 	ctx->state.vertex.type.xyzw     = MESA_VDT_NONE;
 	ctx->state.vertex.type.normal   = MESA_VDT_NONE;
 	ctx->state.vertex.type.diffuse  = MESA_VDT_NONE;
@@ -251,8 +253,12 @@ NUKED_LOCAL BOOL MesaVSSetVertex(mesa3d_ctx_t *ctx, mesa_dx_shader_t *vs)
 				DWORD stream_id = (*decl) ^ (D3DVSD_TOKEN_STREAM << D3DVSD_TOKENTYPESHIFT);
 				if(stream_id < MESA_MAX_STREAM)
 				{
-					/* this is only way how change active stream */
-					ctx->state.bind_vertices = stream_id;
+					/* this is only way how read from another stream then 0 */
+					if(ctx->vstream[stream_id].mem.ptr != NULL)
+					{
+						stream = stream_id;
+						offset = 0;
+					}
 				}
 				break;
 			}
@@ -266,27 +272,37 @@ NUKED_LOCAL BOOL MesaVSSetVertex(mesa3d_ctx_t *ctx, mesa_dx_shader_t *vs)
 					case D3DVSDE_POSITION:
 						D3DVSD2Mesa(data_type, &ctx->state.vertex.type.xyzw, &next);
 						ctx->state.vertex.pos.xyzw = offset;
+						ctx->state.vertex.ptr.xyzw = &ctx->vstream[stream].mem.fv[offset];
+						ctx->state.vertex.ptr.xyzw_stride32 = ctx->vstream[stream].stride/4;
 						offset += next;
 						break;
 					case D3DVSDE_NORMAL:
 						D3DVSD2Mesa(data_type, &ctx->state.vertex.type.normal, &next);
 						ctx->state.vertex.pos.normal = offset;
+						ctx->state.vertex.ptr.normal = &ctx->vstream[stream].mem.fv[offset];
+						ctx->state.vertex.ptr.normal_stride32 = ctx->vstream[stream].stride/4;
 						offset += next;
 						break;
 					case D3DVSDE_DIFFUSE:
 						D3DVSD2Mesa(data_type, &ctx->state.vertex.type.diffuse, &next);
 						ctx->state.vertex.pos.diffuse = offset;
+						ctx->state.vertex.ptr.diffuse = &ctx->vstream[stream].mem.dw[offset];
+						ctx->state.vertex.ptr.diffuse_stride32 = ctx->vstream[stream].stride/4;
 						offset += next;
 						break;
 					case D3DVSDE_SPECULAR:
 						D3DVSD2Mesa(data_type, &ctx->state.vertex.type.specular, &next);
 						ctx->state.vertex.pos.specular = offset;
+						ctx->state.vertex.ptr.specular = &ctx->vstream[stream].mem.dw[offset];
+						ctx->state.vertex.ptr.specular_stride32 = ctx->vstream[stream].stride/4;
 						offset += next;
 						break;
 					case D3DVSDE_TEXCOORD0...D3DVSDE_TEXCOORD7:
 						p = vertex_type - D3DVSDE_TEXCOORD0;
 						D3DVSD2Mesa(data_type, &ctx->state.vertex.type.texcoords[p], &next);
 						ctx->state.vertex.pos.texcoords[p] = offset;
+						ctx->state.vertex.ptr.texcoords[p] = &ctx->vstream[stream].mem.fv[offset];
+						ctx->state.vertex.ptr.texcoords_stride32[p] = ctx->vstream[stream].stride/4;
 						offset += next;
 						break;
 					default:
@@ -305,7 +321,7 @@ NUKED_LOCAL BOOL MesaVSSetVertex(mesa3d_ctx_t *ctx, mesa_dx_shader_t *vs)
 		}
 	}
 
-	ctx->state.vertex.stride = offset * sizeof(D3DVALUE);
+	ctx->state.vertex.stride = 0;//offset * sizeof(D3DVALUE);
 	ctx->state.vertex.shader = TRUE;
 	ctx->state.vertex.xyzrhw = FALSE;
 

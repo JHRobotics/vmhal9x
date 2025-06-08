@@ -1317,9 +1317,9 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 	entry->proc.pglDepthFunc(GL_LESS);
 	MesaStencilApply(ctx);
 
-	ctx->state.bind_vertices = 0;
+	//ctx->state.bind_vertices = 0;
 	ctx->state.bind_indices = NULL;
-	ctx->vstream[0].mem = NULL;
+	ctx->vstream[0].mem.ptr = NULL;
 
 	ctx->shader.vs = NULL;
 

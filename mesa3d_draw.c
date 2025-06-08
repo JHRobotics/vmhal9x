@@ -193,17 +193,34 @@ NUKED_LOCAL void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD fvf_code)
 {
 	if(ctx->state.vertex.code == fvf_code)
 	{
-		/* not need to recalculate */
-		return;
+		if(!ctx->state.fvf_shader_dirty)
+		{
+			/* not need to recalculate */
+			return;
+		}
 	}
 
 	ctx->state.vertex.code = fvf_code;
 	MesaFVFRecalc(ctx);
+	ctx->state.fvf_shader_dirty = FALSE;
 
 	TOPIC("SHADER", "MesaFVFSet type=0x%X, realsize=%d",
 		fvf_code, ctx->state.vertex.stride
 	);
 }
+
+#define VSTREAM0_POS(_n, _pos, _t) \
+	if(ctx->vstream[0].mem.ptr != NULL){ \
+		ctx->state.vertex.ptr._n = &ctx->vstream[0].mem._t[_pos]; \
+		ctx->state.vertex.ptr._n ## _stride32 = ctx->vstream[0].stride/4; \
+	}else{ \
+		ctx->state.vertex.ptr._n = NULL; \
+		ctx->state.vertex.ptr._n ## _stride32 = 0; \
+	}
+
+#define VSTREAM0_NULL(_n) \
+	ctx->state.vertex.ptr._n = NULL; \
+	ctx->state.vertex.ptr._n ## _stride32 = 0;
 
 NUKED_LOCAL void MesaFVFRecalc(mesa3d_ctx_t *ctx)
 {
@@ -273,15 +290,19 @@ NUKED_LOCAL void MesaFVFRecalc(mesa3d_ctx_t *ctx)
 				break;
 		}
 
+		VSTREAM0_POS(xyzw, ctx->state.vertex.pos.xyzw, fv);
+
 		if(fvf_code & D3DFVF_NORMAL)
 		{
 			ctx->state.vertex.pos.normal = offset;
 			ctx->state.vertex.type.normal = MESA_VDT_FLOAT3;
+			VSTREAM0_POS(normal, offset, fv);
 			offset += 3;
 		}
 		else
 		{
 			ctx->state.vertex.type.normal = MESA_VDT_NONE;
+			VSTREAM0_NULL(normal);
 		}
 
 		if(fvf_code & D3DFVF_RESERVED1)
@@ -293,20 +314,24 @@ NUKED_LOCAL void MesaFVFRecalc(mesa3d_ctx_t *ctx)
 		{
 			ctx->state.vertex.pos.diffuse = offset++;
 			ctx->state.vertex.type.diffuse = MESA_VDT_D3DCOLOR;
+			VSTREAM0_POS(diffuse, ctx->state.vertex.pos.diffuse, dw);
 		}
 		else
 		{
 			ctx->state.vertex.type.diffuse = MESA_VDT_NONE;
+			VSTREAM0_NULL(diffuse);
 		}
 
 		if(fvf_code & D3DFVF_SPECULAR)
 		{
 			ctx->state.vertex.pos.specular = offset++;
 			ctx->state.vertex.type.specular = MESA_VDT_D3DCOLOR;
+			VSTREAM0_POS(specular, ctx->state.vertex.pos.specular, dw);
 		}
 		else
 		{
 			ctx->state.vertex.type.specular = MESA_VDT_NONE;
+			VSTREAM0_NULL(specular);
 		}
 
 		num_coords = (fvf_code & D3DFVF_TEXCOUNT_MASK) >> D3DFVF_TEXCOUNT_SHIFT; /* 0 = no coord, 1 = one tex coord */
@@ -335,10 +360,23 @@ NUKED_LOCAL void MesaFVFRecalc(mesa3d_ctx_t *ctx)
 						offset += 4;
 						break;
 				}
+
+				if(ctx->vstream[0].mem.ptr != NULL)
+				{
+					ctx->state.vertex.ptr.texcoords[i] = &ctx->vstream[0].mem.fv[ctx->state.vertex.pos.texcoords[i]];
+					ctx->state.vertex.ptr.texcoords_stride32[i] = ctx->vstream[0].stride/4;
+				}
+				else
+				{
+					ctx->state.vertex.ptr.texcoords[i] = NULL;
+					ctx->state.vertex.ptr.texcoords_stride32[i] = 0;
+				}
 			}
 			else
 			{
 				ctx->state.vertex.type.texcoords[i] = MESA_VDT_NONE;
+				ctx->state.vertex.ptr.texcoords[i] = NULL;
+				ctx->state.vertex.ptr.texcoords_stride32[i] = 0;
 			}
 		}
 
@@ -425,7 +463,7 @@ NUKED_INLINE void MesaDrawFVF_internal(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx,
 				GLfloat s, t, r, w;
 				switch(coordtype)
 				{
-					case MESA_VDT_FLOAT2: 
+					case MESA_VDT_FLOAT2:
 						s = fv[coordpos+0];
 						w = fv[coordpos+1];
 						if(w != 0.0)
@@ -798,3 +836,597 @@ NUKED_FAST void MesaDrawFVFdefaults(mesa3d_ctx_t *ctx)
 			break;
 	}
 }
+
+NUKED_FAST void MesaVertexReadStream(mesa3d_ctx_t *ctx, mesa3d_vertex_t *v, int index)
+{
+	int i;
+
+	for(i = 0; i < ctx->tmu_count; i++)
+	{
+		int coordindex               = ctx->state.tmu[i].coordindex;
+		mesa_vertex_data_t coordtype = ctx->state.vertex.type.texcoords[coordindex];
+		GLfloat *fv                  = ctx->state.vertex.ptr.texcoords[coordindex] + ctx->state.vertex.ptr.texcoords_stride32[coordindex]*index;
+
+		if(ctx->state.tmu[i].projected)
+		{
+			GLfloat s, t, r, w;
+			switch(coordtype)
+			{
+				case MESA_VDT_FLOAT2:
+					s = fv[0];
+					w = fv[1];
+					if(w != 0.0)
+					{
+						v->texcoords[i][0] = s/w;
+					}
+					else
+					{
+						v->texcoords[i][0] = 0;
+					}
+					v->texcoords[i][1] = 0;
+					v->texcoords[i][2] = 0;
+					v->texcoords[i][3] = 1;
+					break;
+				case MESA_VDT_FLOAT3:
+					s = fv[0];
+					t = fv[1];
+					w = fv[2];
+					if(w != 0.0)
+					{
+						v->texcoords[i][0] = s/w;
+						v->texcoords[i][1] = t/w;
+					}
+					else
+					{
+						v->texcoords[i][0] = 0;
+						v->texcoords[i][1] = 0;
+					}
+					v->texcoords[i][2] = 0;
+					v->texcoords[i][3] = 1;
+					break;
+				case MESA_VDT_FLOAT4:
+					s = fv[0];
+					t = fv[1];
+					r = fv[2];
+					w = fv[3];
+					if(w != 0.0)
+					{
+						v->texcoords[i][0] = s/w;
+						v->texcoords[i][1] = t/w;
+						v->texcoords[i][2] = r/w;
+					}
+					else
+					{
+						v->texcoords[i][0] = s/w;
+						v->texcoords[i][1] = t/w;
+						v->texcoords[i][2] = r/w;
+					}
+					v->texcoords[i][3] = 1;
+					break;
+				default:
+					v->texcoords[i][0] = 0;
+					v->texcoords[i][1] = 0;
+					v->texcoords[i][2] = 0;
+					v->texcoords[i][3] = 1;
+					break;
+			}
+		}
+		else
+		{
+			switch(coordtype)
+			{
+				case MESA_VDT_FLOAT1:
+					v->texcoords[i][0] = fv[0];
+					v->texcoords[i][1] = 0;
+					v->texcoords[i][2] = 0;
+					v->texcoords[i][3] = 1;
+					break;
+				case MESA_VDT_FLOAT2:
+					v->texcoords[i][0] = fv[0];
+					v->texcoords[i][1] = fv[1];
+					v->texcoords[i][2] = 0;
+					v->texcoords[i][3] = 1;
+					break;
+				case MESA_VDT_FLOAT3:
+					v->texcoords[i][0] = fv[0];
+					v->texcoords[i][1] = fv[1];
+					v->texcoords[i][2] = fv[2];
+					v->texcoords[i][3] = 1;
+					break;
+				case MESA_VDT_FLOAT4:
+					v->texcoords[i][0] = fv[0];
+					v->texcoords[i][1] = fv[1];
+					v->texcoords[i][2] = fv[2];
+					v->texcoords[i][3] = fv[3];
+					break;
+				default:
+					v->texcoords[i][0] = 0;
+					v->texcoords[i][1] = 0;
+					v->texcoords[i][2] = 0;
+					v->texcoords[i][3] = 1;
+					break;
+			}
+		}
+	} // for tmu
+
+	if(ctx->state.vertex.type.diffuse == MESA_VDT_D3DCOLOR)
+	{
+		DWORD *dw = ctx->state.vertex.ptr.diffuse + ctx->state.vertex.ptr.diffuse_stride32*index;
+		v->diffuse = *dw;
+	}
+	else
+	{
+		v->diffuse = DEF_DIFFUSE;
+	}
+
+	if(ctx->state.vertex.type.specular == MESA_VDT_D3DCOLOR)
+	{
+		DWORD *dw = ctx->state.vertex.ptr.specular + ctx->state.vertex.ptr.specular_stride32*index;
+		v->specular = *dw;
+	}
+	else
+	{
+		v->specular = DEF_SPECULAR;
+	}
+
+	if(ctx->state.vertex.xyzrhw)
+	{
+		GLfloat *fv = ctx->state.vertex.ptr.xyzw + ctx->state.vertex.ptr.xyzw_stride32*index;
+		SV_UNPROJECT(v->xyzw, fv[0], fv[1], fv[2], fv[3]);
+
+		v->normal[0] = 0.0f;
+		v->normal[1] = 0.0f;
+		v->normal[2] = 1.0f;
+	}
+	else
+	{
+		if(ctx->matrix.weight == 0)
+		{
+			GLfloat *fv = ctx->state.vertex.ptr.normal + ctx->state.vertex.ptr.normal_stride32*index;
+			switch(ctx->state.vertex.type.normal)
+			{
+				case MESA_VDT_FLOAT3:
+				case MESA_VDT_FLOAT4:
+					v->normal[0] = fv[0];
+					v->normal[1] = fv[1];
+					v->normal[2] = fv[2];
+					break;
+				case MESA_VDT_FLOAT1:
+					v->normal[0] = fv[0];
+					v->normal[1] = fv[0];
+					v->normal[2] = 1.0f;
+					break;
+				case MESA_VDT_FLOAT2:
+					v->normal[0] = fv[0];
+					v->normal[1] = fv[1];
+					v->normal[2] = 1.0f;
+					break;
+				default:
+					v->normal[0] = 0.0f;
+					v->normal[1] = 0.0f;
+					v->normal[2] = 1.0f;
+					break;
+			}
+
+			fv = ctx->state.vertex.ptr.xyzw + ctx->state.vertex.ptr.xyzw_stride32*index;
+			switch(ctx->state.vertex.type.xyzw)
+			{
+				case MESA_VDT_FLOAT3:
+					v->xyzw[0] = fv[0];
+					v->xyzw[1] = fv[1];
+					v->xyzw[2] = fv[2];
+					v->xyzw[3] = 1.0f;
+					break;
+				case MESA_VDT_FLOAT4:
+					v->xyzw[0] = fv[0];
+					v->xyzw[1] = fv[1];
+					v->xyzw[2] = fv[2];
+					v->xyzw[3] = fv[3];
+					break;
+				default:
+					v->xyzw[0] = 0.0f;
+					v->xyzw[1] = 0.0f;
+					v->xyzw[2] = 0.0f;
+					v->xyzw[3] = 1.0f;
+					break;
+			}
+		}
+		else
+		{
+			GLfloat *fv = ctx->state.vertex.ptr.normal + ctx->state.vertex.ptr.normal_stride32*index;
+
+			GLfloat coords[4];
+			GLfloat normals[4];
+			switch(ctx->state.vertex.type.normal)
+			{
+				case MESA_VDT_FLOAT3:
+				case MESA_VDT_FLOAT4:
+					normals[0] = fv[0];
+					normals[1] = fv[1];
+					normals[2] = fv[2];
+					normals[3] = 1.0f;
+					break;
+				case MESA_VDT_FLOAT1:
+					normals[0] = fv[0];
+					normals[1] = fv[0];
+					normals[2] = normals[3] = 1.0f;
+					break;
+				case MESA_VDT_FLOAT2:
+					normals[0] = fv[0];
+					normals[1] = fv[1];
+					normals[2] = normals[3] = 1.0f;
+					break;
+				default:
+					normals[0] = 0.0f;
+					normals[1] = 0.0f;
+					normals[2] = 1.0f;
+					normals[3] = 1.0f;
+					break;
+			}
+
+			MesaVetexBlend(ctx,
+				normals,
+				fv+3,
+				ctx->state.vertex.betas, coords);
+			v->normal[0] = coords[0];
+			v->normal[1] = coords[1];
+			v->normal[2] = coords[2];
+
+			fv = ctx->state.vertex.ptr.normal + ctx->state.vertex.ptr.normal_stride32*index;
+			MesaVetexBlend(ctx,
+				fv,
+				fv+3,
+				ctx->state.vertex.betas, coords);
+			v->xyzw[0] = coords[0];
+			v->xyzw[1] = coords[1];
+			v->xyzw[2] = coords[2];
+			v->xyzw[3] = 1.0f;
+		}
+	}
+}
+
+NUKED_FAST void MesaVertexReadBuffer(mesa3d_ctx_t *ctx, mesa3d_vertex_t *v, BYTE *buf, int index, DWORD stride8)
+{
+	int i;
+
+	for(i = 0; i < ctx->tmu_count; i++)
+	{
+		int coordindex               = ctx->state.tmu[i].coordindex;
+		mesa_vertex_data_t coordtype = ctx->state.vertex.type.texcoords[coordindex];
+		GLfloat *fv                  = ((GLfloat*)(buf + stride8*index)) + ctx->state.vertex.pos.texcoords[coordindex];
+
+		if(ctx->state.tmu[i].projected)
+		{
+			GLfloat s, t, r, w;
+			switch(coordtype)
+			{
+				case MESA_VDT_FLOAT2:
+					s = fv[0];
+					w = fv[1];
+					if(w != 0.0)
+					{
+						v->texcoords[i][0] = s/w;
+					}
+					else
+					{
+						v->texcoords[i][0] = 0;
+					}
+					v->texcoords[i][1] = 0;
+					v->texcoords[i][2] = 0;
+					v->texcoords[i][3] = 1;
+					break;
+				case MESA_VDT_FLOAT3:
+					s = fv[0];
+					t = fv[1];
+					w = fv[2];
+					if(w != 0.0)
+					{
+						v->texcoords[i][0] = s/w;
+						v->texcoords[i][1] = t/w;
+					}
+					else
+					{
+						v->texcoords[i][0] = 0;
+						v->texcoords[i][1] = 0;
+					}
+					v->texcoords[i][2] = 0;
+					v->texcoords[i][3] = 1;
+					break;
+				case MESA_VDT_FLOAT4:
+					s = fv[0];
+					t = fv[1];
+					r = fv[2];
+					w = fv[3];
+					if(w != 0.0)
+					{
+						v->texcoords[i][0] = s/w;
+						v->texcoords[i][1] = t/w;
+						v->texcoords[i][2] = r/w;
+					}
+					else
+					{
+						v->texcoords[i][0] = s/w;
+						v->texcoords[i][1] = t/w;
+						v->texcoords[i][2] = r/w;
+					}
+					v->texcoords[i][3] = 1;
+					break;
+				default:
+					v->texcoords[i][0] = 0;
+					v->texcoords[i][1] = 0;
+					v->texcoords[i][2] = 0;
+					v->texcoords[i][3] = 1;
+					break;
+			}
+		}
+		else
+		{
+			switch(coordtype)
+			{
+				case MESA_VDT_FLOAT1:
+					v->texcoords[i][0] = fv[0];
+					v->texcoords[i][1] = 0;
+					v->texcoords[i][2] = 0;
+					v->texcoords[i][3] = 1;
+					break;
+				case MESA_VDT_FLOAT2:
+					v->texcoords[i][0] = fv[0];
+					v->texcoords[i][1] = fv[1];
+					v->texcoords[i][2] = 0;
+					v->texcoords[i][3] = 1;
+					break;
+				case MESA_VDT_FLOAT3:
+					v->texcoords[i][0] = fv[0];
+					v->texcoords[i][1] = fv[1];
+					v->texcoords[i][2] = fv[2];
+					v->texcoords[i][3] = 1;
+					break;
+				case MESA_VDT_FLOAT4:
+					v->texcoords[i][0] = fv[0];
+					v->texcoords[i][1] = fv[1];
+					v->texcoords[i][2] = fv[2];
+					v->texcoords[i][3] = fv[3];
+					break;
+				default:
+					v->texcoords[i][0] = 0;
+					v->texcoords[i][1] = 0;
+					v->texcoords[i][2] = 0;
+					v->texcoords[i][3] = 1;
+					break;
+			}
+		}
+	} // for tmu
+
+	if(ctx->state.vertex.type.diffuse == MESA_VDT_D3DCOLOR)
+	{
+		DWORD *dw = ((DWORD*)(buf + index*stride8))+ctx->state.vertex.pos.diffuse;
+		v->diffuse = *dw;
+	}
+	else
+	{
+		v->diffuse = DEF_DIFFUSE;
+	}
+
+	if(ctx->state.vertex.type.specular == MESA_VDT_D3DCOLOR)
+	{
+		DWORD *dw = ((DWORD*)(buf + index*stride8))+ctx->state.vertex.pos.specular;
+		v->specular = *dw;
+	}
+	else
+	{
+		v->diffuse = DEF_SPECULAR;
+	}
+
+	if(ctx->state.vertex.xyzrhw)
+	{
+		GLfloat *fv = ((GLfloat*)(buf + index*stride8))+ctx->state.vertex.pos.xyzw;
+		SV_UNPROJECT(v->xyzw, fv[0], fv[1], fv[2], fv[3]);
+
+		v->normal[0] = 0.0f;
+		v->normal[0] = 0.0f;
+		v->normal[0] = 1.0f;
+	}
+	else
+	{
+		if(ctx->matrix.weight == 0)
+		{
+			GLfloat *fv = ((GLfloat*)(buf + index*stride8))+ctx->state.vertex.pos.normal;
+			switch(ctx->state.vertex.type.normal)
+			{
+				case MESA_VDT_FLOAT3:
+				case MESA_VDT_FLOAT4:
+					v->normal[0] = fv[0];
+					v->normal[1] = fv[1];
+					v->normal[2] = fv[2];
+					break;
+				case MESA_VDT_FLOAT1:
+					v->normal[0] = fv[0];
+					v->normal[1] = fv[0];
+					v->normal[2] = 1.0f;
+					break;
+				case MESA_VDT_FLOAT2:
+					v->normal[0] = fv[0];
+					v->normal[1] = fv[1];
+					v->normal[2] = 1.0f;
+					break;
+				default:
+					v->normal[0] = 0.0f;
+					v->normal[1] = 0.0f;
+					v->normal[2] = 1.0f;
+					break;
+			}
+
+			fv = ((GLfloat*)(buf + index*stride8))+ctx->state.vertex.pos.xyzw;
+			switch(ctx->state.vertex.type.xyzw)
+			{
+				case MESA_VDT_FLOAT3:
+					v->xyzw[0] = fv[0];
+					v->xyzw[1] = fv[1];
+					v->xyzw[2] = fv[2];
+					v->xyzw[3] = 1.0f;
+					break;
+				case MESA_VDT_FLOAT4:
+					v->xyzw[0] = fv[0];
+					v->xyzw[1] = fv[1];
+					v->xyzw[2] = fv[2];
+					v->xyzw[3] = fv[3];
+					break;
+				default:
+					v->xyzw[0] = 0.0f;
+					v->xyzw[1] = 0.0f;
+					v->xyzw[2] = 0.0f;
+					v->xyzw[3] = 1.0f;
+					break;
+			}
+		}
+		else
+		{
+			GLfloat *fv = ((GLfloat*)(buf + index*stride8))+ctx->state.vertex.pos.normal;
+
+			GLfloat coords[4];
+			GLfloat normals[4];
+			switch(ctx->state.vertex.type.normal)
+			{
+				case MESA_VDT_FLOAT3:
+				case MESA_VDT_FLOAT4:
+					normals[0] = fv[0];
+					normals[1] = fv[1];
+					normals[2] = fv[2];
+					normals[3] = 1.0f;
+					break;
+				case MESA_VDT_FLOAT1:
+					normals[0] = fv[0];
+					normals[1] = fv[0];
+					normals[2] = normals[3] = 1.0f;
+					break;
+				case MESA_VDT_FLOAT2:
+					normals[0] = fv[0];
+					normals[1] = fv[1];
+					normals[2] = normals[3] = 1.0f;
+					break;
+				default:
+					normals[0] = 0.0f;
+					normals[1] = 0.0f;
+					normals[2] = 1.0f;
+					normals[3] = 1.0f;
+					break;
+			}
+
+			MesaVetexBlend(ctx,
+				normals,
+				fv+3,
+				ctx->state.vertex.betas, coords);
+			v->normal[0] = coords[0];
+			v->normal[1] = coords[1];
+			v->normal[2] = coords[2];
+
+			fv = ((GLfloat*)(buf + index*stride8))+ctx->state.vertex.pos.xyzw;
+			MesaVetexBlend(ctx,
+				fv,
+				fv+3,
+				ctx->state.vertex.betas, coords);
+			v->xyzw[0] = coords[0];
+			v->xyzw[1] = coords[1];
+			v->xyzw[2] = coords[2];
+			v->xyzw[3] = 1.0f;
+		}
+	}
+}
+
+NUKED_FAST void MesaVertexDraw(mesa3d_ctx_t *ctx, mesa3d_vertex_t *v)
+{
+	int i;
+	mesa3d_entry_t *entry = ctx->entry;
+
+	for(i = 0; i < ctx->tmu_count; i++)
+	{
+		entry->proc.pglMultiTexCoord4fv(GL_TEXTURE0+i, &v->texcoords[i][0]);
+	}
+
+	entry->proc.pglNormal3fv(&v->normal[0]);
+	LoadColor1(entry, ctx, v->diffuse);
+	LoadColor2(entry, ctx, v->specular);
+
+	entry->proc.pglVertex4fv(&v->xyzw[0]);
+}
+
+#define VETREX_DRAW_SWITCH \
+	switch(gltype){ \
+		case GL_TRIANGLES: \
+			entry->proc.pglBegin(GL_TRIANGLES); \
+			for(i = 0; i < cnt-2; i += 3){ \
+				VERTEX_GET(start+i+2); \
+				MesaVertexDraw(ctx, &v); \
+				VERTEX_GET(start+i+1); \
+				MesaVertexDraw(ctx, &v); \
+				VERTEX_GET(start+i); \
+				MesaVertexDraw(ctx, &v); \
+			} \
+			GL_CHECK(entry->proc.pglEnd()); \
+			break; \
+		case GL_TRIANGLE_FAN: \
+			entry->proc.pglBegin(GL_TRIANGLE_FAN); \
+			VERTEX_GET(start); \
+			MesaVertexDraw(ctx, &v); \
+			for(i = cnt-1; i >= 1; i--){ \
+				VERTEX_GET(start+i); \
+				MesaVertexDraw(ctx, &v); \
+			} \
+			GL_CHECK(entry->proc.pglEnd()); \
+			break; \
+		case GL_TRIANGLE_STRIP: \
+			if(cnt >= 3){ \
+				MesaReverseCull(ctx); \
+				entry->proc.pglBegin(GL_TRIANGLE_STRIP); \
+				for(i = 0; i < cnt; i++){ \
+					VERTEX_GET(start+i); \
+					MesaVertexDraw(ctx, &v); \
+				} \
+				GL_CHECK(entry->proc.pglEnd()); \
+				MesaSetCull(ctx); \
+			} \
+			break; \
+		default: \
+			entry->proc.pglBegin(gltype); \
+			for(i = cnt-1; i >= 0; i--){ \
+				VERTEX_GET(start+i); \
+				MesaVertexDraw(ctx, &v); \
+			} \
+			GL_CHECK(entry->proc.pglEnd()); \
+			break; \
+		} // switch
+
+#define VERTEX_GET(_n) MesaVertexReadStream(ctx, &v, _n)
+
+NUKED_LOCAL void MesaVertexDrawStream(mesa3d_ctx_t *ctx, GLenum gltype, DWORD start, DWORD cnt)
+{
+	TOPIC("GL", "glBegin(%d)", gltype);
+	mesa3d_entry_t *entry = ctx->entry;
+	mesa3d_vertex_t v;
+	int i;
+
+	VETREX_DRAW_SWITCH
+}
+
+#undef VERTEX_GET
+
+#define INDEX_GET(_p) (index_stride8 == 4 ? dindex[_p]+base : ((DWORD)windex[_p])+base)
+#define VERTEX_GET(_n) MesaVertexReadStream(ctx, &v, INDEX_GET(_n))
+
+NUKED_LOCAL void MesaVertexDrawStreamIndex(mesa3d_ctx_t *ctx, GLenum gltype, DWORD start, int base, DWORD cnt, void *index, DWORD index_stride8)
+{
+	TOPIC("GL", "glBegin(%d)", gltype);
+	mesa3d_entry_t *entry = ctx->entry;
+	mesa3d_vertex_t v;
+	int i;
+
+	WORD  *windex =  (WORD*)index;
+	DWORD *dindex = (DWORD*)index;
+
+	VETREX_DRAW_SWITCH
+}
+
+#undef VERTEX_GET
+#undef INDEX_GET
+
+#undef VETREX_DRAW_SWITCH
