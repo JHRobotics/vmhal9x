@@ -474,6 +474,8 @@ typedef struct mesa3d_ctx
 	mesa_pal8_t *first_pal;
 } mesa3d_ctx_t;
 
+#if 0
+/* keep for future use */
 typedef struct _mesa3d_vertex_t
 {
 	GLfloat xyzw[4];
@@ -482,6 +484,7 @@ typedef struct _mesa3d_vertex_t
 	DWORD   specular;
 	GLfloat texcoords[MESA_TMU_MAX][4];
 } mesa3d_vertex_t;
+#endif
 
 /* maximum for 24bit signed zbuff = (1<<23) - 1 */
 #define GL_WRANGE_MAX 8388607
@@ -688,10 +691,10 @@ NUKED_FAST GLenum MesaConvPrimType(D3DPRIMITIVETYPE dx_type);
 NUKED_FAST DWORD MesaConvPrimVertex(D3DPRIMITIVETYPE dx_type, DWORD prim_count);
 
 /* unified vertex */
-NUKED_FAST void MesaVertexReadStream(mesa3d_ctx_t *ctx, mesa3d_vertex_t *v, int index);
-NUKED_FAST void MesaVertexReadBuffer(mesa3d_ctx_t *ctx, mesa3d_vertex_t *v, BYTE *buf, int index, DWORD stride8);
 /* need GL block + glBegin */
-NUKED_FAST void MesaVertexDraw(mesa3d_ctx_t *ctx, mesa3d_vertex_t *v);
+NUKED_FAST void MesaVertexStream(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int index);
+NUKED_FAST void MesaVertexBuffer(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, BYTE *buf, int index, DWORD stride8);
+//NUKED_FAST void MesaVertexDraw(mesa3d_ctx_t *ctx, mesa3d_vertex_t *v);
 /* need GL block */
 NUKED_LOCAL void MesaVertexDrawStream(mesa3d_ctx_t *ctx, GLenum gltype, DWORD start, DWORD cnt);
 NUKED_LOCAL void MesaVertexDrawStreamIndex(mesa3d_ctx_t *ctx, GLenum gltype, DWORD start, int base, DWORD cnt, void *index, DWORD index_stride8);
