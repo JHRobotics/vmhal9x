@@ -4684,7 +4684,7 @@ NUKED_LOCAL void MesaTempFree(mesa3d_ctx_t *ctx, void *ptr)
 	}
 }
 
-NUKED_LOCAL void MesaSetCull(mesa3d_ctx_t *ctx)
+NUKED_FAST void MesaSetCull(mesa3d_ctx_t *ctx)
 {
 	switch(ctx->state.cull)
 	{
@@ -4702,7 +4702,7 @@ NUKED_LOCAL void MesaSetCull(mesa3d_ctx_t *ctx)
 	}
 }
 
-NUKED_LOCAL void MesaReverseCull(mesa3d_ctx_t *ctx)
+NUKED_FAST void MesaReverseCull(mesa3d_ctx_t *ctx)
 {
 	switch(ctx->state.cull)
 	{

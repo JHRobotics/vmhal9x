@@ -59,12 +59,18 @@ static FBHDA_t *hda = NULL;
 
 static fbhda_lib_t fbhda_lib = {NULL, 0};
 
+#ifdef DD_LOCKING
+
 static void FBHDA_call_lock()
 {
 	LONG tmp;
 	do
 	{
 		tmp = InterlockedExchange(&fbhda_lib.lock, 1);
+		if(tmp == 1)
+		{
+			Sleep(10);
+		}
 	} while(tmp == 1);
 }
 
@@ -72,6 +78,12 @@ static void FBHDA_call_unlock()
 {
 	InterlockedExchange(&fbhda_lib.lock, 0);
 }
+#else
+
+#define FBHDA_call_lock()
+#define FBHDA_call_unlock()
+
+#endif
 
 #define LoadAddress(_n) fbhda_lib.p ## _n = (_n ## _t)GetProcAddress(fbhda_lib.lib, #_n)
 

@@ -40,6 +40,8 @@
 #include "nocrt.h"
 #endif
 
+#ifdef DD_LOCKING
+
 static LONG sharedLock = 0;
 
 void SurfaceCtxLock()
@@ -55,6 +57,11 @@ void SurfaceCtxUnlock()
 {
 	InterlockedExchange(&sharedLock, 0);
 }
+#else
+void SurfaceCtxLock(){}
+void SurfaceCtxUnlock(){}
+
+#endif
 
 #define SURF_TYPE_NONE 1
 #define SURF_TYPE_TEX  2

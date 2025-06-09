@@ -1626,23 +1626,8 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 						GLenum prim = MesaConvPrimType(draw->primType);
 						if(prim != GL_NOOP)
 						{
-#if 1
 							/* using active stream */
 							MesaVertexDrawStream(ctx, prim, draw->VStart, MesaConvPrimVertex(draw->primType, draw->PrimitiveCount));
-#else
-							void *verticesDX8 = ctx->vstream[0].mem.ptr;
-							DWORD verticesDX8_stride = ctx->vstream[0].stride;
-
-							if(verticesDX8 && verticesDX8_stride)
-							{
-								TRACE("D3DHAL_DP2DRAWPRIMITIVE: (GL)prim=0x%X, mem=0x%X, stride=%d, start=%d, cnt=%d", prim, verticesDX8, verticesDX8_stride, draw->VStart, MesaConvPrimVertex(draw->primType, draw->PrimitiveCount));
-								MesaDrawFVFBlock(ctx, prim, verticesDX8, verticesDX8_stride*draw->VStart, MesaConvPrimVertex(draw->primType, draw->PrimitiveCount), verticesDX8_stride);
-							}
-							else
-							{
-								WARN("verticesDX8 = %p, verticesDX8_stride=%d", verticesDX8, verticesDX8_stride);
-							}
-#endif
 						}
 					}
 					RENDER_END;
@@ -1660,7 +1645,6 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 						if(prim != GL_NOOP)
 						{
 							/* using active stream */
-#if 1
 							if(ctx->state.bind_indices)
 							{
 								MesaVertexDrawStreamIndex(ctx, prim,
@@ -1668,18 +1652,6 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 									ctx->state.bind_indices, ctx->state.bind_indices_stride
 								);
 							}
-#else
-							void *verticesDX8 = ctx->vstream[0].mem.ptr;
-							DWORD verticesDX8_stride = ctx->vstream[0].stride;
-
-							if(ctx->state.bind_indices && verticesDX8 && verticesDX8_stride)
-							{
-								MesaDrawFVFBlockIndex(ctx, prim,
-									((BYTE*)verticesDX8)+draw->BaseVertexIndex*verticesDX8_stride, verticesDX8_stride,
-									ctx->state.bind_indices, ctx->state.bind_indices_stride,
-									draw->StartIndex, MesaConvPrimVertex(draw->primType, draw->PrimitiveCount));
-							}
-#endif
 						}
 					}
 					RENDER_END;
@@ -1766,11 +1738,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 
 							if(verticesDX8 && verticesDX8_stride)
 							{
-#if 0
-								MesaDrawFVFBlock(ctx, prim, verticesDX8, draw->FirstVertexOffset, MesaConvPrimVertex(draw->primType, draw->PrimitiveCount), verticesDX8_stride);
-#else
 								MesaVertexDrawBlock(ctx, prim, verticesDX8+draw->FirstVertexOffset, 0, MesaConvPrimVertex(draw->primType, draw->PrimitiveCount), verticesDX8_stride);
-#endif
 							}
 						}
 					}
@@ -1798,16 +1766,9 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 
 							if(verticesDX8 && verticesDX8_stride && ctx->state.bind_indices)
 							{
-#if 0
-								MesaDrawFVFBlockIndex(ctx, prim,
-									((BYTE*)verticesDX8)+draw->BaseVertexOffset, verticesDX8_stride,
-									((BYTE*)ctx->state.bind_indices)+draw->StartIndexOffset, ctx->state.bind_indices_stride,
-									0, MesaConvPrimVertex(draw->primType, draw->PrimitiveCount));
-#else
 								MesaVertexDrawBlockIndex(ctx, prim,
 									verticesDX8+draw->BaseVertexOffset, 0, MesaConvPrimVertex(draw->primType, draw->PrimitiveCount), verticesDX8_stride,
 									((BYTE*)ctx->state.bind_indices)+draw->StartIndexOffset, ctx->state.bind_indices_stride);
-#endif
 							}
 						}
 					}

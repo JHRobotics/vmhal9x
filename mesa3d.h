@@ -371,6 +371,8 @@ typedef struct mesa3d_ctx
 				DWORD    texcoords_stride32[MESA_TMU_MAX];
 			} ptr;
 			int betas;
+			/* opts latches */
+			BOOL fast_draw;
 		} vertex;
 		struct {
 			BOOL enabled;
@@ -648,16 +650,11 @@ NUKED_FAST void MesaTMUApplyMatrix(mesa3d_ctx_t *ctx, int tmu);
 NUKED_LOCAL void MesaDrawVertex(mesa3d_ctx_t *ctx, LPD3DVERTEX vertex);
 NUKED_LOCAL void MesaDrawLVertex(mesa3d_ctx_t *ctx, LPD3DLVERTEX vertex);
 NUKED_LOCAL void MesaDrawTLVertex(mesa3d_ctx_t *ctx, LPD3DTLVERTEX vertex);
-/* DX6 */
+
+/* DX6+ */
 NUKED_LOCAL void MesaFVFSet(mesa3d_ctx_t *ctx, DWORD type/*, DWORD size*/);
 NUKED_LOCAL void MesaFVFRecalc(mesa3d_ctx_t *ctx);
 NUKED_LOCAL void MesaFVFRecalcCoords(mesa3d_ctx_t *ctx);
-
-/* drawing sequence (needs GL_BLOCK) */
-//NUKED_FAST  void MesaDrawFVFdefaults(mesa3d_ctx_t *ctx);
-//NUKED_LOCAL void MesaDrawFVFs(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vertices, DWORD start, DWORD cnt);
-//NUKED_LOCAL void MesaDrawFVFBlock(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vertices, DWORD offset, DWORD cnt, DWORD stride);
-//NUKED_LOCAL void MesaDrawFVFBlockIndex(mesa3d_ctx_t *ctx, GLenum gl_ptype, void *vertices, DWORD stride, void *index, DWORD index_stride, DWORD start, DWORD cnt);
 
 /* scene capture, need GL block */
 NUKED_LOCAL void MesaSceneBegin(mesa3d_ctx_t *ctx);
