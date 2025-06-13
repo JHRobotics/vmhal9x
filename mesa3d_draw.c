@@ -41,11 +41,19 @@
 #include "nocrt.h"
 #endif
 
+#if 0
 #define SV_UNPROJECT(_v, _x, _y, _z, _rhw) \
 	_v[0] = (((((_x) - ctx->matrix.viewport[0]) / ctx->matrix.viewport[2]) * 2.0f) - 1.0f)/(_rhw); \
 	_v[1] = (((((_y) - ctx->matrix.viewport[1]) / ctx->matrix.viewport[3]) * 2.0f) - 1.0f)/(_rhw); \
-	_v[2] = ((_z)*ctx->matrix.zscale[10])/(_rhw); \
+	_v[2] = ((_z)*ctx->matrix.zscale)/(_rhw); \
 	_v[3] = 1.0f/(_rhw);
+#endif
+
+#define SV_UNPROJECT(_v, _x, _y, _z, _rhw) \
+	_v[3] = 1.0f/(_rhw); \
+	_v[0] = ((((_x) - ctx->matrix.vpnorm[0]) * ctx->matrix.vpnorm[2]) - 1.0f)*_v[3]; \
+	_v[1] = ((((_y) - ctx->matrix.vpnorm[1]) * ctx->matrix.vpnorm[3]) - 1.0f)*_v[3]; \
+	_v[2] = ((_z)*ctx->matrix.zscale)*_v[3];
 
 #define SV_UNPROJECT_NTP(_v, _x, _y, _z) \
 	_v[3] = 1.0f; \
@@ -59,6 +67,7 @@
 	_v[1] = (((((double)_y) - ctx->matrix.vpnorm[1]) * ctx->matrix.vpnorm[3]) - 1.0)*_v[3]; \
 	_v[2] = ((double)_z)*_v[3]
 
+#if 0
 #define FVF_X 0
 #define FVF_Y 1
 #define FVF_Z 2
@@ -75,6 +84,7 @@ typedef struct _FVF
 		DWORD    dw[32];
 	};
 } FVF_t;
+#endif
 
 NUKED_INLINE void LoadColor1(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, DWORD color, BOOL localonly)
 {
@@ -335,6 +345,7 @@ NUKED_LOCAL void MesaFVFRecalc(mesa3d_ctx_t *ctx)
 		}
 
 		num_coords = (fvf_code & D3DFVF_TEXCOUNT_MASK) >> D3DFVF_TEXCOUNT_SHIFT; /* 0 = no coord, 1 = one tex coord */
+		TRACE("FVF num_coords=%d", num_coords);
 		for(i = 0; i < MESA_TMU_MAX; i++)
 		{
 			if(i < num_coords)
@@ -399,7 +410,7 @@ NUKED_LOCAL void MesaFVFRecalc(mesa3d_ctx_t *ctx)
 
 		TOPIC("SHADER", "shader handle = 0x%X", fvf_code);
 #ifdef DEBUG
-		MesaVSDump(vs);
+		//MesaVSDump(vs);
 #endif
 		MesaVSSetVertex(ctx, vs);
 	}
@@ -411,35 +422,10 @@ NUKED_LOCAL void MesaFVFRecalc(mesa3d_ctx_t *ctx)
 
 NUKED_LOCAL void MesaFVFRecalcCoords(mesa3d_ctx_t *ctx)
 {
-	BOOL refresh = FALSE;
 	int i;
-	
 	for(i = 0; i < ctx->tmu_count; i++)
 	{
-		//if(ctx->state.tmu[i].coordindex < ctx->state.vertex.texcoords)
-		if(ctx->state.vertex.type.texcoords[ctx->state.tmu[i].coordindex] != MESA_VDT_NONE)
-		{
-			if(ctx->state.tmu[i].nocoords)
-			{
-				ctx->state.tmu[i].nocoords = FALSE;
-				ctx->state.tmu[i].update = TRUE;
-				refresh = TRUE;
-			}
-		}
-		else
-		{
-			if(!ctx->state.tmu[i].nocoords)
-			{
-				ctx->state.tmu[i].nocoords = TRUE;
-				ctx->state.tmu[i].update = TRUE;
-				refresh = TRUE;
-			}
-		}
-	} // for
-
-	if(refresh)
-	{
-		MesaDrawRefreshState(ctx);
+		ctx->state.tmu[i].update = TRUE;
 	}
 }
 
@@ -480,7 +466,11 @@ NUKED_FAST void MesaVertexStream(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int i
 			mesa_vertex_data_t coordtype = ctx->state.vertex.type.texcoords[coordindex];
 			GLfloat *fv                  = ctx->state.vertex.ptr.texcoords[coordindex] + ctx->state.vertex.ptr.texcoords_stride32[coordindex]*index;
 
-			if(!ctx->state.tmu[i].projected) /* likely */
+			if(ctx->state.tmu[i].coordscalc_used)
+			{
+				entry->proc.pglMultiTexCoord4f(GL_TEXTURE0+i, 0.0, 0.0f, 0.0f, 1.0f);
+			}
+			else if(!ctx->state.tmu[i].projected) /* likely */
 			{
 				switch(coordtype)
 				{
@@ -633,7 +623,11 @@ NUKED_FAST void MesaVertexBuffer(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, BYTE 
 			mesa_vertex_data_t coordtype = ctx->state.vertex.type.texcoords[coordindex];
 			GLfloat *fv                  = ((GLfloat*)(buf + stride8*index)) + ctx->state.vertex.pos.texcoords[coordindex];
 
-			if(!ctx->state.tmu[i].projected) /* likely */
+			if(ctx->state.tmu[i].coordscalc_used)
+			{
+				entry->proc.pglMultiTexCoord4f(GL_TEXTURE0+i, 0.0, 0.0f, 0.0f, 1.0f);
+			}
+			else if(!ctx->state.tmu[i].projected) /* likely */
 			{
 				switch(coordtype)
 				{
@@ -702,6 +696,7 @@ NUKED_FAST void MesaVertexBuffer(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, BYTE 
 		entry->proc.pglNormal3f(0.0, 0.0, 1.0);
 
 		SV_UNPROJECT(tmp4, fv[0], fv[1], fv[2], fv[3]);
+
 		entry->proc.pglVertex4fv(&tmp4[0]);
 	}
 	else
@@ -727,6 +722,7 @@ NUKED_FAST void MesaVertexBuffer(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, BYTE 
 			}
 
 			fv = ((GLfloat*)(buf + index*stride8))+ctx->state.vertex.pos.xyzw;
+			//TOPIC("SHADER", "XYZ: %f %f %f", fv[0], fv[1], fv[2]);
 			switch(ctx->state.vertex.type.xyzw)
 			{
 				case MESA_VDT_FLOAT3:
@@ -823,37 +819,37 @@ NUKED_FAST void MesaVertexDraw(mesa3d_ctx_t *ctx, mesa3d_vertex_t *v)
 #define VETREX_DRAW_SWITCH \
 	switch(gltype){ \
 		case GL_TRIANGLES: \
+			MesaReverseCull(ctx); \
 			entry->proc.pglBegin(GL_TRIANGLES); \
 			for(i = 0; i < cnt-2; i += 3){ \
 				VERTEX_GET(start+i+2); \
 				VERTEX_GET(start+i+1); \
-				VERTEX_GET(start+i); \
-			} \
-			GL_CHECK(entry->proc.pglEnd()); \
-			break; \
-		case GL_TRIANGLE_FAN: \
-			MesaReverseCull(ctx); \
-			entry->proc.pglBegin(GL_TRIANGLE_FAN); \
-			for(i = 0; i < cnt; i++){ \
-				VERTEX_GET(start+i); \
+				VERTEX_GET(start+i+0); \
 			} \
 			GL_CHECK(entry->proc.pglEnd()); \
 			MesaSetCull(ctx); \
 			break; \
+		case GL_TRIANGLE_FAN: \
+			if(cnt >= 3){ \
+				entry->proc.pglBegin(GL_TRIANGLE_FAN); \
+				for(i = 0; i < cnt; i++){ \
+					VERTEX_GET(start+i); \
+				} \
+				GL_CHECK(entry->proc.pglEnd()); \
+			} \
+			break; \
 		case GL_TRIANGLE_STRIP: \
 			if(cnt >= 3){ \
-				MesaReverseCull(ctx); \
 				entry->proc.pglBegin(GL_TRIANGLE_STRIP); \
 				for(i = 0; i < cnt; i++){ \
 					VERTEX_GET(start+i); \
 				} \
 				GL_CHECK(entry->proc.pglEnd()); \
-				MesaSetCull(ctx); \
 			} \
 			break; \
 		default: \
 			entry->proc.pglBegin(gltype); \
-			for(i = cnt-1; i >= 0; i--){ \
+			for(i = 0; i < cnt; i++){ \
 				VERTEX_GET(start+i); \
 			} \
 			GL_CHECK(entry->proc.pglEnd()); \
@@ -863,7 +859,7 @@ NUKED_FAST void MesaVertexDraw(mesa3d_ctx_t *ctx, mesa3d_vertex_t *v)
 #define VERTEX_GET(_n) MesaVertexStream(entry, ctx, _n)
 
 NUKED_LOCAL void MesaVertexDrawStream(mesa3d_ctx_t *ctx, GLenum gltype, DWORD start, DWORD cnt)
-{	
+{
 	TOPIC("GL", "glBegin(%d)", gltype);
 	mesa3d_entry_t *entry = ctx->entry;
 	int i;

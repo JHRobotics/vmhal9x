@@ -1216,7 +1216,7 @@ LPDDRAWI_DDRAWSURFACE_LCL SurfaceDuplicate(LPDDRAWI_DDRAWSURFACE_LCL original)
 
 void SurfaceApplyColorKey(surface_id sid, DWORD low, DWORD hi, DWORD low_pal, DWORD hi_pal)
 {
-	TRACE("SurfaceApplyColorKey: sid=%d, low=%X, hi=%X", sid, low, hi);
+	TOPIC("NEWTEX", "SurfaceApplyColorKey: sid=%d, low=%X, hi=%X", sid, low, hi);
 	if(sid)
 	{
 		surface_info_t *info = SurfaceGetInfo(sid);

@@ -85,6 +85,7 @@ static VMHAL_enviroment_t VMHALenv = {
 	FALSE, // vertexblend
 	FALSE, // use palette
 	TRUE,  // filter bug
+	TRUE, // s3tc bug
 };
 
 static DWORD CalcPitch(DWORD w, DWORD bpp)

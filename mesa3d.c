@@ -93,7 +93,7 @@ static mesa3d_entry_t *Mesa3DCreate(DWORD pid, mesa3d_entry_t *mesa)
 {
 	mesa3d_entry_t *orig_next = mesa->next;
 	memset(mesa, 0, sizeof(mesa3d_entry_t));
-	
+
 	mesa->pid = pid;
 	mesa->next = orig_next;
 
@@ -126,7 +126,7 @@ static mesa3d_entry_t *Mesa3DCreate(DWORD pid, mesa3d_entry_t *mesa)
 		{
 			mesa->os = TRUE;
 		}
-			
+
 		#include "mesa3d_api.h"
 
 		GetVMHALenv(&mesa->env);
@@ -140,7 +140,7 @@ static mesa3d_entry_t *Mesa3DCreate(DWORD pid, mesa3d_entry_t *mesa)
 
 		mesa = NULL;
 	}
-	
+
 	return mesa;
 }
 
@@ -268,12 +268,13 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 	//{
 		//DDPIXELFORMAT fmt = surf->lpGbl->ddpfSurface;
 		DDPIXELFORMAT fmt = surf->pixfmt;
-		TOPIC("BLEND", "DDPIXELFORMAT.dwFlags = 0x%X", fmt.dwFlags);
+		TOPIC("NEWTEX", "DDPIXELFORMAT.dwFlags = 0x%X", fmt.dwFlags);
 		
 		if(fmt.dwFlags & DDPF_FOURCC)
 		{
+			TOPIC("NEWTEX", "FourCC: %08X", fmt.dwFourCC);
 			*bpp = 32;
-			*compressed = TRUE;
+			*compressed = FALSE;
 
 			switch(fmt.dwFourCC)
 			{
@@ -281,6 +282,7 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 					*internalformat = GL_COMPRESSED_RGBA_S3TC_DXT1_EXT;
 					*format = GL_RGBA;
 					*type = GL_UNSIGNED_BYTE;
+					*compressed = TRUE;
 					return TRUE;
 					break;
 				case MAKEFOURCC('D', 'X', 'T', '2'):
@@ -288,6 +290,7 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 					*internalformat = GL_COMPRESSED_RGBA_S3TC_DXT3_EXT;
 					*format = GL_RGBA;
 					*type = GL_UNSIGNED_BYTE;
+					*compressed = TRUE;
 					return TRUE;
 					break;
 				case MAKEFOURCC('D', 'X', 'T', '4'):
@@ -295,6 +298,7 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 					*internalformat = GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
 					*format = GL_RGBA;
 					*type = GL_UNSIGNED_BYTE;
+					*compressed = TRUE;
 					return TRUE;
 					break;
 				/* DX8/DX9 */
@@ -303,7 +307,6 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 					*internalformat = GL_RGB;
 					*format = GL_RGB;
 					*type = GL_UNSIGNED_SHORT_5_6_5;
-					*compressed = FALSE;
 					return TRUE;
 					break;
 				case D3DFMT_X8R8G8B8:
@@ -311,7 +314,6 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 					*internalformat = GL_RGB;
 					*format = GL_BGRA;
 					*type = GL_UNSIGNED_INT_8_8_8_8_REV;
-					*compressed = FALSE;
 					return TRUE;
 					break;
 				case D3DFMT_A1R5G5B5:
@@ -319,7 +321,6 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 					*internalformat = GL_RGBA;
 					*format = GL_BGRA;
 					*type = GL_UNSIGNED_SHORT_1_5_5_5_REV;
-					*compressed = FALSE;
 					return TRUE;
 					break;
 				case D3DFMT_X1R5G5B5:
@@ -327,7 +328,6 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 					*internalformat = GL_RGB;
 					*format = GL_BGRA;
 					*type = GL_UNSIGNED_SHORT_1_5_5_5_REV;
-					*compressed = FALSE;
 					return TRUE;
 					break;
 				case D3DFMT_A4R4G4B4:
@@ -335,7 +335,6 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 					*internalformat = GL_RGBA;
 					*format = GL_BGRA;
 					*type = GL_UNSIGNED_SHORT_4_4_4_4_REV;
-					*compressed = FALSE;
 					return TRUE;
 					break;
 				case D3DFMT_A8R8G8B8:
@@ -343,7 +342,6 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 					*internalformat = GL_RGBA;
 					*format = GL_BGRA;
 					*type = GL_UNSIGNED_INT_8_8_8_8_REV;
-					*compressed = FALSE;
 					return TRUE;
 					break;
 				case D3DFMT_X4R4G4B4:
@@ -351,7 +349,6 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 					*internalformat = GL_RGB;
 					*format = GL_BGRA;
 					*type = GL_UNSIGNED_INT_8_8_8_8_REV;
-					*compressed = FALSE;
 					return TRUE;
 					break;
 				case D3DFMT_R8G8B8:
@@ -359,7 +356,6 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 					*internalformat = GL_RGB;
 					*format = GL_RGB;
 					*type = GL_UNSIGNED_BYTE;
-					*compressed = FALSE;
 					return TRUE;
 					break;
 				case D3DFMT_A8:
@@ -367,7 +363,6 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 					*internalformat = GL_ALPHA8;
 					*format = GL_ALPHA;
 					*type = GL_UNSIGNED_BYTE;
-					*compressed = FALSE;
 					return TRUE;
 					break;
 				case D3DFMT_L8:
@@ -375,7 +370,6 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 					*internalformat = GL_LUMINANCE8;
 					*format = GL_LUMINANCE;
 					*type = GL_UNSIGNED_BYTE;
-					*compressed = FALSE;
 					return TRUE;
 					break;
 				case D3DFMT_A8L8:
@@ -383,7 +377,6 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 					*internalformat = GL_LUMINANCE8_ALPHA8;
 					*format = GL_LUMINANCE_ALPHA;
 					*type = GL_UNSIGNED_BYTE;
-					*compressed = FALSE;
 					return TRUE;
 					break;
 				case D3DFMT_P8:
@@ -401,7 +394,6 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 					*format = GL_DEPTH_COMPONENT;
 					*type = GL_UNSIGNED_SHORT;
 					*bpp = 16;
-					*compressed = FALSE;
 					return TRUE;
 					break;
 				case D3DFMT_D32:
@@ -409,7 +401,6 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 					*format = GL_DEPTH_COMPONENT;
 					*type = GL_UNSIGNED_INT;
 					*bpp = 32;
-					*compressed = FALSE;
 					return TRUE;
 					break;
 				case D3DFMT_S8D24:
@@ -417,7 +408,6 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 					*format = GL_DEPTH_STENCIL;
 					*type = GL_UNSIGNED_INT_24_8;
 					*bpp = 32;
-					*compressed = FALSE;
 					return TRUE;
 					break;
 				case D3DFMT_D24X8:
@@ -425,7 +415,6 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 					*format = GL_DEPTH_STENCIL;
 					*type = GL_UNSIGNED_INT_24_8;
 					*bpp = 32;
-					*compressed = FALSE;
 					return TRUE;
 					break;
 			}
@@ -472,7 +461,7 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 			}
 			else if(fmt.dwFlags & DDPF_ALPHAPIXELS)
 			{
-				TOPIC("FORMAT", "case DDPF_ALPHAPIXELS (RGBA(%d): %08X %08X %08X %08X)",
+				TOPIC("NEWTEX", "case DDPF_ALPHAPIXELS (RGBA(%d): %08X %08X %08X %08X)",
 					fmt.dwRGBBitCount, fmt.dwRBitMask, fmt.dwGBitMask, fmt.dwBBitMask, fmt.dwRGBAlphaBitMask
 				);
 				
@@ -508,7 +497,8 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 						}
 						else
 						{
-							*type = GL_BGRA;
+							*format = GL_RGBA;
+							*type = GL_UNSIGNED_INT_8_8_8_8_REV;
 						}
 						break;
 				}
@@ -518,8 +508,9 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 				*internalformat = GL_RGB;
 				*bpp = fmt.dwRGBBitCount;
 				*format = GL_BGR;
-				
-				TOPIC("FORMAT", "case !DDPF_ALPHAPIXELS (RGBA(%d): %08X %08X %08X %08X)",
+				*compressed = FALSE;
+
+				TOPIC("NEWTEX", "case !DDPF_ALPHAPIXELS (RGBA(%d): %08X %08X %08X %08X)",
 					fmt.dwRGBBitCount, fmt.dwRBitMask, fmt.dwGBitMask, fmt.dwBBitMask, fmt.dwRGBAlphaBitMask
 				);
 				
@@ -567,14 +558,16 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 						break;
 					case 32:
 					default:
-						*type = GL_UNSIGNED_BYTE;
 						if(fmt.dwRBitMask == 0x0000FF)
 						{
 							*format = GL_RGBA;
+							*type = GL_UNSIGNED_INT_8_8_8_8_REV;
 						}
 						else
 						{
+							/* common format */
 							*format = GL_BGRA;
+							*type = GL_UNSIGNED_INT_8_8_8_8_REV;
 						}
 						break;
 				}
@@ -586,7 +579,7 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 			*internalformat = GL_DEPTH_COMPONENT;
 			*format = GL_DEPTH_COMPONENT;
 			*bpp = fmt.dwAlphaBitDepth;
-			*compressed = 0;
+			*compressed = FALSE;
 			switch(fmt.dwAlphaBitDepth)
 			{
 				case 8:
@@ -605,12 +598,12 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 		}
 		else if(fmt.dwFlags & DDPF_LUMINANCE)
 		{
+			*compressed = FALSE;
 			if(fmt.dwLuminanceBitCount == 8 && fmt.dwLuminanceBitMask == 0xFF)
 			{
 				*internalformat = GL_LUMINANCE8;
 				*format = GL_LUMINANCE;
 				*type = GL_UNSIGNED_BYTE;
-				*compressed = FALSE;
 				return TRUE;
 			}
 			else if(fmt.dwLuminanceBitCount == 16
@@ -620,7 +613,6 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 				*internalformat = GL_LUMINANCE8_ALPHA8;
 				*format = GL_LUMINANCE_ALPHA;
 				*type = GL_UNSIGNED_BYTE;
-				*compressed = FALSE;
 				return TRUE;
 			}
 		}
@@ -664,6 +656,8 @@ static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 		return TRUE;
 	}
 #endif
+	
+	TOPIC("NEWTEX", "%s = FALSE", __FUNCTION__);
 	
 	return FALSE; /* not reached */
 }
@@ -1209,8 +1203,7 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 	entry->proc.pglDepthRange(0.0f, 1.0f);
 
 	ctx->matrix.wmax = GL_WRANGE_MAX;
-	MesaIdentity(ctx->matrix.zscale);
-//	ctx->matrix.zscale[10] = 0.8;
+	ctx->matrix.zscale = 1.0;
 
 	MesaIdentity(ctx->matrix.world[0]);
 	MesaIdentity(ctx->matrix.world[1]);
@@ -1226,10 +1219,13 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 	//GL_CHECK(entry->proc.pglDisable(GL_MULTISAMPLE));
 	GL_CHECK(entry->proc.pglDisable(GL_LIGHTING));
 	//GL_CHECK(entry->proc.pglLightModeli(GL_LIGHT_MODEL_TWO_SIDE, GL_TRUE));
-	
+
 	//GL_CHECK(entry->proc.pglLightModeli(GL_LIGHT_MODEL_COLOR_CONTROL, GL_SEPARATE_SPECULAR_COLOR));
 	GL_CHECK(entry->proc.pglLightModeli(GL_LIGHT_MODEL_COLOR_CONTROL, GL_SINGLE_COLOR));
-	
+
+	// enable edge filtering on cubemap
+	GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS));
+
 	// extends clamp over z-depth range
 	//GL_CHECK(entry->proc.pglEnable(GL_DEPTH_CLAMP_NV));
 
@@ -1299,8 +1295,7 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 	ctx->state.alpha.func = GL_NOTEQUAL;
 	ctx->state.alpha.ref = 0.0f;
 
-//	entry->proc.pglEnable(GL_CULL_FACE);
-//	entry->proc.pglCullFace(GL_FRONT);
+	entry->proc.pglDisable(GL_CULL_FACE);
 
 	ctx->state.stencil.sfail     = GL_KEEP;
 	ctx->state.stencil.dpfail    = GL_KEEP;
@@ -1448,14 +1443,11 @@ NUKED_LOCAL mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, surface_id si
 			tex->height = surf->height;
 
 			GL_CHECK(entry->proc.pglGenTextures(1, &tex->gltex));
-			TOPIC("TEXMEM", "new texture: %d (%d x %d)", tex->gltex, tex->width, tex->height);
+			TOPIC("NEWTEX", "new texture: %d (%d x %d)", tex->gltex, tex->width, tex->height);
 
 			if((surf->dwFlags & DDRAWISURF_HASCKEYSRCBLT) && ctx->state.tmu[0].colorkey)
 			{
-				if(!tex->compressed)
-				{
-					tex->colorkey = TRUE;
-				}
+				tex->colorkey = TRUE;
 			}
 
 			if(SurfaceIsEmpty(sid))
@@ -1481,7 +1473,7 @@ NUKED_LOCAL mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, surface_id si
 
 					SurfaceAttachTexture(subsid, tex, cube_pos, cube_index);
 
-					TOPIC("CUBE", "added size[%d][%d], dwCaps2=0x%X", cube_index, cube_pos,
+					TOPIC("NEWTEX", "cubemap - added size[%d][%d], dwCaps2=0x%X", cube_index, cube_pos,
 						surf->dwCaps2
 					);
 
@@ -1517,21 +1509,28 @@ NUKED_LOCAL mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, surface_id si
 				}
 				tex->mipmap_level = surf->attachments_cnt;
 				tex->mipmap = (tex->mipmap_level > 0) ? TRUE : FALSE;
-				TOPIC("MIPMAP", "Created %d with mipmap, at level: %d", tex->gltex, tex->mipmap_level);
+				TOPIC("NEWTEX", "Created %d with mipmap, at level: %d", tex->gltex, tex->mipmap_level);
+				TOPIC("NEWTEX", "full dwCaps=0x%X", surf->dwCaps);
 			} // mipmaps
 			else
 			{
 				tex->mipmap_level = 0;
 				tex->mipmap = FALSE;
-				TOPIC("RELOAD", "Created %d without mipmap", tex->gltex);
+				TOPIC("NEWTEX", "Created %d without mipmap", tex->gltex);
 			}
 
+/*
+			if(surf->dwCaps & DDSCAPS_ALLOCONLOAD)
+			{
+				tex->alwaysdirty = TRUE;
+			}
+*/
 			//ctx->state.reload_tex_par = TRUE;
 			tex->dirty = TRUE;
 		}
 		else
 		{
-			TOPIC("RELOAD", "Failed to identify image type!");
+			TOPIC("NEWTEX", "Failed to identify image type!");
 			hal_free(HEAP_NORMAL, tex);
 			ctx->tex[sid] = NULL;
 			tex = NULL;
@@ -1565,6 +1564,14 @@ NUKED_LOCAL void MesaReloadTexture(mesa3d_texture_t *tex, int tmu)
 	{
 		for(level = 0; level <= tex->mipmap_level; level++)
 		{
+			if(!tex->mipmap && level > 0)
+			{
+				break;
+			}
+			TOPIC("NEWTEX", "Loading gltex=%d, level=%d, side=%d, reload=%d, dirty=%d, palette=%d, colorkey=%d, compressed=%d", tex->gltex, level, side,
+				reload, tex->data_dirty[side][level], tex->palette, tex->colorkey, tex->compressed
+			);
+
 			/* TODO: now we're realoading all levels, even there is change only on one */
 			if(reload || tex->data_dirty[side][level])
 			{
@@ -1577,15 +1584,8 @@ NUKED_LOCAL void MesaReloadTexture(mesa3d_texture_t *tex, int tmu)
 				}
 				else if(has_color_key)
 				{
-					if(tex->compressed)
-					{
-						WARN("Chroma in compressed format (opengl): 0x%X", tex->internalformat);
-					}
-					else
-					{
-						MesaBufferUploadTextureChroma(tex->ctx, tex, level, side, tmu,
-							primary->dwColorKeyLow, primary->dwColorKeyHigh);
-					}
+					MesaBufferUploadTextureChroma(tex->ctx, tex, level, side, tmu,
+						primary->dwColorKeyLow, primary->dwColorKeyHigh);
 				}
 				else
 				{
@@ -2009,6 +2009,13 @@ NUKED_LOCAL void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, vo
 				ts->image = MESA_HANDLE_TO_TEX(TSS_DWORD);
 			}
 			ts->reload = TRUE;
+			if(ts->image)
+			{
+				if(ts->image->alwaysdirty)
+				{
+					ts->image->dirty = TRUE;
+				}
+			}
 			break;
 		/* D3DTEXTUREOP - per-stage blending controls for color channels */
 		RENDERSTATE(D3DTSS_COLOROP)
@@ -2098,8 +2105,7 @@ NUKED_LOCAL void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, vo
 					break;
 			}
 
-			ts->move = TRUE;
-			MesaFVFRecalcCoords(ctx);
+			ts->update = TRUE;
 
 			TOPIC("MAPPING", "TEXCOORDINDEX 0x%X for unit %d", TSS_DWORD, tmu);
 			break;
@@ -2236,8 +2242,8 @@ NUKED_LOCAL void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, vo
 			{
 				ts->projected = FALSE;
 			}
-			
-			MesaFVFRecalcCoords(ctx);
+
+			ts->update = TRUE;
 			break;
 		}
 		RENDERSTATE(D3DTSS_ADDRESSW)
@@ -2246,11 +2252,11 @@ NUKED_LOCAL void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, vo
 			break;
 		RENDERSTATE(D3DTSS_COLORARG0) /* D3DTA_* third arg for triadic ops */
 			ts->color_arg3 = TSS_DWORD;
-			ts->reload = TRUE;
+			ts->update = TRUE;
 			break;
 		RENDERSTATE(D3DTSS_ALPHAARG0) /* D3DTA_* third arg for triadic ops */
 			ts->alpha_arg3 = TSS_DWORD;
-			ts->reload = TRUE;
+			ts->update = TRUE;
 			break;
 		RENDERSTATE(D3DTSS_RESULTARG) /* D3DTA_* arg for result (CURRENT or TEMP) */
 			if(TSS_DWORD == D3DTA_TEMP)
@@ -2367,6 +2373,14 @@ NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DHAL_DP2RENDERSTATE s
 				}
 			}
 			TRACE("D3DRENDERSTATE_TEXTUREHANDLE = %X", state->dwState);
+
+			if(ctx->state.tmu[0].image)
+			{
+				if(ctx->state.tmu[0].image->alwaysdirty)
+				{
+					ctx->state.tmu[0].image->dirty = TRUE;
+				}
+			}
 
 			ctx->state.tmu[0].reload = TRUE;
 			break;
@@ -2600,10 +2614,10 @@ NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DHAL_DP2RENDERSTATE s
 					ctx->state.cull = GL_NONE;
 					break;
 				case D3DCULL_CW:
-					ctx->state.cull = GL_BACK;
+					ctx->state.cull = GL_FRONT;//GL_BACK;
 					break;
 				case D3DCULL_CCW:
-					ctx->state.cull = GL_FRONT;
+					ctx->state.cull = GL_BACK;//GL_FRONT;
 					break;
 			}
 			MesaSetCull(ctx);
@@ -3129,8 +3143,57 @@ NUKED_INLINE void D3DTA2GL(DWORD dxarg, GLint *gl_src, GLint *gl_op, BOOL active
 	}
 }
 
+NUKED_INLINE void setTexGen(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int num_coords, BOOL projected)
+{
+	if(projected)
+	{
+		num_coords--;
+	}
+
+	switch(num_coords)
+	{
+		case 4:
+			GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_GEN_Q));
+			/* thru */
+		case 3:
+			GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_GEN_R));
+			/* thru */
+		case 2:
+			GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_GEN_T));
+			/* thru */
+		case 1:
+			GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_GEN_S));
+			/* thru */
+		default:
+			break;
+	}
+
+	switch(4 - num_coords)
+	{
+		case 4:
+			GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_GEN_S));
+			/* thru */
+		case 3:
+			GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_GEN_T));
+			/* thru */
+		case 2:
+			GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_GEN_R));
+			/* thru */
+		case 1:
+			GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_GEN_Q));
+			/* thru */
+		default:
+			break;
+	}
+}
+
 static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 {
+	static const GLfloat s_plane[] = { 1.0f, 0.0f, 0.0f, 0.0f };
+	static const GLfloat t_plane[] = { 0.0f, 1.0f, 0.0f, 0.0f };
+	static const GLfloat r_plane[] = { 0.0f, 0.0f, 1.0f, 0.0f };
+	static const GLfloat q_plane[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+
 	TRACE("ApplyTextureState(..., ..., %d)", tmu);
 	GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0+tmu));
 
@@ -3138,12 +3201,32 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 	BOOL color_key = FALSE;
 	GLenum target = GL_TEXTURE_2D;
 
-	ts->active = FALSE;
-	if(ts->image && ctx->state.tmu[0].image) /* texturing active only when unit 0 is active */
+	switch(ts->mapping)
 	{
-		if(!ts->image->cube)
+		case D3DTSS_TCI_CAMERASPACENORMAL:
+		case D3DTSS_TCI_CAMERASPACEPOSITION:
+		case D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR:
+			ts->coordscalc_used = ts->coordscalc;
+			break;
+		case D3DTSS_TCI_SPHEREMAP:
+			ts->coordscalc_used = 2;
+			break;
+		case D3DTSS_TCI_PASSTHRU:
+		default:
+			ts->coordscalc_used = 0;
+			break;
+	}
+
+	ts->active = FALSE;
+	if(ts->image/* && ctx->state.tmu[0].image*/) /* texturing active only when unit 0 is active */
+	{
+		if(!ts->image->cube) /* likely */
 		{
-			if(!ts->nocoords || ts->coordscalc)
+			BOOL vertex_coords = ctx->state.vertex.type.texcoords[ts->coordindex] != MESA_VDT_NONE;
+
+			TRACE("vertex_coords = %d (ts->coordindex=%d)", vertex_coords, ts->coordindex);
+
+			if(vertex_coords || ts->coordscalc_used > 0)
 			{
 				GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
 				GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_CUBE_MAP));
@@ -3151,13 +3234,11 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 				GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_CUBE_MAP, 0));	
 				ts->active = TRUE;
 			}
-			else
-			{
-				TOPIC("TEXCOORDS", "wrong cords fvf=0x%X ts->coordscalc=%d ts->coordindex=%d tmu=%d", ctx->state.vertex.code, ts->coordscalc, ts->coordindex, tmu);
-			}
 		}
 		else
 		{
+			TRACE("vertex_coords = cubemap");
+
 			GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
 			GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_CUBE_MAP));
 			GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, 0));
@@ -3181,7 +3262,7 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 		GLenum filter_min = GL_NEAREST;
 		GLenum filter_mag = GL_NEAREST;
 		TRACE("ts->image->mipmap=%d, ts->dx_mip=%d", ts->image->mipmap, ts->dx_mip);
-		
+
 		if(ts->image->mipmap && ts->dx_mip != D3DTFP_NONE) /* mipmap */
 		{
 			GLint maxlevel = ts->image->mipmap_level;
@@ -3307,6 +3388,81 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 				fanisotropy = 1.0;
 
 			GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MAX_ANISOTROPY_EXT, fanisotropy));
+		}
+
+		switch(ts->mapping)
+		{
+			case D3DTSS_TCI_CAMERASPACENORMAL:
+				TOPIC("MAPPING", "(%d)D3DTSS_TCI_CAMERASPACENORMAL: %d", tmu, ts->coordscalc);
+
+				MesaSpaceModelviewSet(ctx);
+				GL_CHECK(entry->proc.pglTexGenfv(GL_S, GL_EYE_PLANE, s_plane));
+				GL_CHECK(entry->proc.pglTexGenfv(GL_T, GL_EYE_PLANE, t_plane));
+				GL_CHECK(entry->proc.pglTexGenfv(GL_R, GL_EYE_PLANE, r_plane));
+				GL_CHECK(entry->proc.pglTexGenfv(GL_Q, GL_EYE_PLANE, q_plane));
+				MesaSpaceModelviewReset(ctx);
+
+				GL_CHECK(entry->proc.pglTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_NORMAL_MAP));
+				GL_CHECK(entry->proc.pglTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_NORMAL_MAP));
+				GL_CHECK(entry->proc.pglTexGeni(GL_R, GL_TEXTURE_GEN_MODE, GL_NORMAL_MAP));
+
+				setTexGen(entry, ctx, ts->coordscalc, ts->projected);
+				break;
+			case D3DTSS_TCI_CAMERASPACEPOSITION:
+				TOPIC("MAPPING", "(%d)D3DTSS_TCI_CAMERASPACEPOSITION: %d", tmu, ts->coordscalc);
+
+				MesaSpaceModelviewSet(ctx);
+				GL_CHECK(entry->proc.pglTexGenfv(GL_S, GL_EYE_PLANE, s_plane));
+				GL_CHECK(entry->proc.pglTexGenfv(GL_T, GL_EYE_PLANE, t_plane));
+				GL_CHECK(entry->proc.pglTexGenfv(GL_R, GL_EYE_PLANE, r_plane));
+				GL_CHECK(entry->proc.pglTexGenfv(GL_Q, GL_EYE_PLANE, q_plane));
+				MesaSpaceModelviewReset(ctx);
+
+				GL_CHECK(entry->proc.pglTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_EYE_LINEAR));
+				GL_CHECK(entry->proc.pglTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_EYE_LINEAR));
+				GL_CHECK(entry->proc.pglTexGeni(GL_R, GL_TEXTURE_GEN_MODE, GL_EYE_LINEAR));
+
+				setTexGen(entry, ctx, ts->coordscalc, ts->projected);
+				break;
+			case D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR:
+				TOPIC("MAPPING", "(%d)D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR: %d", tmu, ts->coordscalc);
+
+				MesaSpaceModelviewSet(ctx);
+				GL_CHECK(entry->proc.pglTexGenfv(GL_S, GL_EYE_PLANE, s_plane));
+				GL_CHECK(entry->proc.pglTexGenfv(GL_T, GL_EYE_PLANE, t_plane));
+				GL_CHECK(entry->proc.pglTexGenfv(GL_R, GL_EYE_PLANE, r_plane));
+				GL_CHECK(entry->proc.pglTexGenfv(GL_Q, GL_EYE_PLANE, q_plane));
+				MesaSpaceModelviewReset(ctx);
+
+				GL_CHECK(entry->proc.pglTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_REFLECTION_MAP));
+				GL_CHECK(entry->proc.pglTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_REFLECTION_MAP));
+				GL_CHECK(entry->proc.pglTexGeni(GL_R, GL_TEXTURE_GEN_MODE, GL_REFLECTION_MAP));
+
+				setTexGen(entry, ctx, ts->coordscalc, ts->projected);
+				break;
+			case D3DTSS_TCI_SPHEREMAP:
+				TOPIC("MAPPING", "(%d)D3DTSS_TCI_SPHEREMAP: %d", tmu, ts->coordscalc);
+
+				GL_CHECK(entry->proc.pglTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP));
+				GL_CHECK(entry->proc.pglTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP));
+
+				setTexGen(entry, ctx, 2, ts->projected);
+				break;
+			case D3DTSS_TCI_PASSTHRU:
+			default:
+				TOPIC("MAPPING", "(%d)D3DTSS_TCI_PASSTHRU: %d", tmu, ts->coordscalc);
+				setTexGen(entry, ctx, 0, FALSE);
+				break;
+		}
+
+		if(!ctx->matrix.identity_mode)
+		{
+			//MesaSpaceModelviewSet(ctx);
+
+			GL_CHECK(entry->proc.pglMatrixMode(GL_TEXTURE));
+			MesaTMUApplyMatrix(ctx, tmu);
+
+			//MesaSpaceModelviewReset(ctx);
 		}
 	}
 	else /* !image */
@@ -4022,58 +4178,9 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 	}
 }
 
-NUKED_INLINE void setTexGen(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int num_coords, BOOL projected)
-{
-	if(projected)
-	{
-		num_coords--;
-	}
-	
-	switch(num_coords)
-	{
-		case 4:
-			GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_GEN_Q));
-			/* thru */
-		case 3:
-			GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_GEN_R));
-			/* thru */
-		case 2:
-			GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_GEN_T));
-			/* thru */
-		case 1:
-			GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_GEN_S));
-			/* thru */
-		default:
-			break;
-	}
-	
-	switch(4 - num_coords)
-	{
-		case 4:
-			GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_GEN_S));
-			/* thru */
-		case 3:
-			GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_GEN_T));
-			/* thru */
-		case 2:
-			GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_GEN_R));
-			/* thru */
-		case 1:
-			GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_GEN_Q));
-			/* thru */
-		default:
-			break;
-	}
-}
-
 NUKED_LOCAL void MesaDrawRefreshState(mesa3d_ctx_t *ctx)
 {
 	int i;
-	static const GLfloat s_plane[] = { 1.0f, 0.0f, 0.0f, 0.0f };
-	static const GLfloat t_plane[] = { 0.0f, 1.0f, 0.0f, 0.0f };
-	static const GLfloat r_plane[] = { 0.0f, 0.0f, 1.0f, 0.0f };
-	static const GLfloat q_plane[] = { 0.0f, 0.0f, 0.0f, 1.0f };
-
 	for(i = 0; i < ctx->tmu_count; i++)
 	{
 		if(ctx->state.tmu[i].image != NULL)
@@ -4083,7 +4190,7 @@ NUKED_LOCAL void MesaDrawRefreshState(mesa3d_ctx_t *ctx)
 				ctx->state.tmu[i].reload = TRUE;
 			}
 		}
-		
+
 		if(ctx->state.tmu[i].reload)
 		{
 			if(ctx->state.tmu[i].image != NULL)
@@ -4091,97 +4198,20 @@ NUKED_LOCAL void MesaDrawRefreshState(mesa3d_ctx_t *ctx)
 				MesaReloadTexture(ctx->state.tmu[i].image, i);
 			}
 			ctx->state.tmu[i].update = TRUE;
-			ctx->state.tmu[i].move   = TRUE;
+			//ctx->state.tmu[i].move   = TRUE;
 			ctx->state.tmu[i].reload = FALSE;
 		}
-		
+
 		if(ctx->state.tmu[i].update)
 		{
 			ApplyTextureState(ctx->entry, ctx, i);
 			ctx->state.tmu[i].update = FALSE;
 		}
 		
-		if(ctx->state.tmu[i].move)
+		/*if(ctx->state.tmu[i].move)
 		{
-			mesa3d_entry_t *entry = ctx->entry;
-			
-			GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0 + i));
-			GL_CHECK(entry->proc.pglMultiTexCoord4f(GL_TEXTURE0 + i, MESA_DEF_TEXCOORDS));
-
-			if(!ctx->matrix.identity_mode)
-			{
-				GL_CHECK(entry->proc.pglMatrixMode(GL_TEXTURE));
-				//GL_CHECK(entry->proc.pglLoadMatrixf(&ctx->state.tmu[i].matrix[0]));
-				MesaTMUApplyMatrix(ctx, i);
-			}
-
-			switch(ctx->state.tmu[i].mapping)
-			{
-				case D3DTSS_TCI_CAMERASPACENORMAL:
-					TOPIC("MAPPING", "(%d)D3DTSS_TCI_CAMERASPACENORMAL: %d", i, ctx->state.tmu[i].coordscalc);
-
-					MesaSpaceModelviewSet(ctx);
-					GL_CHECK(entry->proc.pglTexGenfv(GL_S, GL_EYE_PLANE, s_plane));
-					GL_CHECK(entry->proc.pglTexGenfv(GL_T, GL_EYE_PLANE, t_plane));
-					GL_CHECK(entry->proc.pglTexGenfv(GL_R, GL_EYE_PLANE, r_plane));
-					GL_CHECK(entry->proc.pglTexGenfv(GL_Q, GL_EYE_PLANE, q_plane));
-					MesaSpaceModelviewReset(ctx);
-
-					GL_CHECK(entry->proc.pglTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_NORMAL_MAP));
-					GL_CHECK(entry->proc.pglTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_NORMAL_MAP));
-					GL_CHECK(entry->proc.pglTexGeni(GL_R, GL_TEXTURE_GEN_MODE, GL_NORMAL_MAP));
-
-					setTexGen(entry, ctx, ctx->state.tmu[i].coordscalc, ctx->state.tmu[i].projected);
-					break;
-				case D3DTSS_TCI_CAMERASPACEPOSITION:
-					TOPIC("MAPPING", "(%d)D3DTSS_TCI_CAMERASPACEPOSITION: %d", i, ctx->state.tmu[i].coordscalc);
-
-					MesaSpaceModelviewSet(ctx);
-					GL_CHECK(entry->proc.pglTexGenfv(GL_S, GL_EYE_PLANE, s_plane));
-					GL_CHECK(entry->proc.pglTexGenfv(GL_T, GL_EYE_PLANE, t_plane));
-					GL_CHECK(entry->proc.pglTexGenfv(GL_R, GL_EYE_PLANE, r_plane));
-					GL_CHECK(entry->proc.pglTexGenfv(GL_Q, GL_EYE_PLANE, q_plane));
-					MesaSpaceModelviewReset(ctx);
-
-					GL_CHECK(entry->proc.pglTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_EYE_LINEAR));
-					GL_CHECK(entry->proc.pglTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_EYE_LINEAR));
-					GL_CHECK(entry->proc.pglTexGeni(GL_R, GL_TEXTURE_GEN_MODE, GL_EYE_LINEAR));
-
-					setTexGen(entry, ctx, ctx->state.tmu[i].coordscalc, ctx->state.tmu[i].projected);
-					break;
-				case D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR:
-					TOPIC("MAPPING", "(%d)D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR: %d", i, ctx->state.tmu[i].coordscalc);
-
-					MesaSpaceModelviewSet(ctx);
-					GL_CHECK(entry->proc.pglTexGenfv(GL_S, GL_EYE_PLANE, s_plane));
-					GL_CHECK(entry->proc.pglTexGenfv(GL_T, GL_EYE_PLANE, t_plane));
-					GL_CHECK(entry->proc.pglTexGenfv(GL_R, GL_EYE_PLANE, r_plane));
-					GL_CHECK(entry->proc.pglTexGenfv(GL_Q, GL_EYE_PLANE, q_plane));
-					MesaSpaceModelviewReset(ctx);
-
-					GL_CHECK(entry->proc.pglTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_REFLECTION_MAP));
-					GL_CHECK(entry->proc.pglTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_REFLECTION_MAP));
-					GL_CHECK(entry->proc.pglTexGeni(GL_R, GL_TEXTURE_GEN_MODE, GL_REFLECTION_MAP));
-
-					setTexGen(entry, ctx, ctx->state.tmu[i].coordscalc, ctx->state.tmu[i].projected);
-					break;
-				case D3DTSS_TCI_SPHEREMAP:
-					TOPIC("MAPPING", "(%d)D3DTSS_TCI_SPHEREMAP: %d", i, ctx->state.tmu[i].coordscalc);
-					
-					GL_CHECK(entry->proc.pglTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP));
-					GL_CHECK(entry->proc.pglTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP));
-
-					setTexGen(entry, ctx, 2, ctx->state.tmu[i].projected);
-					break;
-				case D3DTSS_TCI_PASSTHRU:
-				default:
-					TOPIC("MAPPING", "(%d)D3DTSS_TCI_PASSTHRU: %d", i, ctx->state.tmu[i].coordscalc);
-					setTexGen(entry, ctx, 0, FALSE);
-					break;
-			}
-			
 			ctx->state.tmu[i].move = FALSE;
-		}
+		}*/
 	}
 }
 

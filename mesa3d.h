@@ -85,6 +85,7 @@ typedef struct mesa3d_texture
 	BOOL colorkey;
 	BOOL compressed;
 	BOOL palette;
+	BOOL alwaysdirty;
 	BOOL tmu[MESA_TMU_MAX];
 } mesa3d_texture_t;
 
@@ -110,7 +111,6 @@ typedef struct mesa3d_light
 struct mesa3d_tmustate
 {
 	BOOL active;
-	BOOL nocoords; /* when no coords for this TMU */
 	
 	mesa3d_texture_t *image;
 	// texture address DX5 DX6 DX7
@@ -152,6 +152,7 @@ struct mesa3d_tmustate
 	int coordindex; /* D3DTSS_TEXCOORDINDEX */
 	DWORD mapping; /* D3DTSS_TCI_ */
 	int coordscalc; /* D3DTSS_TEXTURETRANSFORMFLAGS */
+	int coordscalc_used; /* real number of dims used for generate coordinates  */
 	BOOL projected;
 	GLfloat matrix[16];
 	BOOL matrix_idx;
@@ -441,7 +442,7 @@ typedef struct mesa3d_ctx
 	struct {
 		/* space transform */
 		GLfloat wmax;
-		GLfloat zscale[16];
+		GLfloat zscale;
 		/* DX matices */
 		GLfloat proj[16];
 		GLfloat view[16];
@@ -680,8 +681,8 @@ NUKED_LOCAL void SurfaceExInsertBuffer(mesa3d_entry_t *entry, LPDDRAWI_DIRECTDRA
 NUKED_LOCAL mesa3d_texture_t *MesaTextureFromSurfaceHandle(mesa3d_ctx_t *ctx, DWORD surfaceHandle);
 NUKED_LOCAL void MesaApplyMaterial(mesa3d_ctx_t *ctx);
 NUKED_LOCAL void MesaApplyMaterialSet(mesa3d_ctx_t *ctx, D3DHAL_DP2SETMATERIAL *material);
-NUKED_LOCAL void MesaSetCull(mesa3d_ctx_t *ctx);
-NUKED_LOCAL void MesaReverseCull(mesa3d_ctx_t *ctx);
+NUKED_FAST  void MesaSetCull(mesa3d_ctx_t *ctx);
+NUKED_FAST  void MesaReverseCull(mesa3d_ctx_t *ctx);
 
 /* need GL block + viewmodel matrix to matrix.view */
 NUKED_LOCAL void MesaTLRecalcModelview(mesa3d_ctx_t *ctx);
@@ -707,7 +708,10 @@ NUKED_LOCAL void *MesaChroma24(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWOR
 NUKED_LOCAL void *MesaChroma16(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
 NUKED_LOCAL void *MesaChroma15(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
 NUKED_LOCAL void *MesaChroma12(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, DWORD lwkey, DWORD hikey);
-NUKED_LOCAL void MesaChromaFree(mesa3d_ctx_t *ctx, void *ptr);
+
+NUKED_LOCAL void *MesaDXT1(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, BOOL chroma, DWORD lwkey, DWORD hikey);
+NUKED_LOCAL void *MesaDXT3(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, BOOL chroma, DWORD lwkey, DWORD hikey);
+NUKED_LOCAL void *MesaDXT5(mesa3d_ctx_t *ctx, const void *buf, DWORD w, DWORD h, BOOL chroma, DWORD lwkey, DWORD hikey);
 
 /* state recording (needs GL block) */
 NUKED_LOCAL void MesaRecStart(mesa3d_ctx_t *ctx, DWORD handle, D3DSTATEBLOCKTYPE sbType);

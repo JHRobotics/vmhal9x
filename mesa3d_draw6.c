@@ -345,7 +345,7 @@ NUKED_INLINE void draw_fvf(mesa3d_ctx_t *ctx, DWORD fvf)
 
 	if(sr)
 	{
-		//MesaDrawFVFdefaults(ctx);
+		MesaDrawRefreshState(ctx);
 		MesaApplyLighting(ctx);
 		MesaApplyMaterial(ctx);
 	}
@@ -670,6 +670,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					CHECK_LIMITS(D3DHAL_DP2INDEXEDTRIANGLELIST, inst->wPrimitiveCount);
 
 					RENDER_BEGIN(fvf);
+					MesaReverseCull(ctx);
 					entry->proc.pglBegin(GL_TRIANGLES);
 					for(i = 0; i < inst->wPrimitiveCount; i++)
 					{
@@ -700,6 +701,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 						prim += sizeof(D3DHAL_DP2INDEXEDTRIANGLELIST);
 					}
 					entry->proc.pglEnd();
+					MesaSetCull(ctx);
 					if(i != inst->wPrimitiveCount)
 					{
 						PD2_ERROR;
@@ -736,16 +738,12 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					RENDER_BEGIN(fvf);
 					if(count >= 3)
 					{
-						MesaReverseCull(ctx);
-
 						entry->proc.pglBegin(GL_TRIANGLE_STRIP);
 						for(i = 0; i < count; i++)
 						{
 							MesaVertexBuffer(entry, ctx, vertices, base+pos[i], ctx->state.vertex.stride);
 						}
 						entry->proc.pglEnd();
-
-						MesaSetCull(ctx);
 					}
 					RENDER_END;
 					NEXT_INST(0);
@@ -772,7 +770,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					RENDER_BEGIN(fvf);
 					entry->proc.pglBegin(GL_TRIANGLE_FAN);
 					MesaVertexBuffer(entry, ctx, vertices, base+pos[0], ctx->state.vertex.stride);
-					for(i = inst->wPrimitiveCount+1; i >= 1; i--)
+					for(i = 0; i < inst->wPrimitiveCount+2; i++)
 					{
 #ifdef STRICT_DATA
 						CHECK_DATA_BREAK(base+pos[i]);
@@ -784,8 +782,8 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 						}
 #endif
 					}
-					entry->proc.pglEnd();
-					if(i != 0)
+					GL_CHECK(entry->proc.pglEnd());
+					if(i != inst->wPrimitiveCount+2)
 					{
 						PD2_ERROR;
 					}
@@ -812,8 +810,9 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 					prim += sizeof(D3DHAL_DP2STARTVERTEX);
 
 					RENDER_BEGIN(fvf);
+					MesaReverseCull(ctx);
 					entry->proc.pglBegin(GL_TRIANGLES);
-					for(i = inst->wPrimitiveCount; i > 0; i--)
+					for(i = 0; i < inst->wPrimitiveCount; i++)
 					{
 #ifdef STRICT_DATA
 						start = base + ((D3DHAL_DP2INDEXEDTRIANGLELIST2*)prim)->wV3;
@@ -842,8 +841,9 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 #endif
 						prim += sizeof(D3DHAL_DP2INDEXEDTRIANGLELIST2);
 					}
-					entry->proc.pglEnd();
-					if(i != 0)
+					GL_CHECK(entry->proc.pglEnd());
+					MesaSetCull(ctx);
+					if(i != inst->wPrimitiveCount)
 					{
 						WARN("i = %d", i);
 						PD2_ERROR;
@@ -893,7 +893,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 #endif
 						prim += sizeof(D3DHAL_DP2INDEXEDLINELIST);
 					}
-					entry->proc.pglEnd();
+					GL_CHECK(entry->proc.pglEnd());
 					if(i != inst->wPrimitiveCount)
 					{
 						PD2_ERROR;
@@ -1039,7 +1039,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 							if(sz > 1.0)
 								sz = 1.0f;
 
-							ctx->matrix.zscale[10] = sz;
+							ctx->matrix.zscale = sz;
 							MesaApplyTransform(ctx, MESA_TF_PROJECTION);
 
 							ctx->matrix.wmax = wmax;
@@ -1394,10 +1394,17 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 						CHECK_LIMITS(D3DHAL_DP2CREATEVERTEXSHADER, 1);
 						prim += sizeof(D3DHAL_DP2CREATEVERTEXSHADER);
 						CHECK_LIMITS_SIZE(shader->dwDeclSize + shader->dwCodeSize);
-						TRACE("CREATEVERTEXSHADER dwHandle=%d, dwDeclSize=%d, dwCodeSize=%d", 
+						TOPIC("SHADER", "CREATEVERTEXSHADER dwHandle=%d, dwDeclSize=%d, dwCodeSize=%d", 
 							shader->dwHandle, shader->dwDeclSize, shader->dwCodeSize
 						);
 						MesaVSCreate(ctx, shader, prim);
+#ifdef DEBUG
+						mesa_dx_shader_t *vs = MesaVSGet(ctx, shader->dwHandle);
+						if(vs)
+						{
+							MesaVSDump(vs);
+						}
+#endif
 						prim += shader->dwDeclSize + shader->dwCodeSize;
 					}
 					NEXT_INST(0);
@@ -1583,6 +1590,9 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 						D3DHAL_DP2DRAWINDEXEDPRIMITIVE *draw = (D3DHAL_DP2DRAWINDEXEDPRIMITIVE*)prim;
 						prim += sizeof(D3DHAL_DP2DRAWINDEXEDPRIMITIVE);
 						GLenum prim = MesaConvPrimType(draw->primType);
+						TOPIC("MININDEX", "primType=%d MinIndex=%d NumVertices=%d StartIndex=%d PrimitiveCount=%d",
+							draw->primType, draw->MinIndex, draw->NumVertices, draw->StartIndex, draw->PrimitiveCount
+						);
 						if(prim != GL_NOOP)
 						{
 							/* using active stream */

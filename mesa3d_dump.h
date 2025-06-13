@@ -152,7 +152,6 @@ DUMP_M(state.tmu[3].matrix)
 DUMP_D(state.tmu[3].wrap)
 
 DUMP_F(matrix.wmax)
-DUMP_M(matrix.zscale)
 DUMP_M(matrix.proj)
 DUMP_M(matrix.view)
 DUMP_M(matrix.world[0])

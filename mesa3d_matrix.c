@@ -43,6 +43,9 @@
 /* when 1 invert projection matrix, 0 invert viewmodel matrix */
 #define DX_INVERT_PROJECTION 1
 
+#define Mgl(_m, _y, _x) _m[4*((_y)-1) + ((_x)-1)]
+#define Mdx(_m, _y, _x) _m->_ ## _y  ## _x
+
 /* mostly borrowed from libglu/src/libutilproject.c */
 inline static void matmultvecf(const GLfloat matrix[16], const GLfloat in[4], GLfloat out[4])
 {
@@ -206,6 +209,18 @@ NUKED_LOCAL BOOL MesaUnprojectf(GLfloat winx, GLfloat winy, GLfloat winz, GLfloa
 }
 #endif
 
+#ifdef DEBUG
+NUKED_LOCAL void MesaMatrixDumpName(GLfloat *m, const char *n, const char *f, int line)
+{
+	TOPIC("MATRIX", "Matrix[4x4] %s at %s:%d = ", n, f, line);
+	TOPIC("MATRIX", "[%f, %f, %f, %f]", m[0*4+0], m[0*4+1], m[0*4+2], m[0*4+3]);
+	TOPIC("MATRIX", "[%f, %f, %f, %f]", m[1*4+0], m[1*4+1], m[1*4+2], m[1*4+3]);
+	TOPIC("MATRIX", "[%f, %f, %f, %f]", m[2*4+0], m[2*4+1], m[2*4+2], m[2*4+3]);
+	TOPIC("MATRIX", "[%f, %f, %f, %f]", m[3*4+0], m[3*4+1], m[3*4+2], m[3*4+3]);
+}
+#define MesaMatrixDump(_m) MesaMatrixDumpName(_m, #_m, __FILE__, __LINE__)
+#endif
+
 NUKED_FAST BOOL MesaIsIdentity(GLfloat matrix[16])
 {
 	int i = 0;
@@ -258,9 +273,8 @@ NUKED_LOCAL void MesaApplyViewport(mesa3d_ctx_t *ctx, GLint x, GLint y, GLint w,
 	ctx->matrix.viewport[1] = y;
 	ctx->matrix.viewport[2] = w;
 	ctx->matrix.viewport[3] = h;
-	
-	TOPIC("MATRIX", "GL_VIEWPORT");
-	TOPIC("MATRIX", "[%d %d %d %d]", ctx->matrix.viewport[0], ctx->matrix.viewport[1], ctx->matrix.viewport[2], ctx->matrix.viewport[3]);
+
+	TOPIC("SHADER", "Viewport: [%d %d %d %d]", ctx->matrix.viewport[0], ctx->matrix.viewport[1], ctx->matrix.viewport[2], ctx->matrix.viewport[3]);
 
 	ctx->matrix.vpnorm[0] = ctx->matrix.viewport[0];
 	ctx->matrix.vpnorm[1] = ctx->matrix.viewport[1];
@@ -302,10 +316,10 @@ NUKED_LOCAL void MesaApplyViewport(mesa3d_ctx_t *ctx, GLint x, GLint y, GLint w,
  **/
 static const GLfloat initmatrix[16] = 
 {
-	1.0,  0.0,  0.0,  0.0,
-	0.0, -1.0,  0.0,  0.0,
-	0.0,  0.0,  1.0,  0.0,
-	0.0,  0.0,  0.0,  1.0
+	1.0f,  0.0f,  0.0f,  0.0f,
+	0.0f, -1.0f,  0.0f,  0.0f,
+	0.0f,  0.0f,  1.0f,  0.0f,
+	0.0f,  0.0f,  0.0f,  1.0f
 };
 
 NUKED_LOCAL void MesaApplyTransform(mesa3d_ctx_t *ctx, DWORD changes)
@@ -323,10 +337,9 @@ NUKED_LOCAL void MesaApplyTransform(mesa3d_ctx_t *ctx, DWORD changes)
 	if(changes & MESA_TF_PROJECTION)
 	{
 #if DX_INVERT_PROJECTION
-		matmultf(ctx->matrix.zscale, initmatrix, ctx->matrix.projfix);
-		matmultf(ctx->matrix.proj, ctx->matrix.projfix, ctx->matrix.projfix);
+		matmultf(ctx->matrix.proj, initmatrix, ctx->matrix.projfix);
 #else
-		matmultf(ctx->matrix.proj, ctx->matrix.zscale, ctx->matrix.projfix);
+		memcpy(ctx->matrix.projfix, ctx->matrix.proj, sizeof(GLfloat[16]));
 #endif
 	}
 
@@ -419,12 +432,16 @@ NUKED_LOCAL void MesaSpaceIdentityReset(mesa3d_ctx_t *ctx)
 
 		for(tmu = 0; tmu < ctx->tmu_count; tmu++)
 		{
-			if(!ctx->state.tmu[tmu].matrix_idx)
+			//if(!ctx->state.tmu[tmu].matrix_idx)
 			{
+				//MesaSpaceModelviewSet(ctx);
+
 				GL_CHECK(entry->proc.pglActiveTexture(GL_TEXTURE0+tmu));
 				GL_CHECK(entry->proc.pglMatrixMode(GL_TEXTURE));
 				MesaTMUApplyMatrix(ctx, tmu);
 				//GL_CHECK(entry->proc.pglLoadMatrixf(&ctx->state.tmu[tmu].matrix[0]));
+
+				//MesaSpaceModelviewReset(ctx);
 			}
 		}
 
@@ -497,49 +514,59 @@ NUKED_FAST void MesaTMUApplyMatrix(mesa3d_ctx_t *ctx, int tmu)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 	struct mesa3d_tmustate *ts = &ctx->state.tmu[tmu];
-	if(ts->coordscalc >= 2)
+	if(ts->coordscalc_used >= 2)
 	{
+		GLfloat m[16];
+		memcpy(m, ts->matrix, sizeof(m));
 		if(ts->projected)
 		{
-			GLfloat m[16];
-			memcpy(m, ts->matrix, sizeof(m));
-			switch(ts->coordscalc)
+			switch(ts->coordscalc_used)
 			{
 				case 2:
-					/*
-					mat._14 = mat._12;
-					mat._24 = mat._22;
-					mat._34 = mat._32;
-					mat._44 = mat._42;
-					mat._12 = mat._22 = mat._32 = mat._42 = 0.0f;
-					*/
-					m[0*4 + 3] = m[0*4 + 1];
-					m[1*4 + 3] = m[1*4 + 1];
-					m[2*4 + 3] = m[2*4 + 1];
-					m[3*4 + 3] = m[3*4 + 1];
-					m[0*4 + 1] = m[1*4 + 1] = m[2*4 + 1] = m[3*4 + 1] = 0.0f;
+					Mgl(m, 1, 4) = Mgl(m, 1, 2);
+					Mgl(m, 2, 4) = Mgl(m, 2, 2);
+					Mgl(m, 3, 4) = Mgl(m, 3, 2);
+					Mgl(m, 4, 4) = Mgl(m, 4, 2);
+					Mgl(m, 1, 2) = Mgl(m, 2, 2) = Mgl(m, 3, 2) = Mgl(m, 4, 2) = 0.0f;
 					break;
 				case 3:
-					/*
-					mat._14 = mat._13;
-					mat._24 = mat._23;
-					mat._34 = mat._33;
-					mat._44 = mat._43;
-					mat._13 = mat._23 = mat._33 = mat._43 = 0.0f;
-					*/
-					m[0*4 + 3] = m[0*4 + 2];
-					m[1*4 + 3] = m[1*4 + 2];
-					m[2*4 + 3] = m[2*4 + 2];
-					m[3*4 + 3] = m[3*4 + 2];
-					m[0*4 + 2] = m[1*4 + 2] = m[2*4 + 2] = m[3*4 + 2] = 0.0f;
+					Mgl(m, 1, 4) = Mgl(m, 1, 3);
+					Mgl(m, 2, 4) = Mgl(m, 2, 3);
+					Mgl(m, 3, 4) = Mgl(m, 3, 3);
+					Mgl(m, 4, 4) = Mgl(m, 4, 3);
+					Mgl(m, 1, 3) = Mgl(m, 2, 3) = Mgl(m, 3, 3) = Mgl(m, 4, 3) = 0.0f;
 					break;
 			}
 			GL_CHECK(entry->proc.pglLoadMatrixf(&m[0]));
 		}
 		else
 		{
-			GL_CHECK(entry->proc.pglLoadMatrixf(&ts->matrix[0]));
+			switch(ts->coordscalc_used)
+			{
+				case 2:
+					//mat._13 = mat._23 = mat._33 = mat._43 = 0.0f;
+					Mgl(m, 1, 3) = 0.0;
+					Mgl(m, 2, 3) = 0.0;
+					Mgl(m, 3, 3) = 0.0;
+					Mgl(m, 4, 3) = 0.0;
+					/* TRU */
+				default:
+					//mat._14 = mat._24 = mat._34 = 0.0f; mat._44 = 1.0f;
+					Mgl(m, 1, 4) = 0;
+					Mgl(m, 2, 4) = 0;
+					Mgl(m, 3, 4) = 0;
+					Mgl(m, 4, 4) = 1.0f;
+					break;
+			}
+			GL_CHECK(entry->proc.pglLoadMatrixf(&m[0]));
 		}
+
+		TOPIC("MATRIX", "ts->projected=%d ts->coordscalc=%d", ts->projected, ts->coordscalc);
+
+#ifdef DEBUG
+		MesaMatrixDump(ts->matrix);
+		MesaMatrixDump(m);
+#endif
 	}
 	else
 	{
@@ -548,10 +575,10 @@ NUKED_FAST void MesaTMUApplyMatrix(mesa3d_ctx_t *ctx, int tmu)
 }
 
 #define COPY_MATRIX(_srcdx, _dst) do{ \
-	(_dst)[ 0]=(_srcdx)->_11; (_dst)[ 1]=(_srcdx)->_12; (_dst)[ 2]=(_srcdx)->_13; (_dst)[ 3]=(_srcdx)->_14; \
-	(_dst)[ 4]=(_srcdx)->_21; (_dst)[ 5]=(_srcdx)->_22; (_dst)[ 6]=(_srcdx)->_23; (_dst)[ 7]=(_srcdx)->_24; \
-	(_dst)[ 8]=(_srcdx)->_31; (_dst)[ 9]=(_srcdx)->_32; (_dst)[10]=(_srcdx)->_33; (_dst)[11]=(_srcdx)->_34; \
-	(_dst)[12]=(_srcdx)->_41; (_dst)[13]=(_srcdx)->_42; (_dst)[14]=(_srcdx)->_43; (_dst)[15]=(_srcdx)->_44; \
+	Mgl(_dst, 1, 1) = Mdx(_srcdx, 1, 1); Mgl(_dst, 1, 2) = Mdx(_srcdx, 1, 2); Mgl(_dst, 1, 3) = Mdx(_srcdx, 1, 3); Mgl(_dst, 1, 4) = Mdx(_srcdx, 1, 4); \
+	Mgl(_dst, 2, 1) = Mdx(_srcdx, 2, 1); Mgl(_dst, 2, 2) = Mdx(_srcdx, 2, 2); Mgl(_dst, 2, 3) = Mdx(_srcdx, 2, 3); Mgl(_dst, 2, 4) = Mdx(_srcdx, 2, 4); \
+	Mgl(_dst, 3, 1) = Mdx(_srcdx, 3, 1); Mgl(_dst, 3, 2) = Mdx(_srcdx, 3, 2); Mgl(_dst, 3, 3) = Mdx(_srcdx, 3, 3); Mgl(_dst, 3, 4) = Mdx(_srcdx, 3, 4); \
+	Mgl(_dst, 4, 1) = Mdx(_srcdx, 4, 1); Mgl(_dst, 4, 2) = Mdx(_srcdx, 4, 2); Mgl(_dst, 4, 3) = Mdx(_srcdx, 4, 3); Mgl(_dst, 4, 4) = Mdx(_srcdx, 4, 4); \
 	}while(0)
 
 NUKED_LOCAL void MesaSetTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *matrix)
@@ -621,10 +648,10 @@ NUKED_LOCAL void MesaSetTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *mat
 		case D3DTRANSFORMSTATE_TEXTURE0...D3DTRANSFORMSTATE_TEXTURE7:
 		{
 			DWORD tmu = state-D3DTRANSFORMSTATE_TEXTURE0;
-			if(memcpy(ctx->state.tmu[tmu].matrix, m, sizeof(m)) != 0)
+			if(memcmp(ctx->state.tmu[tmu].matrix, m, sizeof(m)) != 0)
 			{
 				MesaSetTextureMatrix(ctx, tmu, m);
-				ctx->state.tmu[tmu].move = TRUE;
+				ctx->state.tmu[tmu].update = TRUE;
 				MesaDrawRefreshState(ctx);
 			}
 			state_mtx = state;
@@ -682,7 +709,8 @@ NUKED_LOCAL void MesaMultTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *ma
 	{
 		MesaIdentity(m);
 	}
-	
+	TOPIC("MATRIX", "MesaMultTransform %d", xtype);
+
 	switch(state)
 	{
 		case D3DTRANSFORMSTATE_WORLD:
@@ -720,7 +748,7 @@ NUKED_LOCAL void MesaMultTransform(mesa3d_ctx_t *ctx, DWORD xtype, D3DMATRIX *ma
 
 			MesaSetTextureMatrix(ctx, tmu, m);
 
-			ctx->state.tmu[tmu].move = TRUE;
+			ctx->state.tmu[tmu].update = TRUE;
 			MesaDrawRefreshState(ctx);
 			break;
 		}

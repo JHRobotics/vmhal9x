@@ -804,15 +804,15 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 			caps.MaxTextureWidth = env.texture_max_width;
 			caps.MaxTextureHeight = env.texture_max_height;
 			caps.MaxVolumeExtent = 2048;
-			caps.MaxTextureRepeat = 2048;
-			caps.MaxTextureAspectRatio = 2048;
+			caps.MaxTextureRepeat = 8192;
+			caps.MaxTextureAspectRatio = 0; // no limit
 			
 			/* some happy values from ref driver */
 			caps.MaxVertexW      = 1.0e10;
-			caps.GuardBandLeft   = -32768.0f;
-			caps.GuardBandTop    = -32768.0f;
-			caps.GuardBandRight  = 32767.0f;
-			caps.GuardBandBottom = 32767.0f;
+			caps.GuardBandLeft   = -8192.0f;
+			caps.GuardBandTop    = -8192.0f;
+			caps.GuardBandRight  = 8192.0f;
+			caps.GuardBandBottom = 8192.0f;
 			caps.ExtentsAdjust   = 0.0f; //  AA kernel is 1.0 x 1.0
 			caps.StencilCaps = MYSTENCIL_CAPS;
 			caps.FVFCaps = 8;
@@ -1403,6 +1403,11 @@ DDENTRY(ContextCreate32, LPD3DHAL_CONTEXTCREATEDATA, pccd)
 				ctx->dd = NULL;
 			else
 				ctx->dd = pccd->lpDDGbl;
+
+			if(ctx->dxif < MESA_CTX_IF_DX7)
+			{
+				ctx->matrix.zscale = 0.99;
+			}
 		}
 	}
 
