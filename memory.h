@@ -30,6 +30,8 @@
 #define HEAP_LARGE  1
 #define HEAP_VRAM   2 /* don't use yet! */
 
+#define HAL_UNINITIALIZED_MAGIC 0x11223344
+
 BOOL  hal_memory_init();
 void hal_memory_destroy();
 

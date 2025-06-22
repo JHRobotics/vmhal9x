@@ -558,10 +558,11 @@ NUKED_FAST void MesaTMUApplyMatrix(mesa3d_ctx_t *ctx, int tmu)
 					Mgl(m, 4, 4) = 1.0f;
 					break;
 			}
+
 			GL_CHECK(entry->proc.pglLoadMatrixf(&m[0]));
 		}
 
-		TOPIC("MATRIX", "ts->projected=%d ts->coordscalc=%d", ts->projected, ts->coordscalc);
+		TOPIC("MATRIX", "ts->projected=%d ts->coordscalc=%d ts->mapping=0x%X", ts->projected, ts->coordscalc, ts->mapping);
 
 #ifdef DEBUG
 		MesaMatrixDump(ts->matrix);

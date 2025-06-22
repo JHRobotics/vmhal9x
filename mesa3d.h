@@ -519,7 +519,7 @@ typedef struct mesa3d_entry
 #undef MESA_API_DRV
 
 NUKED_LOCAL mesa3d_entry_t *Mesa3DGet(DWORD pid, BOOL create);
-NUKED_LOCAL void Mesa3DFree(DWORD pid);
+NUKED_LOCAL void Mesa3DFree(DWORD pid, BOOL unload);
 
 #define GL_BLOCK_BEGIN(_ctx_h) \
 	do{ \
@@ -577,6 +577,7 @@ NUKED_LOCAL void Mesa3DFree(DWORD pid);
 		while((err = entry->proc.pglGetError()) != GL_NO_ERROR){ \
 			TOPIC(GL_ERR_TOPIC, "GL error: %s = %X", #_code, err); \
 			ERR("%s = %X", #_code, err); \
+			MesaMemInfo(entry); \
 	}}while(0)
 #else
 #define GL_CHECK(_code) _code
@@ -613,6 +614,7 @@ NUKED_LOCAL void MesaDraw5Index(mesa3d_ctx_t *ctx, D3DPRIMITIVETYPE dx_ptype, D3
 	LPWORD indices, DWORD indicesCnt);
 
 NUKED_LOCAL BOOL MesaSetTarget(mesa3d_ctx_t *ctx, surface_id dds_sid, surface_id ddz_sid, BOOL create);
+NUKED_LOCAL BOOL MesaSetEmptyTarget(mesa3d_ctx_t *ctx, BOOL create);
 NUKED_LOCAL void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, void *value);
 
 NUKED_LOCAL void MesaDrawRefreshState(mesa3d_ctx_t *ctx);
@@ -756,6 +758,11 @@ NUKED_LOCAL void MesaVSDestroyAll(mesa3d_ctx_t *ctx);
 NUKED_LOCAL mesa_dx_shader_t *MesaVSGet(mesa3d_ctx_t *ctx, DWORD handle);
 NUKED_LOCAL BOOL MesaVSSetVertex(mesa3d_ctx_t *ctx, mesa_dx_shader_t *vs);
 
+/* need GL block */
+NUKED_LOCAL void MesaTexImage2D(mesa3d_ctx_t *ctx, GLenum target, GLint level, GLint internalformat,
+	GLsizei width, GLsizei height, GLenum format, GLenum type, const void *data);
+NUKED_LOCAL void MesaGC(mesa3d_ctx_t *ctx, BOOL oom);
+
 /* from permedia driver, fast detection if handle is FVF code or shader handle */
 #define RDVSD_ISLEGACY(handle) (!(handle & D3DFVF_RESERVED0))
 
@@ -768,6 +775,8 @@ NUKED_LOCAL int mesa_dump_key();
 NUKED_LOCAL void mesa_dump(mesa3d_ctx_t *ctx);
 NUKED_LOCAL void mesa_dump_inc();
 NUKED_LOCAL void mesa_dump(mesa3d_ctx_t *ctx);
+
+NUKED_LOCAL void MesaMemInfo(mesa3d_entry_t *entry);
 
 NUKED_LOCAL void MesaVSDump(mesa_dx_shader_t *vs);
 #endif

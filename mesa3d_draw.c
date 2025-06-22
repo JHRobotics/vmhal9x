@@ -434,6 +434,7 @@ NUKED_LOCAL void MesaFVFRecalcCoords(mesa3d_ctx_t *ctx)
 
 #define DEF_SPECULAR 0x00000000
 
+#if 0
 #define PROJECTED_2(_src, _dst) \
 	_dst[0] = (_src[1] != 0.0f) ? _src[0]/_src[1] : 0.0f; \
 	_dst[1] = 0; \
@@ -451,6 +452,28 @@ NUKED_LOCAL void MesaFVFRecalcCoords(mesa3d_ctx_t *ctx)
 	_dst[1] = (_src[3] != 0.0f) ? _src[1]/_src[3] : 0.0f; \
 	_dst[2] = (_src[3] != 0.0f) ? _src[2]/_src[3] : 0.0f; \
 	_dst[3] = 1;
+
+#else
+
+#define PROJECTED_2(_src, _dst) \
+	_dst[0] = _src[0]; \
+	_dst[1] = 0; \
+	_dst[2] = 0; \
+	_dst[3] = _src[1];
+
+#define PROJECTED_3(_src, _dst) \
+	_dst[0] = _src[0]; \
+	_dst[1] = _src[1]; \
+	_dst[2] = 0; \
+	_dst[3] = _src[2];
+
+#define PROJECTED_4(_src, _dst) \
+	_dst[0] = _src[0]; \
+	_dst[1] = _src[1]; \
+	_dst[2] = _src[2]; \
+	_dst[3] = _src[3];
+
+#endif
 
 
 NUKED_FAST void MesaVertexStream(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int index)

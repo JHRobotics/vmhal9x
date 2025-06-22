@@ -104,7 +104,7 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 	{
 		LPDDRAWI_DDRAWSURFACE_LCL *lplpSList = pcsd->lplpSList;
 		int i;
-		
+
 		pcsd->ddRVal = DD_OK;
 
 		for(i = 0; i < (int)pcsd->dwSCnt; i++)

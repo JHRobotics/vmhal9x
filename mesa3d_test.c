@@ -23,36 +23,97 @@
  * OTHER DEALINGS IN THE SOFTWARE.                                            *
  *                                                                            *
  ******************************************************************************/
+#ifndef NUKED_SKIP
 #include <windows.h>
-#include <initguid.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <ddraw.h>
 #include <ddrawi.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <math.h>
 #include "d3dhal_ddk.h"
-#include "ddrawi_ddk.h"
 #include "vmdahal32.h"
-#include <d3d8caps.h>
 #include "vmhal9x.h"
 #include "mesa3d.h"
 #include "osmesa.h"
 
 #include "nocrt.h"
+#endif
 
-#define NUKED_SKIP
+void Mesa3DCalibrate()
+{
+	VMHAL_enviroment_t *env = GlobalVMHALenv();
 
-#include "mesa3d.c"
-#include "mesa3d_matrix.c"
-#include "mesa3d_draw.c"
-#include "mesa3d_draw6.c"
-#include "mesa3d_chroma.c"
-#include "mesa3d_dump.c"
-#include "mesa3d_buffer.c"
-#include "mesa3d_state.c"
-#include "mesa3d_shader.c"
-#include "mesa3d_test.c"
-#include "surface.c"
-#include "d3d.c"
+	if(env->scanned)
+		return;
+	
+	DWORD pid = GetCurrentProcessId();
+	mesa3d_ctx_t *ctx_ptr = NULL;
+	BOOL restart_os = FALSE;
+	BOOL only_2d = FALSE;
+	mesa3d_entry_t *full_entry = Mesa3DGet(pid, TRUE);
+	
+	do
+	{
+		if(!full_entry)
+		{
+			restart_os = TRUE;
+			break;
+		}
+			
+		ctx_ptr = MesaCreateCtx(full_entry, 0, 0);
+		if(!ctx_ptr)
+		{
+			restart_os = TRUE;
+			break;
+		}
+
+		GL_BLOCK_BEGIN(ctx_ptr)
+			if(entry->gl_major < 2 || (entry->gl_major == 2 && entry->gl_minor < 1))
+			{
+				restart_os = TRUE;
+			}
+		GL_BLOCK_END
+	}while(0);
+
+	if(full_entry)
+	{
+		Mesa3DFree(pid, TRUE);
+	}
+
+	if(restart_os)
+	{
+		env->forceos = TRUE;
+		full_entry = Mesa3DGet(pid, TRUE);
+		
+		do
+		{
+			if(!full_entry)
+			{
+				only_2d = TRUE;
+				break;
+			}
+
+			ctx_ptr = MesaCreateCtx(full_entry, 0, 0);
+			if(!ctx_ptr)
+			{
+				only_2d = TRUE;
+				break;
+			}
+			// ...
+		}while(0);
+
+		if(full_entry)
+		{
+			Mesa3DFree(pid, TRUE);
+		}
+	}
+	
+	if(only_2d)
+	{
+		env->only2d = TRUE;
+	}
+	
+	env->scanned = TRUE;
+}
+

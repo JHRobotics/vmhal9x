@@ -46,8 +46,11 @@ DLLFLAGS = -o $@ -shared -Wl,--dll,--out-implib,lib$(@:dll=a),--exclude-all-symb
 
 EXEFLAGS = -o $@ -static -nostdlib -nodefaultlibs -lgcc -luser32 -lkernel32 -lgdi32 -lole32 -lshell32 -Wl,-subsystem,windows$(TUNE_LD)
 
+DEFS = -DOPENGL_BLOCK_LOCK
+#DEFS += -DDD_LOCKING
+
 LIBS = -luser32 -lkernel32 -lgcc -lgdi32 -ladvapi32
-CFLAGS = -std=$(CSTD) -Wall -ffreestanding -fno-exceptions -ffast-math -nostdlib -DNOCRT -DNOCRT_FILE -DNOCRT_FLOAT -DNOCRT_MEM -DNOCRT_CALC -Inocrt -Iregex $(TUNE) -DVMHAL9X_BUILD=$(VERSION_BUILD)
+CFLAGS = -std=$(CSTD) -Wall -ffreestanding -fno-exceptions -ffast-math -nostdlib $(DEFS) -DNOCRT -DNOCRT_FILE -DNOCRT_FLOAT -DNOCRT_MEM -DNOCRT_CALC -Inocrt -Iregex $(TUNE) -DVMHAL9X_BUILD=$(VERSION_BUILD)
 LDFLAGS = -static -nostdlib -nodefaultlibs -L.
 
 ifdef RELEASE
@@ -104,7 +107,7 @@ ifdef D3DHAL
   else
 	  VMHAL9X_OBJS += d3d.c.o surface.c.o mesa3d.c.o mesa3d_buffer.c.o \
 	    mesa3d_draw.c.o mesa3d_chroma.c.o mesa3d_matrix.c.o mesa3d_draw6.c.o \
-	    mesa3d_dump.c.o mesa3d_state.c.o mesa3d_shader.c.o
+	    mesa3d_dump.c.o mesa3d_state.c.o mesa3d_shader.c.o mesa3d_test.c.o
 	endif
 	CFLAGS += -DD3DHAL
 endif

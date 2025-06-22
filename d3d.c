@@ -67,16 +67,21 @@ static BOOL ValidateCtx(DWORD dwhContext)
 		mesa3d_ctx_t *ctx = MESA_HANDLE_TO_CTX(dwhContext);
 		if(ctx->entry->pid != GetCurrentProcessId())
 		{
+			ERR("ctx->entry->pid=0x%X != 0x%X", ctx->entry->pid, GetCurrentProcessId());
 			return FALSE;
 		}
-		
+#if 0
 		VMDAHAL_t *dd = GetHAL(ctx->dd);
 		if(!dd->invalid)
 		{
 			return TRUE;
 		}
+#else
+		return TRUE;
+#endif
 	}
 	
+	ERR("dwhContext=0x%X", dwhContext);
 	return FALSE;
 }
 
@@ -1026,7 +1031,7 @@ DDENTRY_FPUSAVE(GetDriverInfo32, LPDDHAL_GETDRIVERINFODATA, lpInput)
 		DWORD extra_heaps = (lpInput->dwExpectedSize - sizeof(DDMORESURFACECAPS)) / (sizeof(DDSCAPSEX)*2);
 		DDMoreSurfaceCaps.dwSize = sizeof(DDMORESURFACECAPS) + extra_heaps * sizeof(DDSCAPSEX) * 2;
 		/* OK, DDS dwCaps is passed by 16bit driver, but DDS dwCaps2 is passed here... */
-		DDMoreSurfaceCaps.ddsCapsMore.dwCaps2 = DDSCAPS2_CUBEMAP  | DDSCAPS2_VERTEXBUFFER | DDSCAPS2_COMMANDBUFFER;
+		DDMoreSurfaceCaps.ddsCapsMore.dwCaps2 = DDSCAPS2_CUBEMAP | DDSCAPS2_VERTEXBUFFER | DDSCAPS2_COMMANDBUFFER;
 
 		memcpy(ptr, &DDMoreSurfaceCaps, sizeof(DDMORESURFACECAPS));
 		ptr += sizeof(DDMORESURFACECAPS);

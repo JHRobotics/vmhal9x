@@ -146,6 +146,7 @@ uint64_t GetTimeTMS();
 
 /* mesa */
 void Mesa3DCleanProc();
+void Mesa3DCalibrate();
 
 void SurfaceCtxLock();
 void SurfaceCtxUnlock();
@@ -184,6 +185,8 @@ inline static DWORD SurfacePitch(DWORD width, DWORD bpp)
 typedef struct _VMHAL_enviroment
 {
 	BOOL scanned;
+	BOOL only2d;
+	BOOL forceos;
 	BOOL dx5;
 	BOOL dx6; // latch for runtime >= dx6
 	BOOL dx7; // ... dx7
@@ -210,7 +213,7 @@ typedef struct _VMHAL_enviroment
 
 BOOL GetVMHALenv(VMHAL_enviroment_t *dst);
 void VMHALenv_RuntimeVer(int ver);
-//extern VMHAL_enviroment_t VMHALenv;
+VMHAL_enviroment_t *GlobalVMHALenv();
 
 #endif /* VERSION_ONLY */
 

@@ -66,6 +66,8 @@ BOOL halVSync = FALSE;
 
 static VMHAL_enviroment_t VMHALenv = {
 	FALSE, /* scanned */
+	FALSE, /* only2d */
+	FALSE, /* forceos */
 	FALSE, /* runtime dx5 */
 	FALSE, /* runtime dx6 */
 	FALSE, /* runtime dx7 */
@@ -260,6 +262,11 @@ BOOL GetVMHALenv(VMHAL_enviroment_t *dst)
 	return TRUE;
 }
 
+VMHAL_enviroment_t *GlobalVMHALenv()
+{
+	return &VMHALenv;
+}
+
 static void ReadEnv(VMHAL_enviroment_t *dst)
 {
 	memcpy(dst, &VMHALenv, sizeof(VMHAL_enviroment_t));
@@ -325,10 +332,10 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 		offsetof(VMDAHAL_t, FBHDA_version)
 	);
 
-	ReadEnv(&VMHALenv);
-
 	globalHal = ptr;
 	
+	ReadEnv(&VMHALenv);
+
 	globalHal->cb32.CreateSurface = CreateSurface32;
 	globalHal->cb32.DestroySurface = DestroySurface32;
 	globalHal->cb32.CanCreateSurface = CanCreateSurface32;
@@ -347,17 +354,6 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 	globalHal->cb32.SetColorKey = SetColorKey32;
 	globalHal->cb32.AddAttachedSurface = AddAttachedSurface32;
 
-#ifdef D3DHAL
-	if(VMHALenv.ddi >= 5)
-	{
-		globalHal->cb32.GetDriverInfo = GetDriverInfo32;
-	}
-	globalHal->cb32.flags = DDHALINFO_ISPRIMARYDISPLAY; // TODO: set for drivers DDHALINFO_MODEXILLEGAL (vmware workstation)
-	if(VMHALenv.ddi >= 8)
-	{
-		globalHal->cb32.flags |= DDHALINFO_GETDRIVERINFO2;
-	}
-#endif
 	//globalHal->cb32.DestroyDriver = DestroyDriver32;
 	// JH: ^ one important thing, when driver is destroyed, pm16 SetInfo callback mus be set to NULL
 	//       and do it from pm16 driver is much more comfortable
@@ -424,25 +420,42 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 
 #ifdef D3DHAL
 	/* do cleanup */
+	//Mesa3DCalibrate();
 	Mesa3DCleanProc();
 	SurfaceDeleteAll();
 
-	D3DHALCreateDriver(
-		&globalHal->d3dhal_global,
-		&globalHal->d3dhal_callbacks,
-		&globalHal->d3dhal_exebuffcallbacks,
-		&globalHal->d3dhal_flags);
+	if(!VMHALenv.only2d && VMHALenv.ddi >= 3)
+	{
+		if(VMHALenv.ddi >= 5)
+		{
+			globalHal->cb32.GetDriverInfo = GetDriverInfo32;
+		}
+		globalHal->cb32.flags = DDHALINFO_ISPRIMARYDISPLAY; // TODO: set for drivers DDHALINFO_MODEXILLEGAL (vmware workstation)
+		if(VMHALenv.ddi >= 8)
+		{
+			globalHal->cb32.flags |= DDHALINFO_GETDRIVERINFO2;
+		}
+		D3DHALCreateDriver(
+			&globalHal->d3dhal_global,
+			&globalHal->d3dhal_callbacks,
+			&globalHal->d3dhal_exebuffcallbacks,
+			&globalHal->d3dhal_flags);
+	}
+	else
 #else
-	globalHal->d3dhal_global = 0;
-	globalHal->d3dhal_callbacks = 0;
-	memset(&globalHal->d3dhal_exebuffcallbacks, 0, sizeof(DDHAL_DDEXEBUFCALLBACKS));
-	memset(&globalHal->d3dhal_flags, 0, sizeof(VMDAHAL_D3DCAPS_t));
+	{
+		globalHal->d3dhal_global = 0;
+		globalHal->d3dhal_callbacks = 0;
+		memset(&globalHal->d3dhal_exebuffcallbacks, 0, sizeof(DDHAL_DDEXEBUFCALLBACKS));
+		memset(&globalHal->d3dhal_flags, 0, sizeof(VMDAHAL_D3DCAPS_t));
+	}
 #endif
 
 	globalHal->invalid = FALSE;
 	
 	if(FBHDA_load_ex(globalHal))
 	{
+		TRACE("DriverInit SUCCESS!");
 		return 1;
 	}
 	

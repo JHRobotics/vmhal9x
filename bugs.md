@@ -7,8 +7,9 @@ Graphical bugs:
 3) Wrong flipping for DDI < 7
 
 Runtime:
-
 - locks
+- short OpenGL test on start to determine configuration 
 
-Optimizations
+Optimizations:
 1) cache CPU converted textures (chroma key, palette, DXT)
+

@@ -1248,15 +1248,16 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 								// a state block of the type given in the field sbType
 								// and capture the current given state into it.
 								MesaRecStart(ctx, pStateSetOp->dwParam, pStateSetOp->sbType);
+									TOPIC("STATESET", "STATESET create(%d), type=%d", pStateSetOp->dwParam, pStateSetOp->sbType);
 								ctx->state.recording = TRUE;
 								break;
 							case D3DHAL_STATESETBEGIN:
-								TOPIC("STATESET", "STATESET begin recording(%d)", pStateSetOp->dwParam);
+								TOPIC("STATESET", "STATESET begin recording(%d), type=%d", pStateSetOp->dwParam, pStateSetOp->sbType);
 								MesaRecStart(ctx, pStateSetOp->dwParam, D3DSBT_ALL);
 								ctx->state.recording = TRUE;
 								break;
 							case D3DHAL_STATESETEND:
-								TOPIC("STATESET", "STATESET end recording(%d)", pStateSetOp->dwParam);
+								TOPIC("STATESET", "STATESET end recording(%d), type=%d", pStateSetOp->dwParam, pStateSetOp->sbType);
 								MesaRecStop(ctx);
 								ctx->state.recording = FALSE;
 								break;
@@ -1303,8 +1304,18 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 							TOPIC("TARGET", "hRenderTarget=%d, hZBuffer=%d", pSRTData->hRenderTarget, pSRTData->hZBuffer);
 							TOPIC("TEXTARGET", "hRenderTarget=%d, hZBuffer=%d", pSRTData->hRenderTarget, pSRTData->hZBuffer);
 
-							surface_id dds_sid = ctx->surfaces->table[pSRTData->hRenderTarget];
-							surface_id ddz_sid = ctx->surfaces->table[pSRTData->hZBuffer];
+							surface_id dds_sid = 0;
+							surface_id ddz_sid = 0;
+
+							if(pSRTData->hRenderTarget != 0 && pSRTData->hRenderTarget < ctx->surfaces->table_size)
+							{
+								dds_sid = ctx->surfaces->table[pSRTData->hRenderTarget];
+							}
+
+							if(pSRTData->hZBuffer != 0 && pSRTData->hZBuffer < ctx->surfaces->table_size)
+							{
+								ddz_sid = ctx->surfaces->table[pSRTData->hZBuffer];
+							}
 
 							if(dds_sid)
 							{
@@ -2063,7 +2074,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 								ctx->state.recording = TRUE;
 								break;
 							case D3DHAL_STATESETEND:
-								TOPIC("STATESET", "STATESET end recording(%d)", pStateSetOp->dwParam);
+								TOPIC("STATESET", "STATESET end recording(%d), type=%d", pStateSetOp->dwParam, pStateSetOp->sbType);
 								MesaRecStop(ctx);
 								ctx->state.recording = FALSE;
 								break;

@@ -34,6 +34,7 @@
 #include "vmhal9x.h"
 
 #ifdef DEBUG_MEMORY
+#include "nuke.h"
 #include "surface.h"
 #endif
 
@@ -147,13 +148,21 @@ BOOL hal_valloc(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf, BO
 				if(mem != NULL)
 				{
 #ifdef DEBUG
-					memset(mem, 0xCC, size);
+					//memset(mem, 0xCC, size);
 #endif
 					mem->heap = heap;
 					mem->size = size;
 					surf->lpGbl->lpVidMemHeap = NULL;
 					surf->lpGbl->fpVidMem = (FLATPTR)(mem+1);
 	
+#ifdef DEBUG
+					if(surf->lpGbl->dwBlockSizeX >= 4)
+					{
+						DWORD *mark = (DWORD*)(surf->lpGbl->fpVidMem);
+						*mark = HAL_UNINITIALIZED_MAGIC;
+					}
+#endif
+
 					TOPIC("VMALLOC", "mem = %08X", mem);
 	
 					return TRUE;
@@ -524,6 +533,18 @@ void hal_dump_allocs()
 	}
 
 	TOPIC("MEMORY", "--- leak table end ---");
+}
+
+void hal_alloc_info()
+{
+	debug_meminfo_t *item = first;
+	DWORD s = 0;
+	while(item != NULL)
+	{
+		s += item->size;
+		item = item->next;
+	}
+	TOPIC("GC", "HAL total memory allocation: %u", s);
 }
 
 #endif /* DEBUG_MEMORY */
