@@ -64,6 +64,8 @@ typedef struct _D3DHAL_DP2RENDERSTATE D3DHAL_DP2RENDERSTATE, *LPD3DHAL_DP2RENDER
 
 #define DX_STORED_MATICES 256
 
+#define FBO_COUNT 4
+
 typedef struct mesa3d_texture
 {
 	int     id; // ctx->tex[_id_]
@@ -177,9 +179,11 @@ typedef struct mesa_surfaces_table
 
 typedef struct mesa_fbo
 {
+	BOOL allocated;
 	/* dimensions */
 	GLuint width;
 	GLuint height;
+	GLuint bpp;
 	/* main plain */
 	GLuint plane_fb;
 	GLuint plane_color_tex;
@@ -427,7 +431,8 @@ typedef struct mesa3d_ctx
 	mesa_vertex_stream_t vstream[MESA_MAX_STREAM];
 
 	/* fbo */
-	mesa_fbo_t fbo;
+	mesa_fbo_t *fbo;
+	mesa_fbo_t fbo_swap[FBO_COUNT];
 	int fbo_tmu; /* can be higher than tmu_count, if using extra TMU for FBO operations */
 
 	/* rendering state */
@@ -633,7 +638,7 @@ NUKED_LOCAL void MesaBufferDownloadDepth(mesa3d_ctx_t *ctx, void *dst);
 NUKED_LOCAL void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level, int side, int tmu);
 NUKED_LOCAL void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level, int side, int tmu, DWORD chroma_lw, DWORD chroma_hi);
 NUKED_LOCAL void MesaBufferUploadTexturePalette(mesa3d_ctx_t *ctx, mesa3d_texture_t *tex, int level, int side, int tmu, BOOL chroma_key, DWORD chroma_lw, DWORD chroma_hi);
-NUKED_LOCAL BOOL MesaBufferFBOSetup(mesa3d_ctx_t *ctx, int width, int height);
+NUKED_LOCAL BOOL MesaBufferFBOSetup(mesa3d_ctx_t *ctx, int width, int height, int bpp);
 
 /* calculation */
 /*NUKED_LOCAL BOOL MesaUnprojectf(GLfloat winx, GLfloat winy, GLfloat winz, GLfloat clipw,

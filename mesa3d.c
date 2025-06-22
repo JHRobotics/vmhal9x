@@ -801,6 +801,8 @@ NUKED_LOCAL mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DWORD dds_sid, DW
 				if(ctx == NULL)
 					break;
 
+				ctx->fbo = &ctx->fbo_swap[0];
+
 				if(SurfaceIsEmpty(dds_sid))
 				{
 					SurfaceClearEmpty(dds_sid);
@@ -1020,7 +1022,7 @@ NUKED_LOCAL BOOL MesaSetTarget(mesa3d_ctx_t *ctx, surface_id dds_sid, surface_id
 
 	if(create || ctx->state.sw != width || ctx->state.sh != height/* || ctx->front_bpp != bpp*/)
 	{
-		MesaBufferFBOSetup(ctx, width, height);
+		MesaBufferFBOSetup(ctx, width, height, bpp);
 	}
 	else
 	{
@@ -1060,7 +1062,7 @@ NUKED_LOCAL BOOL MesaSetEmptyTarget(mesa3d_ctx_t *ctx, BOOL create)
 
 	if(create || ctx->state.sw != width || ctx->state.sh != height)
 	{
-		MesaBufferFBOSetup(ctx, width, height);
+		MesaBufferFBOSetup(ctx, width, height, bpp);
 	}
 	else
 	{
