@@ -747,7 +747,7 @@ static void MesaDepthApply(mesa3d_ctx_t *ctx)
 
 NUKED_INLINE BOOL MesaBackbufferIsFront(mesa3d_ctx_t *ctx)
 {
-	DWORD addr = (DWORD)SurfaceGetVidMem(ctx->backbuffer);
+	DWORD addr = (DWORD)SurfaceGetVidMem(ctx->backbuffer, ctx->entry->runtime_ver < 7);
 	TRACE("MesaBackbufferIsFront addr=0x%X", addr);
 	
 	FBHDA_t *hda = FBHDA_setup();
@@ -3162,8 +3162,9 @@ NUKED_FAST DWORD MesaConvPrimVertex(D3DPRIMITIVETYPE dx_type, DWORD prim_count)
 	return 0;
 }
 
-#define C2S(_e) case _e: return #_e;
+#ifdef DEBUG
 
+#define C2S(_e) case _e: return #_e;
 static const char *debug_dxtextureop_str(DWORD e)
 {
 	switch(e)
@@ -3172,6 +3173,7 @@ static const char *debug_dxtextureop_str(DWORD e)
 		C2S(D3DTOP_SELECTARG1)
 		C2S(D3DTOP_SELECTARG2)
 		C2S(D3DTOP_MODULATE)
+		C2S(D3DTOP_MODULATE_LEGACY)
 		C2S(D3DTOP_MODULATE2X)
 		C2S(D3DTOP_MODULATE4X)
 		C2S(D3DTOP_ADD)
@@ -3200,6 +3202,7 @@ static const char *debug_dxtextureop_str(DWORD e)
 }
 
 #undef C2S
+
 #define C2S(_e) case _e: \
 	if(d & D3DTA_ALPHAREPLICATE){ \
 		if(d & D3DTA_COMPLEMENT){ \
@@ -3232,6 +3235,8 @@ static const char *debug_dxcolorarg_str(DWORD d)
 }
 
 #undef C2S
+
+#endif /* DEBUG */
 
 NUKED_INLINE void D3DTA2GL(DWORD dxarg, GLint *gl_src, GLint *gl_op, BOOL active_image)
 {
@@ -4762,7 +4767,7 @@ NUKED_LOCAL void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVA
 #if 0
 		if(flags & D3DCLEAR_TARGET)
 		{
-			void *ptr = SurfaceGetVidMem(ctx->backbuffer);
+			void *ptr = SurfaceGetVidMem(ctx->backbuffer, entry->runtime_ver < 7);
 			if(ptr)
 			{
 				MesaBufferUploadColor(ctx, ptr);
@@ -4771,7 +4776,7 @@ NUKED_LOCAL void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVA
 		
 		if(ctx->depth_bpp && (flags & (D3DCLEAR_ZBUFFER | D3DCLEAR_STENCIL)))
 		{
-			void *ptr = SurfaceGetVidMem(ctx->depth);
+			void *ptr = SurfaceGetVidMem(ctx->depth, entry->runtime_ver < 7);
 			MesaBufferUploadDepth(ctx, ptr);
 		}
 #endif
@@ -4847,7 +4852,7 @@ NUKED_LOCAL void MesaSceneBegin(mesa3d_ctx_t *ctx)
 {
 	if(!ctx->render.dirty)
 	{
-		void *ptr = SurfaceGetVidMem(ctx->backbuffer);
+		void *ptr = SurfaceGetVidMem(ctx->backbuffer, ctx->entry->runtime_ver < 7);
 		if(ptr)
 		{
 			MesaBufferUploadColor(ctx, ptr);
@@ -4858,7 +4863,7 @@ NUKED_LOCAL void MesaSceneBegin(mesa3d_ctx_t *ctx)
 NUKED_LOCAL void MesaSceneEnd(mesa3d_ctx_t *ctx)
 {
 	BOOL is_visible = MesaBackbufferIsFront(ctx);
-	void *ptr = SurfaceGetVidMem(ctx->backbuffer);
+	void *ptr = SurfaceGetVidMem(ctx->backbuffer, ctx->entry->runtime_ver < 7);
 	if(ptr)
 	{
 		if(is_visible) /* fixme: check for DDSCAPS_PRIMARYSURFACE */
@@ -4984,7 +4989,7 @@ NUKED_FAST void *MesaSurfacesGetBuffer(mesa3d_ctx_t *ctx, DWORD dwSurfacehandle)
 	surface_id sid = ctx->surfaces->table[dwSurfacehandle];
 	if(sid)
 	{
-		return SurfaceGetVidMem(sid);
+		return SurfaceGetVidMem(sid, FALSE);
 	}
 	
 	return ctx->surfaces->usermem[dwSurfacehandle];

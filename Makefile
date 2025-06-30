@@ -99,7 +99,7 @@ VMHAL9X_OBJS = $(NOCRT_OBJS) nocrt/nocrt_dll.c.o vmhal9x.c.o ddraw.c.o 3d_accel.
 
 VMDISP9X_OBJS = $(NOCRT_OBJS) nocrt/nocrt_dll.c.o vmdisp9x.c.o regex/re.c.o vmsetup.c.o vmdisp9x.res
 
-WINETRAY_OBJ = $(NOCRT_OBJS) nocrt/nocrt_exe.c.o tray/tray3d.c.o tray/tray3d.res
+WINETRAY_OBJ = $(NOCRT_OBJS) nocrt/nocrt_exe.c.o tray/tray3d.c.o tray/monitor.c.o tray/tray3d.res
 
 ifdef D3DHAL
   ifdef CODENUKED

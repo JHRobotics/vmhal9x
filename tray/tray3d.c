@@ -151,6 +151,28 @@ static void notify_status(HWND hwnd)
 	}
 }
 
+static void run_monitor()
+{
+	STARTUPINFO si;
+	PROCESS_INFORMATION pi;
+	char exename[MAX_PATH];
+
+	GetModuleFileNameA(NULL, exename, MAX_PATH);
+	
+	memset(&si, 0,  sizeof(si));
+	si.cb = sizeof(si);
+	memset(&pi, 0, sizeof(pi));
+
+	// Start the child process. 
+	if(!CreateProcess(exename, "tray3d.exe /mon", NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi))
+	{
+		return;
+	}
+
+	CloseHandle(pi.hProcess);
+	CloseHandle(pi.hThread);
+}
+
 LRESULT CALLBACK winproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	switch(msg)
@@ -220,6 +242,9 @@ LRESULT CALLBACK winproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 							InsertMenuA(menu, 0, MF_BYPOSITION | MF_STRING, ID_SHOW_ERROR, "Interface patch error!");
 						}
 
+						InsertMenuA(menu, 0, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
+						InsertMenuA(menu, 0, MF_BYPOSITION | MF_STRING, ID_MONITOR, "Open GPU monitor");
+
 						SetForegroundWindow(hwnd);
 						GetCursorPos(&point);
 						TrackPopupMenu(menu, TPM_RIGHTBUTTON, point.x, point.y, 0, hwnd, NULL);
@@ -259,6 +284,9 @@ LRESULT CALLBACK winproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					}
 					notify_status(hwnd);
 					break;
+				case ID_MONITOR:
+					run_monitor();
+					break;
 			}
 			break;
 		}
@@ -286,6 +314,8 @@ static BOOL CALLBACK kill_tray_windows(HWND hwnd, LPARAM lParam)
 	return TRUE;
 }
 
+void monitor();
+
 int main(int argc, char **argv)
 {
 	HINSTANCE hInst = GetModuleHandle(NULL);
@@ -295,6 +325,12 @@ int main(int argc, char **argv)
 		if(stricmp(argv[i], "/kill") == 0)
 		{
 			EnumWindows(kill_tray_windows, 0);
+			return EXIT_SUCCESS;
+		}
+		
+		if(stricmp(argv[i], "/mon") == 0)
+		{
+			monitor();
 			return EXIT_SUCCESS;
 		}
 	}

@@ -49,8 +49,24 @@
 #define VID_HEAP_COUNT 4
 #define VID_HEAP_SYSTEM VID_HEAP_COUNT
 
+/* DDRAW memory functions, if someone has documentation for this, please tell me */
 typedef FLATPTR (WINAPI *DDHAL32_VidMemAlloc_h)(LPDDRAWI_DIRECTDRAW_GBL lpDD, int heap, DWORD dwWidth, DWORD dwHeight);
 typedef void (WINAPI *DDHAL32_VidMemFree_h)(LPDDRAWI_DIRECTDRAW_GBL lpDD, int heap, FLATPTR ptr);
+
+// init heap
+typedef LPVMEMHEAP (WINAPI *VidMemInit_h)(DWORD flags, FLATPTR start, FLATPTR end_or_width, DWORD height, DWORD pitch);
+// destroy heap
+typedef void (WINAPI *VidMemFini_h)(LPVMEMHEAP pvmh);
+// get remain memory on heap
+typedef DWORD (WINAPI *VidMemAmountFree_h)(LPVMEMHEAP pvmh);
+// not present on W98
+//typedef DWORD (WINAPI *VidMemAmountAllocated_h)(LPVMEMHEAP pvmh);
+// ?
+typedef DWORD (WINAPI *VidMemLargestFree_h)(LPVMEMHEAP pvmh);
+// allocate on heap
+typedef FLATPTR (WINAPI *VidMemAlloc_h)(LPVMEMHEAP pvmh, DWORD x, DWORD y);
+// free on heap
+typedef void (WINAPI *VidMemFree_h)(LPVMEMHEAP pvmh, FLATPTR ptr);
 
 #ifndef HEAP_SHARED
 /* undocumented heap behaviour for shared DLL (from D3_DD32.C) */
@@ -60,6 +76,8 @@ typedef void (WINAPI *DDHAL32_VidMemFree_h)(LPDDRAWI_DIRECTDRAW_GBL lpDD, int he
 /* heaps */
 HANDLE hSharedHeap = NULL;
 HANDLE hSharedLargeHeap = NULL;
+
+static DWORD mem_stat_used = 0;
 
 #ifdef DEBUG_MEMORY
 CRITICAL_SECTION mem_cs;
@@ -113,7 +131,7 @@ BOOL hal_valloc(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf, BO
 #ifdef NODDRAW
 		HMODULE ddraw = NULL;
 #else
-		HMODULE ddraw = GetModuleHandle("ddraw.dll");
+		HMODULE ddraw = GetModuleHandleA("ddraw.dll");
 #endif
 		DDHAL32_VidMemAlloc_h vidmemalloc = NULL;
 		if(ddraw)
@@ -141,15 +159,11 @@ BOOL hal_valloc(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf, BO
 			
 			for(heap = 0; heap < VID_HEAP_COUNT; heap++)
 			{
-				
 				TOPIC("VMALLOC", "tries alloc %d x %d in heap=%d", width, height, heap);
 	
 				vram_info_t *mem = (vram_info_t*)vidmemalloc(lpDD, heap, width, height);
 				if(mem != NULL)
 				{
-#ifdef DEBUG
-					//memset(mem, 0xCC, size);
-#endif
 					mem->heap = heap;
 					mem->size = size;
 					surf->lpGbl->lpVidMemHeap = NULL;
@@ -161,10 +175,14 @@ BOOL hal_valloc(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf, BO
 						DWORD *mark = (DWORD*)(surf->lpGbl->fpVidMem);
 						*mark = HAL_UNINITIALIZED_MAGIC;
 					}
+#else
+					memset(mem, 0x00, size);
 #endif
 
 					TOPIC("VMALLOC", "mem = %08X", mem);
-	
+
+					mem_stat_used += size;
+
 					return TRUE;
 				}
 			}
@@ -227,6 +245,7 @@ void hal_vfree(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf)
 			if(vidmemfree)
 			{
 				TOPIC("ALLOCTRACE", "vidmemfree(0x%X, %d, 0x%X)", lpDD, mem->heap, mem);
+				mem_stat_used -= mem->size;
 				vidmemfree(lpDD, mem->heap, (FLATPTR)mem);
 				surf->lpGbl->fpVidMem = 0;
 			}
@@ -548,3 +567,20 @@ void hal_alloc_info()
 }
 
 #endif /* DEBUG_MEMORY */
+
+/* public */
+
+BOOL __stdcall VidMemInfo(DWORD *pused, DWORD *pfree)
+{
+	TRACE_ENTRY
+	
+	FBHDA_t *hda = FBHDA_setup();
+	if(hda)
+	{
+		*pused = mem_stat_used;	
+		*pfree = hda->vram_size - (hda->system_surface + mem_stat_used + hda->overlays_size + hda->stride);
+		return TRUE;
+	}
+
+	return FALSE;
+}

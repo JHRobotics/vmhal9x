@@ -625,7 +625,7 @@ NUKED_LOCAL void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture
 		return;
 	}
 
-	void *vidmem = SurfaceGetVidMem(sid);
+	void *vidmem = SurfaceGetVidMem(sid, FALSE);
 	if(vidmem == NULL)
 	{
 		ERR("vidmem == NULL");

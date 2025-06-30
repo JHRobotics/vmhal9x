@@ -324,11 +324,15 @@ NUKED_LOCAL DDSURF *SurfaceGetSURF(surface_id sid)
 	return NULL;
 }
 
-NUKED_LOCAL void *SurfaceGetVidMem(surface_id sid)
+NUKED_LOCAL void *SurfaceGetVidMem(surface_id sid, BOOL ddi6)
 {
 	surface_info_t *info = SurfaceGetInfo(sid);
 	if(info)
 	{
+		if(ddi6)
+		{
+			return (void*)info->surf.lpLclDX7->lpGbl->fpVidMem;
+		}
 		return (void*)info->surf.fpVidMem;
 	}
 
@@ -486,7 +490,7 @@ void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 		{
 			if(citem->ctx->entry->env.readback)
 			{
-				if(SurfaceGetVidMem(citem->ctx->backbuffer) == vidmem)
+				if(SurfaceGetVidMem(citem->ctx->backbuffer, citem->ctx->entry->runtime_ver < 7) == vidmem)
 				{
 					TOPIC("DEPTHCONV", "Color to mesa");
 					GL_BLOCK_BEGIN(citem->ctx)
@@ -497,7 +501,7 @@ void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 	
 				if(citem->ctx->entry->env.touchdepth && citem->ctx->depth_bpp)
 				{
-					if(SurfaceGetVidMem(citem->ctx->depth) == vidmem)
+					if(SurfaceGetVidMem(citem->ctx->depth, citem->ctx->entry->runtime_ver < 7) == vidmem)
 					{
 						TOPIC("DEPTHCONV", "Depth to mesa");
 						GL_BLOCK_BEGIN(citem->ctx)
@@ -533,7 +537,7 @@ void SurfaceZToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, DWORD color)
 		{
 			if(!citem->ctx->entry->env.touchdepth)
 			{
-				if(SurfaceGetVidMem(citem->ctx->depth) == vidmem)
+				if(SurfaceGetVidMem(citem->ctx->depth, citem->ctx->entry->runtime_ver < 7) == vidmem)
 				{
 					TOPIC("DEPTHCONV", "Clear Z, color=0x%X", color);
 					GL_BLOCK_BEGIN(citem->ctx)
@@ -588,7 +592,7 @@ void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 		TRACE("SurfaceFromMesa - citem->pid = %X, pid = %X", citem->pid, pid);
 		if(citem->pid == pid)
 		{
-			if(SurfaceGetVidMem(citem->ctx->backbuffer) == vidmem && citem->ctx->render.dirty)
+			if(SurfaceGetVidMem(citem->ctx->backbuffer, citem->ctx->entry->runtime_ver < 7) == vidmem && citem->ctx->render.dirty)
 			{
 				GL_BLOCK_BEGIN(citem->ctx)
 					MesaBufferDownloadColor(ctx, vidmem);
@@ -600,7 +604,7 @@ void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 			{
 				if(citem->ctx->render.zdirty && citem->ctx->depth_bpp)
 				{
-					if(SurfaceGetVidMem(citem->ctx->depth) == vidmem && citem->ctx->render.zdirty)
+					if(SurfaceGetVidMem(citem->ctx->depth, citem->ctx->entry->runtime_ver < 7) == vidmem && citem->ctx->render.zdirty)
 					{
 						GL_BLOCK_BEGIN(citem->ctx)
 							MesaBufferDownloadDepth(ctx, vidmem);

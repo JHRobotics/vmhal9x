@@ -32,6 +32,7 @@
 
 #define HAL_UNINITIALIZED_MAGIC 0x11223344
 
+void hal_memory_video_init(VIDMEM *heaps, DWORD cnt);
 BOOL  hal_memory_init();
 void hal_memory_destroy();
 

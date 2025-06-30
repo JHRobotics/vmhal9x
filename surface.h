@@ -68,7 +68,7 @@ typedef struct _DDSURF
 LPDDRAWI_DDRAWSURFACE_LCL SurfaceDuplicate(LPDDRAWI_DDRAWSURFACE_LCL original);
 
 NUKED_LOCAL DDSURF *SurfaceGetSURF(surface_id sid);
-NUKED_LOCAL void *SurfaceGetVidMem(surface_id sid);
+NUKED_LOCAL void *SurfaceGetVidMem(surface_id sid, BOOL ddi6);
 NUKED_LOCAL void SurfaceAttachTexture(surface_id sid, void *mesa_tex, int level, int side);
 NUKED_LOCAL void SurfaceDeattachTexture(surface_id sid, void *mesa_tex, int level, int side);
 NUKED_LOCAL void SurfaceAttachCtx(void *mesa_ctx);

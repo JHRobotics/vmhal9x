@@ -111,7 +111,7 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 		{
 			LPDDRAWI_DDRAWSURFACE_LCL lpSurf = lplpSList[i];
 			DDPIXELFORMAT *fmt = &pcsd->lpDDSurfaceDesc->ddpfPixelFormat;
-			BOOL is_primary = (pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE) == 0 ? FALSE : TRUE;
+			BOOL is_primary = (pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps & (DDSCAPS_PRIMARYSURFACE | DDSCAPS_FLIP)) == 0 ? FALSE : TRUE;
 
 			/* JH: when allocating primary, fmt->dwFlags is not valid, also is important allocate primary
 			 * surface everytime by runtime! (vidmem=DDHAL_PLEASEALLOC_BLOCKSIZE)
@@ -268,12 +268,22 @@ DDENTRY_FPUSAVE(DestroySurface32, LPDDHAL_DESTROYSURFACEDATA, lpd)
 
 #ifdef D3DHAL
 	SurfaceDelete(lpd->lpDDSurface->dwReserved1);
-	hal_vfree(lpd->lpDD, lpd->lpDDSurface);
+	
+	BOOL is_primary = (lpd->lpDDSurface->ddsCaps.dwCaps & (DDSCAPS_PRIMARYSURFACE | DDSCAPS_FLIP)) == 0 ? FALSE : TRUE;
+	if(!is_primary)
+	{
+		hal_vfree(lpd->lpDD, lpd->lpDDSurface);
+	}
+	else
+	{
+		TRACE("primary surface keep memory");
+	}
+	
 #endif
 
 	TOPIC("GARBAGE", "SurfaceDelete() success");
 	lpd->ddRVal = DD_OK;
-	return DDHAL_DRIVER_NOTHANDLED;
+	return DDHAL_DRIVER_HANDLED;
 }
 
 /* return tenths of millisecionds */

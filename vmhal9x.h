@@ -30,7 +30,7 @@
 #define VMHAL9X_STR_(x) #x
 #define VMHAL9X_STR(x) VMHAL9X_STR_(x)
 
-#define VMHAL9X_MAJOR 0
+#define VMHAL9X_MAJOR 4 /* eq. Windows 9x */
 #define VMHAL9X_MINOR 8
 #define VMHAL9X_PATCH 2025
 #ifndef VMHAL9X_BUILD

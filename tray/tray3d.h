@@ -9,3 +9,4 @@
 #define ID_ABOUT 4
 #define ID_SHOW_ERROR 5
 #define ID_INSTALL 6
+#define ID_MONITOR 7
