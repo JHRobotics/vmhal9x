@@ -116,99 +116,117 @@ static HANDLE get_heap(int heap)
 	return NULL;
 }
 
-typedef struct vram_info
-{
-	DWORD heap;
-	DWORD size;
-	DWORD res1;
-	DWORD res2;
-} vram_info_t;
+#define BLOCK_EMPTY (~0)
 
-BOOL hal_valloc(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL systemram)
+static int hal_find_gap(FBHDA_t *hda, int count, BOOL rowalign)
 {
+	int y, x;
+
+	for(y = 0; y < hda->heap_length; y++)
+	{
+		if(rowalign)
+		{
+			DWORD offset = (BYTE*)hda->vram_pm32 - (hda->heap_end - (y+count)*FB_VRAM_HEAP_GRANULARITY);
+			if((offset % hda->pitch) != 0)
+			{
+				continue;
+			}
+		}
+
+		if(hda->heap_info[y] == BLOCK_EMPTY)
+		{
+			for(x = y+1; x < y + count; x++)
+			{
+				if(x >= hda->heap_length)
+				{
+					return -1;
+				}
+				if(hda->heap_info[x] != BLOCK_EMPTY)
+				{
+					y = x;
+					break;
+				}
+			}
+			if(x == y + count)
+			{
+				return y;
+			}
+		}
+	}
+
+	return -1;
+}
+
+BOOL hal_vinit()
+{
+	FBHDA_t *hda = FBHDA_setup();
+	if(hda)
+	{
+		int x;
+		for(x = 0; x < hda->heap_count; x++)
+		{
+			hda->heap_info[x] = BLOCK_EMPTY;
+		}
+		return TRUE;
+	}
+	return FALSE;
+}
+
+BOOL hal_valloc(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL systemram, BOOL rowalign)
+{
+	TRACE_ENTRY
+
 	if(systemram == FALSE)
 	{
-#ifdef NODDRAW
-		HMODULE ddraw = NULL;
-#else
-		HMODULE ddraw = GetModuleHandleA("ddraw.dll");
-#endif
-		DDHAL32_VidMemAlloc_h vidmemalloc = NULL;
-		if(ddraw)
+		FBHDA_t *hda = FBHDA_setup();
+		DWORD bs = (surf->lpGbl->dwBlockSizeX + FB_VRAM_HEAP_GRANULARITY-1) / FB_VRAM_HEAP_GRANULARITY;
+		TOPIC("MEMORY", "vram alloc size=%d, bs=%d", surf->lpGbl->dwBlockSizeX, bs);
+		if(bs == 0)
 		{
-			vidmemalloc = (DDHAL32_VidMemAlloc_h)GetProcAddress(ddraw, "DDHAL32_VidMemAlloc");
-			/* when original ddraw is loaded it is above 2G, below is probably some wrapper */
-			if((DWORD)vidmemalloc < 0x80000000)
-			{
-				TOPIC("VMALLOC", "GetProcAddress=%p", vidmemalloc);
-				vidmemalloc = NULL;
-				
-			}
+			/* special size for zero allocation */
+			surf->lpGbl->lpVidMemHeap = NULL;
+			surf->lpGbl->fpVidMem = (FLATPTR)hda->heap_end;
+			return TRUE;
 		}
 		else
 		{
-			TOPIC("VMALLOC", "GetModuleHandle failure");
-		}
-		
-		if(vidmemalloc)
-		{
-			int heap;
-			DWORD size = sizeof(vram_info_t) + surf->lpGbl->dwBlockSizeX;
-			DWORD width =  surf->lpGbl->lPitch; /* width in bytes */
-			DWORD height = (size + width - 1) / surf->lpGbl->lPitch;
-			
-			for(heap = 0; heap < VID_HEAP_COUNT; heap++)
+			int gap = hal_find_gap(hda, bs, rowalign);
+			if(gap >= 0)
 			{
-				TOPIC("VMALLOC", "tries alloc %d x %d in heap=%d", width, height, heap);
-	
-				vram_info_t *mem = (vram_info_t*)vidmemalloc(lpDD, heap, width, height);
-				if(mem != NULL)
+				int id = gap + bs;
+				TOPIC("MEMORY", "gap at %d, id=%d", id, gap);
+
+				int x;
+				for(x = gap; x < id; x++)
 				{
-					mem->heap = heap;
-					mem->size = size;
-					surf->lpGbl->lpVidMemHeap = NULL;
-					surf->lpGbl->fpVidMem = (FLATPTR)(mem+1);
-	
-#ifdef DEBUG
-					if(surf->lpGbl->dwBlockSizeX >= 4)
-					{
-						DWORD *mark = (DWORD*)(surf->lpGbl->fpVidMem);
-						*mark = HAL_UNINITIALIZED_MAGIC;
-					}
-#else
-					memset(mem, 0x00, size);
-#endif
-
-					TOPIC("VMALLOC", "mem = %08X", mem);
-
-					mem_stat_used += size;
-
-					return TRUE;
+					hda->heap_info[x] = id;
 				}
+				surf->lpGbl->lpVidMemHeap = NULL;
+				surf->lpGbl->fpVidMem = (FLATPTR)(hda->heap_end - id*FB_VRAM_HEAP_GRANULARITY);
+				TOPIC("MEMORY", "new vram ptr=%p", surf->lpGbl->fpVidMem);
+				return TRUE;
 			}
-			return FALSE;
+			else
+			{
+				TOPIC("MEMORY", "vram alloc fail: heap_length=%d, first block=0x%X", hda->heap_length, hda->heap_info[0]);
+			}
 		}
-		
-		/* let the alloc by HEL */
-		surf->lpGbl->fpVidMem = DDHAL_PLEASEALLOC_BLOCKSIZE;
+		return FALSE;
 	}
 	else
 	{
-		DWORD size = sizeof(vram_info_t) + surf->lpGbl->dwBlockSizeX;
-		vram_info_t *mem = hal_alloc(HEAP_LARGE,size, surf->lpGbl->lPitch);
+		DWORD size = surf->lpGbl->dwBlockSizeX;
+		void *mem = hal_alloc(HEAP_LARGE, size, surf->lpGbl->lPitch);
 		if(mem != NULL)
 		{
 #ifdef DEBUG
 			memset(mem, 0xCC, size);
 #endif
-			mem->heap = VID_HEAP_SYSTEM;
-			mem->size = size;
 			surf->lpGbl->lpVidMemHeap = NULL;
-			surf->lpGbl->fpVidMem = (FLATPTR)(mem+1);
-			
+			surf->lpGbl->fpVidMem = (FLATPTR)(mem);
 			return TRUE;
 		}
-		
+
 		return FALSE;
 	}
 
@@ -219,43 +237,58 @@ void hal_vfree(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf)
 {
 	TOPIC("VMALLOC", "free ptr=%08X", surf->lpGbl->fpVidMem);
 	TOPIC("ALLOCTRACE", "hal_vfree");
-	
-	if(surf->lpGbl->fpVidMem > 0)
-	{
-		vram_info_t *mem = ((vram_info_t*)surf->lpGbl->fpVidMem) - 1;
-		
-		if(mem->heap >= 0 && mem->heap < VID_HEAP_COUNT)
-		{
-#ifdef NODDRAW
-			HMODULE ddraw = NULL;
-#else
-			HMODULE ddraw = GetModuleHandle("ddraw.dll");
-#endif
 
-			DDHAL32_VidMemFree_h vidmemfree = NULL;
-			if(ddraw)
+	if(surf->lpGbl->fpVidMem > DDHAL_PLEASEALLOC_BLOCKSIZE)
+	{
+		FBHDA_t *hda = FBHDA_setup();
+		BYTE *ptr = (BYTE*)surf->lpGbl->fpVidMem;
+		BYTE *vram_end = (BYTE*)hda->vram_pm32 + hda->vram_size;
+
+		if(ptr >= (BYTE*)hda->vram_pm32 && ptr < vram_end)
+		{
+			/* VRAM */
+			if(ptr == hda->heap_end) /* zero vram allocation */
 			{
-				vidmemfree = (DDHAL32_VidMemFree_h)GetProcAddress(ddraw, "DDHAL32_VidMemFree");
-				if((DWORD)vidmemfree < 0x80000000)
-				{
-					vidmemfree = NULL;
-				}
+				/* ... */
 			}
-			
-			if(vidmemfree)
+			else if(ptr >= hda->heap_start && ptr < hda->heap_end)
 			{
-				TOPIC("ALLOCTRACE", "vidmemfree(0x%X, %d, 0x%X)", lpDD, mem->heap, mem);
-				mem_stat_used -= mem->size;
-				vidmemfree(lpDD, mem->heap, (FLATPTR)mem);
-				surf->lpGbl->fpVidMem = 0;
+				TOPIC("MEMORY", "vram free ptr=%p (%p %p)", ptr, hda->heap_start, hda->heap_end);
+				DWORD start = (hda->heap_end - ptr);
+				DWORD id = start/FB_VRAM_HEAP_GRANULARITY;
+				DWORD size = 0;
+				TOPIC("MEMORY", "vram freeing id=%d, start=%d", id, start);
+
+				if(hda->heap_info[id-1] == BLOCK_EMPTY)
+				{
+					ERR("double free on %p", ptr);
+					return;
+				}
+
+				int x;
+				for(x = id-1; x >= 0; x--)
+				{
+					if(hda->heap_info[x] != id)
+					{
+						break;
+					}
+					hda->heap_info[x] = BLOCK_EMPTY;
+					size += FB_VRAM_HEAP_GRANULARITY;
+				}
+				TOPIC("MEMORY", "free success size=%d", size);
 			}
 		}
-		else if(mem->heap == VID_HEAP_SYSTEM)
+		else
 		{
-			hal_free(HEAP_LARGE, mem);
-			surf->lpGbl->fpVidMem = 0;
+			hal_free(HEAP_LARGE, ptr);
 		}
 	}
+	else
+	{
+		ERR("invalid vram ptr=%p for sid=%d", surf->lpGbl->fpVidMem, surf->dwReserved1);
+	}
+
+	surf->lpGbl->fpVidMem = 0;
 }
 
 #ifndef DEBUG_MEMORY
@@ -348,6 +381,8 @@ static debug_meminfo_t *last  = NULL;
 
 static void *hal_xalloc(const char *file, int line, int heap, size_t size, DWORD width, BOOL zero)
 {
+	TRACE_ENTRY
+
 	debug_meminfo_t *mem = NULL;
 	HANDLE h = get_heap(heap);
 	if(h != NULL)

@@ -36,7 +36,8 @@ void hal_memory_video_init(VIDMEM *heaps, DWORD cnt);
 BOOL  hal_memory_init();
 void hal_memory_destroy();
 
-BOOL hal_valloc(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL systemram);
+BOOL hal_vinit();
+BOOL hal_valloc(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL systemram, BOOL rowalign);
 void hal_vfree(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf);
 
 #ifndef DEBUG_MEMORY

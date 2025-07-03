@@ -631,6 +631,7 @@ DDENTRY_FPUSAVE(DestroyDDLocal32, LPDDHAL_DESTROYDDLOCALDATA, lpdddd)
 		MesaSurfacesTableRemoveDDLcl(entry, lpdddd->pDDLcl);
 	}
 
+	TRACE("DestroyDDLocal32 SUCCESS");
 	lpdddd->ddRVal = DD_OK;
 	return DDHAL_DRIVER_HANDLED;
 }
@@ -1801,7 +1802,7 @@ DDENTRY_FPUSAVE(CreateExecuteBuffer32, LPDDHAL_CREATESURFACEDATA, csd)
 		surf->lpGbl->dwBlockSizeX = surf->lpGbl->dwLinearSize;
 		surf->lpGbl->dwBlockSizeY = 1;
 
-		if(!hal_valloc(csd->lpDD, surf, !alloc_vram))
+		if(!hal_valloc(csd->lpDD, surf, !alloc_vram, FALSE))
 		{
 			csd->ddRVal = DDERR_OUTOFVIDEOMEMORY;
 			return DDHAL_DRIVER_HANDLED;

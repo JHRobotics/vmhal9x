@@ -423,6 +423,8 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 	//Mesa3DCalibrate();
 	Mesa3DCleanProc();
 	SurfaceDeleteAll();
+	/* reset heap */
+	hal_vinit();
 
 	if(!VMHALenv.only2d && VMHALenv.ddi >= 3)
 	{
