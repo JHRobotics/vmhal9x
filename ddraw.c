@@ -99,6 +99,8 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
   if(!hal) return DDHAL_DRIVER_NOTHANDLED;
 
 #ifdef D3DHAL
+	VMHAL_enviroment_t *env = GlobalVMHALenv();
+
 	if(pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps & (DDSCAPS_TEXTURE | DDSCAPS_ZBUFFER | DDSCAPS_FLIP |
 		DDSCAPS_FRONTBUFFER | DDSCAPS_BACKBUFFER | DDSCAPS_PRIMARYSURFACE | DDSCAPS_OFFSCREENPLAIN))
 	{
@@ -137,7 +139,7 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 
 				TOPIC("ALLOC", "FourCC(%08X) %d x %d = %d", fmt->dwFourCC, lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX);
 
-				if(!hal_valloc(pcsd->lpDD, lpSurf, FALSE, FALSE))
+				if(!hal_valloc(pcsd->lpDD, lpSurf, env->sysmem, FALSE))
 				{
 					WARN("DDERR_OUTOFVIDEOMEMORY");
 					pcsd->ddRVal = DDERR_OUTOFMEMORY;
@@ -154,7 +156,7 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 					pcsd->lpDDSurfaceDesc->dwWidth, pcsd->lpDDSurfaceDesc->dwHeight, pcsd->lpDDSurfaceDesc->lPitch);
 
 				TOPIC("ALLOCTRACE", "create: %d x %d, dwFlags=0x%X, dwCaps=0x%X", lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->dwBlockSizeY, fmt->dwFlags, pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps);
-				if(!hal_valloc(pcsd->lpDD, lpSurf, FALSE, FALSE))
+				if(!hal_valloc(pcsd->lpDD, lpSurf, env->sysmem, FALSE))
 				{
 					WARN("DDERR_OUTOFVIDEOMEMORY");
 					pcsd->ddRVal = DDERR_OUTOFMEMORY;
@@ -178,7 +180,7 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 				lpSurf->lpGbl->dwBlockSizeY = 1;
 				TOPIC("ALLOC", "ZBUF %d x %d = %d (pitch %d)", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->lPitch);
 				
-				if(!hal_valloc(pcsd->lpDD, lpSurf, FALSE, FALSE))
+				if(!hal_valloc(pcsd->lpDD, lpSurf, env->sysmem, FALSE))
 				{
 					WARN("DDERR_OUTOFVIDEOMEMORY");
 					pcsd->ddRVal = DDERR_OUTOFMEMORY;
@@ -213,7 +215,15 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 				{
           if(lpSurf->ddsCaps.dwCaps & DDSCAPS_LOCALVIDMEM)
           {
-						lpSurf->lpGbl->fpVidMem = hal_valloc(pcsd->lpDD, lpSurf, FALSE, TRUE);
+						if(env->sysmem)
+						{
+							lpSurf->lpGbl->fpVidMem = DDHAL_PLEASEALLOC_BLOCKSIZE;
+							hal_vblock_add(pcsd->lpDD, lpSurf);
+						}
+						else
+						{
+							lpSurf->lpGbl->fpVidMem = hal_valloc(pcsd->lpDD, lpSurf, FALSE, TRUE);
+						}
 					}
 					else
 					{
@@ -523,6 +533,7 @@ DDENTRY_FPUSAVE(DestroyDriver32, LPDDHAL_DESTROYDRIVERDATA, pdstr)
 #ifdef D3DHAL
 		Mesa3DCleanProc();
 		SurfaceDeleteAll();
+		hal_vblock_reset();
 #endif
 		//FBHDA_free();
 	}

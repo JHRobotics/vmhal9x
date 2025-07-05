@@ -40,6 +40,9 @@ BOOL hal_vinit();
 BOOL hal_valloc(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL systemram, BOOL rowalign);
 void hal_vfree(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf);
 
+void hal_vblock_add(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf);
+void hal_vblock_reset();
+
 #ifndef DEBUG_MEMORY
 void *hal_alloc(int heap, size_t size, DWORD width);
 void *hal_calloc(int heap, size_t size, DWORD width);

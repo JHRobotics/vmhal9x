@@ -146,7 +146,7 @@ uint64_t GetTimeTMS();
 
 /* mesa */
 void Mesa3DCleanProc();
-void Mesa3DCalibrate();
+void Mesa3DCalibrate(BOOL loadonly);
 
 void SurfaceCtxLock();
 void SurfaceCtxUnlock();
@@ -207,6 +207,7 @@ typedef struct _VMHAL_enviroment
 	BOOL allow_palette;
 	BOOL filter_bug;
 	BOOL s3tc_bug;
+	BOOL sysmem;
 } VMHAL_enviroment_t;
 
 #define DX7_SURFACE_NEST_TYPES (DDSCAPS_TEXTURE | DDSCAPS_3DDEVICE | DDSCAPS_ZBUFFER)

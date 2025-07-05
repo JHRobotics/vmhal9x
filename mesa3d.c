@@ -876,7 +876,8 @@ NUKED_LOCAL mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DWORD dds_sid, DW
 
 				TOPIC("GLVER", "GL version %d.%d - %s", entry->gl_major, entry->gl_minor, gl_ver);
 
-				if(!entry->env.scanned)
+				//if(!entry->env.scanned)
+				if(1)
 				{
 					if(entry->gl_major < 3)
 					{
@@ -900,7 +901,7 @@ NUKED_LOCAL mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DWORD dds_sid, DW
 					TOPIC("GLVER", "entry->env.texture_max_width=%d", entry->env.texture_max_width);
 					TOPIC("GLVER", "entry->env.num_clips=%d", entry->env.num_clips);
 
-					entry->env.scanned = TRUE;
+//					entry->env.scanned = TRUE;
 				}
 
 				if(dds_sid != 0)
@@ -1597,6 +1598,7 @@ NUKED_LOCAL mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, surface_id si
 			}
 */
 			//ctx->state.reload_tex_par = TRUE;
+			//tex->alwaysdirty = TRUE;
 			tex->dirty = TRUE;
 		}
 		else

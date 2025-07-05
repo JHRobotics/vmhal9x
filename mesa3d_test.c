@@ -40,19 +40,27 @@
 #include "nocrt.h"
 #endif
 
-void Mesa3DCalibrate()
+void Mesa3DCalibrate(BOOL loadonly)
 {
 	VMHAL_enviroment_t *env = GlobalVMHALenv();
 
 	if(env->scanned)
 		return;
 	
+	FBHDA_t *hda = FBHDA_setup();
 	DWORD pid = GetCurrentProcessId();
 	mesa3d_ctx_t *ctx_ptr = NULL;
 	BOOL restart_os = FALSE;
 	BOOL only_2d = FALSE;
 	mesa3d_entry_t *full_entry = Mesa3DGet(pid, TRUE);
-	
+
+	env->s3tc_bug = TRUE;
+
+	if(hda->vram_size < hda->vram_bar_size)
+	{
+		env->sysmem = TRUE;
+	}
+
 	do
 	{
 		if(!full_entry)
@@ -60,20 +68,30 @@ void Mesa3DCalibrate()
 			restart_os = TRUE;
 			break;
 		}
-			
-		ctx_ptr = MesaCreateCtx(full_entry, 0, 0);
-		if(!ctx_ptr)
-		{
-			restart_os = TRUE;
-			break;
-		}
 
-		GL_BLOCK_BEGIN(ctx_ptr)
-			if(entry->gl_major < 2 || (entry->gl_major == 2 && entry->gl_minor < 1))
+		if(!loadonly)
+		{
+			ctx_ptr = MesaCreateCtx(full_entry, 0, 0);
+			if(!ctx_ptr)
 			{
 				restart_os = TRUE;
+				break;
 			}
-		GL_BLOCK_END
+
+			GL_BLOCK_BEGIN(ctx_ptr)
+				if(entry->gl_major < 2 || (entry->gl_major == 2 && entry->gl_minor < 1))
+				{
+					restart_os = TRUE;
+				}
+			GL_BLOCK_END
+		}
+		else
+		{
+			if(!full_entry->os)
+			{
+				env->filter_bug = TRUE;
+			}
+		}
 	}while(0);
 
 	if(full_entry)
@@ -94,11 +112,14 @@ void Mesa3DCalibrate()
 				break;
 			}
 
-			ctx_ptr = MesaCreateCtx(full_entry, 0, 0);
-			if(!ctx_ptr)
+			if(!loadonly)
 			{
-				only_2d = TRUE;
-				break;
+				ctx_ptr = MesaCreateCtx(full_entry, 0, 0);
+				if(!ctx_ptr)
+				{
+					only_2d = TRUE;
+					break;
+				}
 			}
 			// ...
 		}while(0);

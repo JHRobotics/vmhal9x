@@ -77,7 +77,8 @@ typedef void (WINAPI *VidMemFree_h)(LPVMEMHEAP pvmh, FLATPTR ptr);
 HANDLE hSharedHeap = NULL;
 HANDLE hSharedLargeHeap = NULL;
 
-static DWORD mem_stat_used = 0;
+static DWORD mem_stat_vram_used = 0;
+static DWORD mem_stat_vram_blocked = 0;
 
 #ifdef DEBUG_MEMORY
 CRITICAL_SECTION mem_cs;
@@ -172,6 +173,18 @@ BOOL hal_vinit()
 	return FALSE;
 }
 
+void hal_vblock_add(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf)
+{
+	// TODO: lower vram heap start
+	mem_stat_vram_blocked += surf->lpGbl->dwBlockSizeX;
+}
+
+void hal_vblock_reset()
+{
+	mem_stat_vram_blocked = 0;
+}
+
+
 BOOL hal_valloc(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL systemram, BOOL rowalign)
 {
 	TRACE_ENTRY
@@ -204,6 +217,9 @@ BOOL hal_valloc(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf, BO
 				surf->lpGbl->lpVidMemHeap = NULL;
 				surf->lpGbl->fpVidMem = (FLATPTR)(hda->heap_end - id*FB_VRAM_HEAP_GRANULARITY);
 				TOPIC("MEMORY", "new vram ptr=%p", surf->lpGbl->fpVidMem);
+
+				mem_stat_vram_used += bs * FB_VRAM_HEAP_GRANULARITY;
+
 				return TRUE;
 			}
 			else
@@ -275,6 +291,8 @@ void hal_vfree(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf)
 					hda->heap_info[x] = BLOCK_EMPTY;
 					size += FB_VRAM_HEAP_GRANULARITY;
 				}
+
+				mem_stat_vram_used -= size;
 				TOPIC("MEMORY", "free success size=%d", size);
 			}
 		}
@@ -612,8 +630,8 @@ BOOL __stdcall VidMemInfo(DWORD *pused, DWORD *pfree)
 	FBHDA_t *hda = FBHDA_setup();
 	if(hda)
 	{
-		*pused = mem_stat_used;	
-		*pfree = hda->vram_size - (hda->system_surface + mem_stat_used + hda->overlays_size + hda->stride);
+		*pused = mem_stat_vram_used + mem_stat_vram_blocked;
+		*pfree = hda->vram_size - (hda->system_surface + mem_stat_vram_used + mem_stat_vram_blocked + hda->overlays_size + hda->stride);
 		return TRUE;
 	}
 

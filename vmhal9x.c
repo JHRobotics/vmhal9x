@@ -76,7 +76,7 @@ static VMHAL_enviroment_t VMHALenv = {
 	8, // DDI (maximum)
 	8, // HW T&L
 	TRUE, // readback
-	TRUE, // touchdepth
+	FALSE, // touchdepth
 	16384, // tex w  (can be query by GL_MAX_TEXTURE_SIZE)
 	16384, // tex h
 	8, // tex units
@@ -86,8 +86,9 @@ static VMHAL_enviroment_t VMHALenv = {
 	16, // max anisotropy
 	FALSE, // vertexblend
 	FALSE, // use palette
-	TRUE,  // filter bug
-	TRUE, // s3tc bug
+	FALSE,  // filter bug
+	FALSE, // s3tc bug
+	FALSE, // texture in sysmem
 };
 
 static DWORD CalcPitch(DWORD w, DWORD bpp)
@@ -305,6 +306,16 @@ static void ReadEnv(VMHAL_enviroment_t *dst)
 	{
 		dst->filter_bug = vmhal_setup_dw("hal", "filter_bug") ? TRUE : FALSE;
 	}
+
+	if(vmhal_setup_str("hal", "s3tc_bug", FALSE) != NULL)
+	{
+		dst->s3tc_bug = vmhal_setup_dw("hal", "s3tc_bug") ? TRUE : FALSE;
+	}
+
+	if(vmhal_setup_str("hal", "sysmem", FALSE) != NULL)
+	{
+		dst->sysmem = vmhal_setup_dw("hal", "sysmem") ? TRUE : FALSE;
+	}
 }
 
 void VMHALenv_RuntimeVer(int ver)
@@ -420,7 +431,7 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 
 #ifdef D3DHAL
 	/* do cleanup */
-	//Mesa3DCalibrate();
+	Mesa3DCalibrate(TRUE);
 	Mesa3DCleanProc();
 	SurfaceDeleteAll();
 	/* reset heap */
