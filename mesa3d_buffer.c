@@ -144,7 +144,7 @@ NUKED_LOCAL void MesaBufferUploadColor(mesa3d_ctx_t *ctx, const void *src)
 		
 		if(create)
 		{
-			MesaTexImage2D(ctx, GL_TEXTURE_2D, 0, GL_RGB, ctx->fbo->width, ctx->fbo->height, format, type, NULL);
+			MesaTexImage2D(ctx, GL_TEXTURE_2D, 0, GL_RGB, ctx->fbo->width, ctx->fbo->height, format, type, NULL, 0);
 		}
 		
 		GL_CHECK(entry->proc.pglTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, ctx->state.sw, ctx->state.sh, format, type, src));
@@ -354,10 +354,50 @@ NUKED_LOCAL void MesaBufferDownloadDepth(mesa3d_ctx_t *ctx, void *dst)
 	TOPIC("READBACK", "%X -> download depth!", dst);
 }
 
+#if 0
+static DWORD GLType2bpp(GLenum format, GLenum type)
+{
+	switch(type)
+	{
+		case GL_UNSIGNED_SHORT_4_4_4_4_REV:
+		case GL_UNSIGNED_SHORT_4_4_4_4:
+		case GL_UNSIGNED_SHORT_5_5_5_1:
+		case GL_UNSIGNED_SHORT_1_5_5_5_REV:
+		case GL_UNSIGNED_SHORT_5_6_5:
+			return 16;
+		case GL_UNSIGNED_INT_8_8_8_8_REV:
+			return 32;
+		case GL_ALPHA:
+			return 8;
+		case GL_UNSIGNED_BYTE:
+			switch(format)
+			{
+				case GL_ALPHA:
+				case GL_LUMINANCE:
+					return 8;
+				case GL_LUMINANCE8_ALPHA8:
+					return 16;
+				case GL_RGBA:
+				case GL_BGRA:
+					return 32;
+				case GL_RGB:
+				case GL_BGR:
+					return 24;
+			}
+			break;
+	}
+	
+	WARN("Uknown format size format=0x%X type=0x%X",
+		format, type);
+
+	return 32;
+}
+#endif
+
 static DWORD compressed_size(GLenum internal_format, GLuint w, GLuint h)
 {
 	DWORD s = 0;
-	
+
 	switch(internal_format)
 	{
 		case GL_COMPRESSED_RGBA_S3TC_DXT1_EXT:
@@ -389,19 +429,6 @@ NUKED_LOCAL void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *te
 	TRACE_ENTRY
 
 	mesa3d_entry_t *entry = ctx->entry;
-	GLuint w = tex->width;
-	GLuint h = tex->height;
-
-	w >>= level;
-	h >>= level;
-
-	if(w == 0) w = 1;
-	if(h == 0) h = 1;
-
-	TOPIC("CHROMA", "MesaBufferUploadTexture - level=%d", level);
-
-	TOPIC("GL", "MesaBufferUploadTexture: is_cube=%d level=%d, side=%d internalformat=%X, w=%d, h=%d, format=%X, type=%X, sid=%X)",
-		tex->cube, level, side, tex->internalformat, w, h, tex->format, tex->type, tex->data_sid[side][level]);
 
 	surface_id sid = tex->data_sid[side][level];
 
@@ -417,6 +444,8 @@ NUKED_LOCAL void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *te
 		ERR("NULL on side %d, level %d", side, level);
 		return;
 	}
+	GLuint w = surf->width;
+	GLuint h = surf->height;
 
 	void *ptr = (void*)surf->fpVidMem;
 	if(ptr == NULL)
@@ -429,7 +458,7 @@ NUKED_LOCAL void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *te
 	DWORD *test_ptr = (DWORD*)ptr;
 	if(*test_ptr == HAL_UNINITIALIZED_MAGIC)
 	{
-		WARN("Uninitialized texture memory, sid=%d, dwFlags", sid, surf->dwFlags);
+		WARN("Uninitialized texture memory, sid=%d, dwFlags=0x%X, dwCaps=0x%X", sid, surf->dwFlags, surf->dwCaps);
 	}
 #endif
 
@@ -446,7 +475,7 @@ NUKED_LOCAL void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *te
 		if(!tex->compressed)
 		{
 			MesaTexImage2D(ctx, Mesa2GLSide[side], level, tex->internalformat,
-				w, h, tex->format, tex->type, ptr);
+				w, h, tex->format, tex->type, ptr, sid);
 		}
 		else
 		{
@@ -468,7 +497,7 @@ NUKED_LOCAL void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *te
 
 				if(data != NULL)
 				{
-					MesaTexImage2D(ctx, Mesa2GLSide[side], level, GL_RGBA, w, h, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, data);
+					MesaTexImage2D(ctx, Mesa2GLSide[side], level, GL_RGBA, w, h, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, data, sid);
 					MesaTempFree(ctx, data);
 				}
 			}
@@ -493,7 +522,7 @@ NUKED_LOCAL void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *te
 				level, tex->internalformat, w, h, tex->format, tex->type, ptr
 			);
 			MesaTexImage2D(ctx, GL_TEXTURE_2D, level, tex->internalformat,
-				w, h, tex->format, tex->type, ptr);
+				w, h, tex->format, tex->type, ptr, sid);
 		}
 		else
 		{
@@ -515,7 +544,7 @@ NUKED_LOCAL void MesaBufferUploadTexture(mesa3d_ctx_t *ctx, mesa3d_texture_t *te
 
 				if(data != NULL)
 				{
-					MesaTexImage2D(ctx, GL_TEXTURE_2D, level, GL_RGBA, w, h, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, data);
+					MesaTexImage2D(ctx, GL_TEXTURE_2D, level, GL_RGBA, w, h, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, data, sid);
 					MesaTempFree(ctx, data);
 				}
 			}
@@ -607,15 +636,6 @@ NUKED_LOCAL void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture
 {
 	TRACE_ENTRY
 
-	GLuint w = tex->width;
-	GLuint h = tex->height;
-
-	w >>= level;
-	h >>= level;
-
-	if(w == 0) w = 1;
-	if(h == 0) h = 1;
-
 	mesa3d_entry_t *entry = ctx->entry;
 
 	surface_id sid = tex->data_sid[side][level];
@@ -625,12 +645,17 @@ NUKED_LOCAL void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture
 		return;
 	}
 
-	void *vidmem = SurfaceGetVidMem(sid, FALSE);
-	if(vidmem == NULL)
+	DDSURF *dds = SurfaceGetSURF(sid);
+	if(dds == NULL || dds->fpVidMem == 0)
 	{
 		ERR("vidmem == NULL");
 		return;
 	}
+
+	GLuint w = dds->width;
+	GLuint h = dds->height;
+
+	void *vidmem = (void*)dds->fpVidMem;
 
 #ifdef DEBUG
 	DWORD *test_ptr = (DWORD*)vidmem;
@@ -672,7 +697,7 @@ NUKED_LOCAL void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture
 			GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_CUBE_MAP, tex->gltex));
 			
 			MesaTexImage2D(ctx, Mesa2GLSide[side], level, GL_RGBA,
-				w, h, GL_BGRA, GL_UNSIGNED_BYTE, data);
+				w, h, GL_BGRA, GL_UNSIGNED_BYTE, data, sid);
 		}
 		else
 		{
@@ -680,7 +705,7 @@ NUKED_LOCAL void MesaBufferUploadTextureChroma(mesa3d_ctx_t *ctx, mesa3d_texture
 			GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_CUBE_MAP, 0));
 			
 			MesaTexImage2D(ctx, GL_TEXTURE_2D, level, GL_RGBA,
-				w, h, GL_BGRA, GL_UNSIGNED_BYTE, data);
+				w, h, GL_BGRA, GL_UNSIGNED_BYTE, data, sid);
 		}
 		
 		MesaTempFree(ctx, data);
@@ -797,7 +822,7 @@ NUKED_LOCAL BOOL MesaBufferFBOSetup(mesa3d_ctx_t *ctx, int width, int height, in
 		GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, fbo->plane_fb));
 	
 		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, fbo->plane_color_tex));
-		MesaTexImage2D(ctx, GL_TEXTURE_2D, 0, GL_RGBA, width, height, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+		MesaTexImage2D(ctx, GL_TEXTURE_2D, 0, GL_RGBA, width, height, GL_RGBA, GL_UNSIGNED_BYTE, NULL, 0);
 
 		GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST));
 		GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
@@ -808,7 +833,7 @@ NUKED_LOCAL BOOL MesaBufferFBOSetup(mesa3d_ctx_t *ctx, int width, int height, in
 			entry->env.zfloat ? GL_DEPTH32F_STENCIL8 : GL_DEPTH24_STENCIL8,
 			width, height, GL_DEPTH_STENCIL,
 			entry->env.zfloat ? GL_FLOAT_32_UNSIGNED_INT_24_8_REV : GL_UNSIGNED_INT_24_8,			
-			NULL);
+			NULL, 0);
 
 		GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST));
 		GL_CHECK(entry->proc.pglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
@@ -837,15 +862,6 @@ NUKED_LOCAL void MesaBufferUploadTexturePalette(mesa3d_ctx_t *ctx, mesa3d_textur
 {
 	TRACE_ENTRY
 	
-	GLuint w = tex->width;
-	GLuint h = tex->height;
-	
-	w >>= level;
-	h >>= level;
-	
-	if(w == 0) w = 1;
-	if(h == 0) h = 1;
-
 	mesa3d_entry_t *entry = ctx->entry;
 
 	surface_id sid = tex->data_sid[side][level];
@@ -861,7 +877,10 @@ NUKED_LOCAL void MesaBufferUploadTexturePalette(mesa3d_ctx_t *ctx, mesa3d_textur
 		ERR("vidmem == NULL");
 		return;
 	}
-	
+
+	GLuint w = dds->width;
+	GLuint h = dds->height;
+
 	mesa_pal8_t *pal = MesaGetPal(ctx, dds->dwPaletteHandle);
 	if(pal == NULL)
 	{
@@ -883,7 +902,7 @@ NUKED_LOCAL void MesaBufferUploadTexturePalette(mesa3d_ctx_t *ctx, mesa3d_textur
 	DWORD *test_ptr = (DWORD*)src;
 	if(*test_ptr == HAL_UNINITIALIZED_MAGIC)
 	{
-		WARN("Uninitialized texture memory, sid=%d, dwFlags=0x%X", sid, dds->dwFlags);
+		WARN("Uninitialized texture memory, sid=%d, dwFlags=0x%X, dwCaps=0x%X", sid, dds->dwFlags, dds->dwCaps);
 	}
 #endif
 
@@ -981,14 +1000,14 @@ NUKED_LOCAL void MesaBufferUploadTexturePalette(mesa3d_ctx_t *ctx, mesa3d_textur
 		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, 0));
 		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_CUBE_MAP, tex->gltex));
 
-		MesaTexImage2D(ctx, Mesa2GLSide[side], level, GL_RGBA, w, h, GL_RGBA, GL_UNSIGNED_BYTE, data);
+		MesaTexImage2D(ctx, Mesa2GLSide[side], level, GL_RGBA, w, h, GL_RGBA, GL_UNSIGNED_BYTE, data, sid);
 	}
 	else
 	{
 		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, tex->gltex));
 		GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_CUBE_MAP, 0));
 
-		MesaTexImage2D(ctx, GL_TEXTURE_2D, level, GL_RGBA, w, h, GL_RGBA, GL_UNSIGNED_BYTE, data);
+		MesaTexImage2D(ctx, GL_TEXTURE_2D, level, GL_RGBA, w, h, GL_RGBA, GL_UNSIGNED_BYTE, data, sid);
 	}
 
 #if 0
@@ -998,19 +1017,27 @@ NUKED_LOCAL void MesaBufferUploadTexturePalette(mesa3d_ctx_t *ctx, mesa3d_textur
 }
 
 NUKED_LOCAL void MesaTexImage2D(mesa3d_ctx_t *ctx, GLenum target, GLint level, GLint internalformat,
-	GLsizei width, GLsizei height, GLenum format, GLenum type, const void *data)
+	GLsizei width, GLsizei height, GLenum format, GLenum type, const void *data, surface_id sid)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 	GLenum err;
 	MesaGC(ctx, FALSE);
 
-	while((err = entry->proc.pglGetError()) != GL_NO_ERROR);
+	while((err = entry->proc.pglGetError()) != GL_NO_ERROR); /* erase all previous errors */
+
 	entry->proc.pglTexImage2D(target, level, internalformat, width, height, 0, format, type, data);
+	err = entry->proc.pglGetError();
 
 	if(err == GL_OUT_OF_MEMORY)
 	{
 		MesaGC(ctx, TRUE);
 		entry->proc.pglTexImage2D(target, level, internalformat, width, height, 0, format, type, data);
 	}
+#ifdef DEBUG
+	else if(err != GL_NO_ERROR)
+	{
+		ERR("glTexImage2D, GL error = 0x%X", err);
+	}
+#endif
 }
 

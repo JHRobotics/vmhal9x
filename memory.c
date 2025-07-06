@@ -236,7 +236,16 @@ BOOL hal_valloc(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf, BO
 		if(mem != NULL)
 		{
 #ifdef DEBUG
-			memset(mem, 0xCC, size);
+			DWORD size4 = size/4;
+			DWORD i;
+			DWORD *ptr = mem;
+			for(i = 0; i < size4; i++)
+			{
+				*ptr = HAL_UNINITIALIZED_MAGIC;
+				ptr++;
+			}
+			
+			//memset(mem, 0xCC, size);
 #endif
 			surf->lpGbl->lpVidMemHeap = NULL;
 			surf->lpGbl->fpVidMem = (FLATPTR)(mem);

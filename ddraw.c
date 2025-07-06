@@ -254,6 +254,7 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 			else
 			{
 				SurfaceSetFormat(sid, fmt, hal->pFBHDA32->bpp);
+				SurfaceEmptySet(sid);
 			}
 
 			TOPIC("MEMORY", "Created sid=%d", lpSurf->dwReserved1);
@@ -419,8 +420,10 @@ DDENTRY_FPUSAVE(Lock32, LPDDHAL_LOCKDATA, pld)
 	{
 		if(SurfaceIsEmpty(sid))
 		{
-			SurfaceClearData(sid);
-			TOPIC("CLEAR", "clear in lock 0x%X", pld->lpDDSurface->lpGbl->fpVidMem);
+			TOPIC("SURFACE", "Empty sid=%d => LOCK", sid);
+			SurfaceEmptyClear(sid);
+//			SurfaceClearData(sid);
+//			TOPIC("CLEAR", "clear in lock 0x%X", pld->lpDDSurface->lpGbl->fpVidMem);
 		}
 		SurfaceFromMesa(pld->lpDDSurface, FALSE);
 		SurfaceLock(pld->lpDDSurface);

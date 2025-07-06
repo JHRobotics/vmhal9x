@@ -247,7 +247,6 @@ DDENTRY_FPUSAVE(Flip32, LPDDHAL_FLIPDATA, pfd)
 
 	last_flip_time = flip_time;
 	pfd->ddRVal = DD_OK;
-	
 
 	return DDHAL_DRIVER_HANDLED;
 } /* Flip32 */

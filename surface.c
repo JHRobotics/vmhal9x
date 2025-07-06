@@ -490,7 +490,7 @@ void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 		{
 			if(citem->ctx->entry->env.readback)
 			{
-				if(SurfaceGetVidMem(citem->ctx->backbuffer, citem->ctx->entry->runtime_ver < 7) == vidmem)
+				if(SurfaceGetVidMem(citem->ctx->backbuffer, MesaOldFlip(citem->ctx)) == vidmem)
 				{
 					TOPIC("DEPTHCONV", "Color to mesa");
 					GL_BLOCK_BEGIN(citem->ctx)
@@ -498,10 +498,10 @@ void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 						ctx->render.dirty = FALSE;
 					GL_BLOCK_END
 				}
-	
+
 				if(citem->ctx->entry->env.touchdepth && citem->ctx->depth_bpp)
 				{
-					if(SurfaceGetVidMem(citem->ctx->depth, citem->ctx->entry->runtime_ver < 7) == vidmem)
+					if(SurfaceGetVidMem(citem->ctx->depth, MesaOldFlip(citem->ctx)) == vidmem)
 					{
 						TOPIC("DEPTHCONV", "Depth to mesa");
 						GL_BLOCK_BEGIN(citem->ctx)
@@ -518,7 +518,7 @@ void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 				} // touchdepth
 			} // readback
 		}
-		
+
 		citem = citem->next;
 	}
 }
@@ -537,7 +537,7 @@ void SurfaceZToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, DWORD color)
 		{
 			if(!citem->ctx->entry->env.touchdepth)
 			{
-				if(SurfaceGetVidMem(citem->ctx->depth, citem->ctx->entry->runtime_ver < 7) == vidmem)
+				if(SurfaceGetVidMem(citem->ctx->depth, MesaOldFlip(citem->ctx)) == vidmem)
 				{
 					TOPIC("DEPTHCONV", "Clear Z, color=0x%X", color);
 					GL_BLOCK_BEGIN(citem->ctx)
@@ -592,7 +592,7 @@ void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 		TRACE("SurfaceFromMesa - citem->pid = %X, pid = %X", citem->pid, pid);
 		if(citem->pid == pid)
 		{
-			if(SurfaceGetVidMem(citem->ctx->backbuffer, citem->ctx->entry->runtime_ver < 7) == vidmem && citem->ctx->render.dirty)
+			if(SurfaceGetVidMem(citem->ctx->backbuffer, MesaOldFlip(citem->ctx)) == vidmem && citem->ctx->render.dirty)
 			{
 				GL_BLOCK_BEGIN(citem->ctx)
 					MesaBufferDownloadColor(ctx, vidmem);
@@ -604,7 +604,7 @@ void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 			{
 				if(citem->ctx->render.zdirty && citem->ctx->depth_bpp)
 				{
-					if(SurfaceGetVidMem(citem->ctx->depth, citem->ctx->entry->runtime_ver < 7) == vidmem && citem->ctx->render.zdirty)
+					if(SurfaceGetVidMem(citem->ctx->depth, MesaOldFlip(citem->ctx)) == vidmem && citem->ctx->render.zdirty)
 					{
 						GL_BLOCK_BEGIN(citem->ctx)
 							MesaBufferDownloadDepth(ctx, vidmem);
@@ -1052,12 +1052,21 @@ BOOL SurfaceIsEmpty(surface_id sid)
 	return FALSE;
 }
 
-void SurfaceClearEmpty(surface_id sid)
+void SurfaceEmptyClear(surface_id sid)
 {
 	surface_info_t *info = SurfaceGetInfo(sid);
 	if(info)
 	{
 		info->flags &= ~SURF_FLAG_EMPTY;
+	}
+}
+
+void SurfaceEmptySet(surface_id sid)
+{
+	surface_info_t *info = SurfaceGetInfo(sid);
+	if(info)
+	{
+		info->flags |= SURF_FLAG_EMPTY;
 	}
 }
 
@@ -1152,6 +1161,7 @@ DWORD SurfaceDataSize(LPDDRAWI_DDRAWSURFACE_GBL gbl, DWORD *outPitch)
 	return 0;
 }
 
+#if 0
 void SurfaceClearData(surface_id sid)
 {
 	surface_info_t *info = SurfaceGetInfo(sid);
@@ -1165,9 +1175,10 @@ void SurfaceClearData(surface_id sid)
 		}
 		TOPIC("CLEAR", "clear surface 0x%X", info->surf.fpVidMem);
 		
-		SurfaceClearEmpty(sid);
+		SurfaceEmptyClear(sid);
 	}
 }
+#endif
 
 LPDDRAWI_DDRAWSURFACE_LCL SurfaceDuplicate(LPDDRAWI_DDRAWSURFACE_LCL original)
 {

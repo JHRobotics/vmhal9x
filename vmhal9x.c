@@ -272,6 +272,11 @@ static void ReadEnv(VMHAL_enviroment_t *dst)
 {
 	memcpy(dst, &VMHALenv, sizeof(VMHAL_enviroment_t));
 
+	if(vmhal_setup_str("hal", "forceos", FALSE) != NULL)
+	{
+		dst->forceos = vmhal_setup_dw("hal", "forceos") ? TRUE : FALSE; 
+	}
+
 	if(vmhal_setup_str("hal", "ddi", FALSE) != NULL)
 	{
 		dst->ddi = vmhal_setup_dw("hal", "ddi"); 

@@ -1770,6 +1770,8 @@ DDENTRY_FPUSAVE(CreateExecuteBuffer32, LPDDHAL_CREATESURFACEDATA, csd)
 	int i;
 	LPDDRAWI_DDRAWSURFACE_LCL *lplpSList = csd->lplpSList;
 
+	VMHAL_enviroment_t *env = GlobalVMHALenv();
+
 	for(i = 0; i < (int)csd->dwSCnt; i++)
 	{
 		LPDDRAWI_DDRAWSURFACE_LCL surf = lplpSList[i];
@@ -1788,7 +1790,10 @@ DDENTRY_FPUSAVE(CreateExecuteBuffer32, LPDDHAL_CREATESURFACEDATA, csd)
 				 * explicit vertex buffers with the DDSCAPS_WRITEONLY flag set
 				 * can be safely placed in video memory
 				 */
-				alloc_vram = TRUE;
+				if(!env->sysmem)
+				{
+					alloc_vram = TRUE;
+				}
 			}
 		}
 

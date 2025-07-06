@@ -265,6 +265,21 @@ void Mesa3DCleanProc()
 	Mesa3DFree(pid, FALSE);
 }
 
+NUKED_FAST BOOL MesaOldFlip(mesa3d_ctx_t *ctx)
+{
+/*	if(ctx->dxif <= MESA_CTX_IF_DX5)
+	{
+		return TRUE;
+	}*/
+	
+	if(ctx->entry->runtime_ver < 7)
+	{
+		return TRUE;
+	}
+	
+	return FALSE;
+}
+
 static BOOL DDSurfaceToGL(DDSURF *surf, GLuint *bpp,
 	GLint *internalformat, GLenum *format, GLenum *type,
 	BOOL *compressed, BOOL *palette)
@@ -747,7 +762,7 @@ static void MesaDepthApply(mesa3d_ctx_t *ctx)
 
 NUKED_INLINE BOOL MesaBackbufferIsFront(mesa3d_ctx_t *ctx)
 {
-	DWORD addr = (DWORD)SurfaceGetVidMem(ctx->backbuffer, ctx->entry->runtime_ver < 7);
+	DWORD addr = (DWORD)SurfaceGetVidMem(ctx->backbuffer, MesaOldFlip(ctx));
 	TRACE("MesaBackbufferIsFront addr=0x%X", addr);
 	
 	FBHDA_t *hda = FBHDA_setup();
@@ -805,7 +820,8 @@ NUKED_LOCAL mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DWORD dds_sid, DW
 
 				if(SurfaceIsEmpty(dds_sid))
 				{
-					SurfaceClearEmpty(dds_sid);
+					TOPIC("SURFACE", "empty surface as draw surface");
+					SurfaceEmptyClear(dds_sid);
 				}
 
 				ctx->thread_lock = 0;
@@ -1523,7 +1539,9 @@ NUKED_LOCAL mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, surface_id si
 			}
 
 			if(SurfaceIsEmpty(sid))
-				SurfaceClearData(sid);
+			{
+				WARN("Loading texture which marked as clean sid=%d", sid);
+			}
 
 			SurfaceAttachTexture(sid, tex, 0, 0);
 			if(is_cube)
@@ -1541,7 +1559,9 @@ NUKED_LOCAL mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, surface_id si
 					tex->data_sid[cube_index][cube_pos]   = subsid;
 
 					if(SurfaceIsEmpty(subsid))
-							SurfaceClearData(subsid);
+					{
+						WARN("mipmap of sid=%d is empty, subsid=%d (CUBE)", sid, subsid);
+					}
 
 					SurfaceAttachTexture(subsid, tex, cube_pos, cube_index);
 
@@ -1566,20 +1586,40 @@ NUKED_LOCAL mesa3d_texture_t *MesaCreateTexture(mesa3d_ctx_t *ctx, surface_id si
 			}
 			else if(surf->dwCaps & DDSCAPS_MIPMAP) /* mipmaps */
 			{
-				int level;
-				for(level = 0; level < surf->attachments_cnt; level++)
+				int level = 0;
+				int i;
+				for(i = 0; i < surf->attachments_cnt; i++)
 				{
-					surface_id subsid = surf->attachments[level];
+					surface_id subsid = surf->attachments[i];
+#if 0
+					DWORD w = tex->width >> (level+1);
+					DWORD h = tex->height >> (level+1);
 
-					tex->data_dirty[0][level+1] = TRUE;
-					tex->data_sid[0][level+1] = subsid;
+					if(w < 0 || h < 0)
+					{
+						continue;
+					}
 
+					if(tex->compressed)
+					{
+						if(w < 4 || h < 4)
+						{
+							continue;
+						}
+					}
+#endif
+					level++;
+	
+					tex->data_dirty[0][level] = TRUE;
+					tex->data_sid[0][level] = subsid;
+	
 					if(SurfaceIsEmpty(subsid))
-						SurfaceClearData(subsid);
-
-					SurfaceAttachTexture(subsid, tex, level+1, 0);
-				}
-				tex->mipmap_level = surf->attachments_cnt;
+					{
+						WARN("mipmap of sid=%d is empty, subsid=%d (TEX2D)", sid, subsid);
+					}
+					SurfaceAttachTexture(subsid, tex, level, 0);
+				} // for
+				tex->mipmap_level = level;
 				tex->mipmap = (tex->mipmap_level > 0) ? TRUE : FALSE;
 				TOPIC("NEWTEX", "Created %d with mipmap, at level: %d", tex->gltex, tex->mipmap_level);
 				TOPIC("NEWTEX", "full dwCaps=0x%X", surf->dwCaps);
@@ -4769,7 +4809,7 @@ NUKED_LOCAL void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVA
 #if 0
 		if(flags & D3DCLEAR_TARGET)
 		{
-			void *ptr = SurfaceGetVidMem(ctx->backbuffer, entry->runtime_ver < 7);
+			void *ptr = SurfaceGetVidMem(ctx->backbuffer, MesaOldFlip(ctx));
 			if(ptr)
 			{
 				MesaBufferUploadColor(ctx, ptr);
@@ -4778,7 +4818,7 @@ NUKED_LOCAL void MesaClear(mesa3d_ctx_t *ctx, DWORD flags, D3DCOLOR color, D3DVA
 		
 		if(ctx->depth_bpp && (flags & (D3DCLEAR_ZBUFFER | D3DCLEAR_STENCIL)))
 		{
-			void *ptr = SurfaceGetVidMem(ctx->depth, entry->runtime_ver < 7);
+			void *ptr = SurfaceGetVidMem(ctx->depth, MesaOldFlip(ctx));
 			MesaBufferUploadDepth(ctx, ptr);
 		}
 #endif
@@ -4854,7 +4894,7 @@ NUKED_LOCAL void MesaSceneBegin(mesa3d_ctx_t *ctx)
 {
 	if(!ctx->render.dirty)
 	{
-		void *ptr = SurfaceGetVidMem(ctx->backbuffer, ctx->entry->runtime_ver < 7);
+		void *ptr = SurfaceGetVidMem(ctx->backbuffer, MesaOldFlip(ctx));
 		if(ptr)
 		{
 			MesaBufferUploadColor(ctx, ptr);
@@ -4865,7 +4905,7 @@ NUKED_LOCAL void MesaSceneBegin(mesa3d_ctx_t *ctx)
 NUKED_LOCAL void MesaSceneEnd(mesa3d_ctx_t *ctx)
 {
 	BOOL is_visible = MesaBackbufferIsFront(ctx);
-	void *ptr = SurfaceGetVidMem(ctx->backbuffer, ctx->entry->runtime_ver < 7);
+	void *ptr = SurfaceGetVidMem(ctx->backbuffer, MesaOldFlip(ctx));
 	if(ptr)
 	{
 		if(is_visible) /* fixme: check for DDSCAPS_PRIMARYSURFACE */

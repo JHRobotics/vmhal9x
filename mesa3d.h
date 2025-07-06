@@ -765,11 +765,13 @@ NUKED_LOCAL BOOL MesaVSSetVertex(mesa3d_ctx_t *ctx, mesa_dx_shader_t *vs);
 
 /* need GL block */
 NUKED_LOCAL void MesaTexImage2D(mesa3d_ctx_t *ctx, GLenum target, GLint level, GLint internalformat,
-	GLsizei width, GLsizei height, GLenum format, GLenum type, const void *data);
+	GLsizei width, GLsizei height, GLenum format, GLenum type, const void *data, surface_id sid);
 NUKED_LOCAL void MesaGC(mesa3d_ctx_t *ctx, BOOL oom);
 
 /* from permedia driver, fast detection if handle is FVF code or shader handle */
 #define RDVSD_ISLEGACY(handle) (!(handle & D3DFVF_RESERVED0))
+
+NUKED_FAST BOOL MesaOldFlip(mesa3d_ctx_t *ctx);
 
 #ifdef DEBUG
 /* heavy debug */
