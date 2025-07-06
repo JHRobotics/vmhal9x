@@ -205,34 +205,9 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 
 				lpSurf->lpGbl->dwBlockSizeX = s;
 				lpSurf->lpGbl->dwBlockSizeY = 1;
-#if 1
-				if(pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
-				{
-					/* when allocating primary surface, the system needs memory where already screen is */
-					lpSurf->lpGbl->fpVidMem = (FLATPTR)((BYTE*)hal->pFBHDA32->vram_pm32 + hal->pFBHDA32->system_surface);
-				}
-				else
-				{
-          if(lpSurf->ddsCaps.dwCaps & DDSCAPS_LOCALVIDMEM)
-          {
-						if(env->sysmem)
-						{
-							lpSurf->lpGbl->fpVidMem = DDHAL_PLEASEALLOC_BLOCKSIZE;
-							hal_vblock_add(pcsd->lpDD, lpSurf);
-						}
-						else
-						{
-							lpSurf->lpGbl->fpVidMem = hal_valloc(pcsd->lpDD, lpSurf, FALSE, TRUE);
-						}
-					}
-					else
-					{
-						lpSurf->lpGbl->fpVidMem = DDHAL_PLEASEALLOC_BLOCKSIZE;
-					}
-				}
-#else
+
+				hal_vblock_add(pcsd->lpDD, lpSurf);
 				lpSurf->lpGbl->fpVidMem = DDHAL_PLEASEALLOC_BLOCKSIZE;
-#endif
 
 				if(i == 0)
 				{

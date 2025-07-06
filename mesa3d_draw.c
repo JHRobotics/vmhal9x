@@ -429,6 +429,12 @@ NUKED_LOCAL void MesaFVFRecalcCoords(mesa3d_ctx_t *ctx)
 	}
 }
 
+/*
+	DDK:
+		D3DTA_DIFFUSE defaults to 0xFFFFFFF if no diffuse color is specified in the flexible vertex format (FVF) data.
+		D3DTA_SPECULAR defaults to 0x00000000 if no specular color is specified in the FVF data.
+*/
+
 #define DEF_DIFFUSE  0xFFFFFFFF
 #define DEF_DIFFUSE_DX8  0xFF000000
 

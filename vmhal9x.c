@@ -75,7 +75,7 @@ static VMHAL_enviroment_t VMHALenv = {
 	FALSE, /* runtime dx9 */
 	8, // DDI (maximum)
 	8, // HW T&L
-	TRUE, // readback
+	FALSE, // readback
 	FALSE, // touchdepth
 	16384, // tex w  (can be query by GL_MAX_TEXTURE_SIZE)
 	16384, // tex h

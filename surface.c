@@ -445,11 +445,12 @@ void SurfaceToMesaTex(surface_id sid)
 	surface_info_t *info = SurfaceGetInfo(sid);
 	if(info)
 	{
-		//if(info->lock)
-		//	return;
-
-		// something was write to surface, remove empty flag
-		info->flags &= ~SURF_FLAG_EMPTY;
+		if(info->flags & SURF_FLAG_EMPTY)
+		{
+			// something was write to surface, remove empty flag
+			info->flags &= ~SURF_FLAG_EMPTY;
+			TOPIC("SURFACE", "Empty sid=%d => render target", sid);
+		}
 
 		surface_attachment_t *item = info->first;
 		while(item)
@@ -479,47 +480,52 @@ void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 
 	if(texonly)
 		return;
-	
-	void *vidmem = (void*)surf->lpGbl->fpVidMem;
-	context_attachment_t *citem = contexts.first;
-	DWORD pid = GetCurrentProcessId();
 
-	while(citem)
+	VMHAL_enviroment_t *env = GlobalVMHALenv()
+
+	if(env->readback || env->readback)
 	{
-		if(citem->pid == pid)
+		void *vidmem = (void*)surf->lpGbl->fpVidMem;
+		context_attachment_t *citem = contexts.first;
+		DWORD pid = GetCurrentProcessId();
+	
+		while(citem)
 		{
-			if(citem->ctx->entry->env.readback)
+			if(citem->pid == pid)
 			{
-				if(SurfaceGetVidMem(citem->ctx->backbuffer, MesaOldFlip(citem->ctx)) == vidmem)
+				if(citem->ctx->entry->env.readback)
 				{
-					TOPIC("DEPTHCONV", "Color to mesa");
-					GL_BLOCK_BEGIN(citem->ctx)
-						MesaBufferUploadColor(ctx, vidmem);
-						ctx->render.dirty = FALSE;
-					GL_BLOCK_END
-				}
-
-				if(citem->ctx->entry->env.touchdepth && citem->ctx->depth_bpp)
-				{
-					if(SurfaceGetVidMem(citem->ctx->depth, MesaOldFlip(citem->ctx)) == vidmem)
+					if(SurfaceGetVidMem(citem->ctx->backbuffer, MesaOldFlip(citem->ctx)) == vidmem)
 					{
-						TOPIC("DEPTHCONV", "Depth to mesa");
+						TOPIC("DEPTHCONV", "Color to mesa");
 						GL_BLOCK_BEGIN(citem->ctx)
-							//entry->proc.pglDepthMask(GL_TRUE);
-							//entry->proc.pglClear(GL_DEPTH_BUFFER_BIT);
-							MesaBufferUploadDepth(ctx, vidmem);
-							ctx->render.zdirty = FALSE;
-							//if(!ctx->state.depth.writable)
-							//{
-							//	entry->proc.pglDepthMask(GL_FALSE);
-							//}
+							MesaBufferUploadColor(ctx, vidmem);
+							ctx->render.dirty = FALSE;
 						GL_BLOCK_END
 					}
-				} // touchdepth
-			} // readback
+	
+					if(citem->ctx->entry->env.touchdepth && citem->ctx->depth_bpp)
+					{
+						if(SurfaceGetVidMem(citem->ctx->depth, MesaOldFlip(citem->ctx)) == vidmem)
+						{
+							TOPIC("DEPTHCONV", "Depth to mesa");
+							GL_BLOCK_BEGIN(citem->ctx)
+								//entry->proc.pglDepthMask(GL_TRUE);
+								//entry->proc.pglClear(GL_DEPTH_BUFFER_BIT);
+								MesaBufferUploadDepth(ctx, vidmem);
+								ctx->render.zdirty = FALSE;
+								//if(!ctx->state.depth.writable)
+								//{
+								//	entry->proc.pglDepthMask(GL_FALSE);
+								//}
+							GL_BLOCK_END
+						}
+					} // touchdepth
+				} // readback
+			}
+	
+			citem = citem->next;
 		}
-
-		citem = citem->next;
 	}
 }
 
@@ -560,6 +566,7 @@ void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 {
 	TRACE_ENTRY
 
+#if 0
 	surface_info_t *info = SurfaceGetInfoFromLcl(surf);
 	if(info)
 	{
@@ -580,9 +587,12 @@ void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 		}
 	}
 
+#endif
+
 	if(texonly)
 		return;
 
+#if 1
 	void *vidmem = (void*)surf->lpGbl->fpVidMem;
 	context_attachment_t *citem = contexts.first;	
 	DWORD pid = GetCurrentProcessId();
@@ -617,6 +627,7 @@ void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 		
 		citem = citem->next;
 	}
+#endif
 }
 
 static void SurfaceTableReduce()

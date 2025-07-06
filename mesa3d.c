@@ -1013,13 +1013,6 @@ NUKED_LOCAL BOOL MesaSetTarget(mesa3d_ctx_t *ctx, surface_id dds_sid, surface_id
 	//dds->fpVidMem = dds->lpLcl->lpGbl->fpVidMem;
 	TOPIC("TARGET", "MesaSetTarget: target size(%d x %d x %d)", width, height, bpp);
 
-#if 0	
-	if(dds->dwCaps & DDSCAPS_TEXTURE && !create && ddz_sid == 0)
-	{
-		return MesaSetTargetTexture(ctx, dds_sid);
-	}
-#endif
-
 	if(ddz_sid)
 	{
 		DDSURF *ddz = SurfaceGetSURF(ddz_sid);
@@ -3280,7 +3273,7 @@ static const char *debug_dxcolorarg_str(DWORD d)
 
 #endif /* DEBUG */
 
-NUKED_INLINE void D3DTA2GL(DWORD dxarg, GLint *gl_src, GLint *gl_op, BOOL active_image)
+NUKED_INLINE void D3DTA2GL(DWORD dxarg, GLint *gl_src, GLint *gl_op, BOOL active_image, int tmu)
 {
 	switch(dxarg & D3DTA_SELECTMASK)
 	{
@@ -3288,7 +3281,14 @@ NUKED_INLINE void D3DTA2GL(DWORD dxarg, GLint *gl_src, GLint *gl_op, BOOL active
 			WARN("D3DTA_TEMP");
 			/* TRU */
 		case D3DTA_CURRENT:
-			*gl_src = GL_PREVIOUS;
+			if(tmu == 0)
+			{
+				*gl_src = GL_PRIMARY_COLOR;
+			}
+			else
+			{
+				*gl_src = GL_PREVIOUS;
+			}
 			break;
 		case D3DTA_DIFFUSE:
 			*gl_src = GL_PRIMARY_COLOR;
@@ -3302,13 +3302,17 @@ NUKED_INLINE void D3DTA2GL(DWORD dxarg, GLint *gl_src, GLint *gl_op, BOOL active
 			/* TRU */
 		case D3DTA_TEXTURE:
 		default:
+			/* DDK: D3DTA_TEXTURE is a value for a D3DTSS_COLORARG1 or D3DTSS_ALPHAARG1
+       * state of any stage, or defaults to 0x0 if no texture is bound to this stage.
+       */
 			if(active_image)
 			{
 				*gl_src = GL_TEXTURE;
 			}
 			else
 			{
-				*gl_src = GL_PREVIOUS;
+				//*gl_src = GL_PREVIOUS;
+				*gl_src = GL_PRIMARY_COLOR;
 			}
 			break;
 	}
@@ -3709,12 +3713,12 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 	GLint alpha_arg4_source = GL_ZERO;
 	GLint alpha_arg4_op = GL_ONE_MINUS_SRC_ALPHA;
 
-	D3DTA2GL(ts->color_arg1,                      &color_arg1_source, &color_arg1_op, ts->active);
-	D3DTA2GL(ts->color_arg2,                      &color_arg2_source, &color_arg2_op, ts->active);
-	D3DTA2GL(ts->color_arg3,                      &color_arg3_source, &color_arg3_op, ts->active);
-	D3DTA2GL(ts->alpha_arg1|D3DTA_ALPHAREPLICATE, &alpha_arg1_source, &alpha_arg1_op, ts->active);
-	D3DTA2GL(ts->alpha_arg2|D3DTA_ALPHAREPLICATE, &alpha_arg2_source, &alpha_arg2_op, ts->active);
-	D3DTA2GL(ts->alpha_arg3|D3DTA_ALPHAREPLICATE, &alpha_arg3_source, &alpha_arg3_op, ts->active);
+	D3DTA2GL(ts->color_arg1,                      &color_arg1_source, &color_arg1_op, ts->active, tmu);
+	D3DTA2GL(ts->color_arg2,                      &color_arg2_source, &color_arg2_op, ts->active, tmu);
+	D3DTA2GL(ts->color_arg3,                      &color_arg3_source, &color_arg3_op, ts->active, tmu);
+	D3DTA2GL(ts->alpha_arg1|D3DTA_ALPHAREPLICATE, &alpha_arg1_source, &alpha_arg1_op, ts->active, tmu);
+	D3DTA2GL(ts->alpha_arg2|D3DTA_ALPHAREPLICATE, &alpha_arg2_source, &alpha_arg2_op, ts->active, tmu);
+	D3DTA2GL(ts->alpha_arg3|D3DTA_ALPHAREPLICATE, &alpha_arg3_source, &alpha_arg3_op, ts->active, tmu);
 
 	GLfloat color_mult = 1.0f;
 	GLfloat alpha_mult = 1.0f;
@@ -5044,6 +5048,11 @@ NUKED_LOCAL mesa3d_texture_t *MesaTextureFromSurfaceHandle(mesa3d_ctx_t *ctx, DW
 		surface_id sid = ctx->surfaces->table[handle];
 		if(sid)
 		{
+			if(SurfaceIsEmpty(sid))
+			{
+				return NULL;
+			}
+
 			TRACE("dwSurfaceHandle -> surface_id: %d -> %d", handle, sid);
 			mesa3d_texture_t *tex;
 			tex = SurfaceGetTexture(sid, ctx, 0, 0);
