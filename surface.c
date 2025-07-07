@@ -481,7 +481,7 @@ void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly)
 	if(texonly)
 		return;
 
-	VMHAL_enviroment_t *env = GlobalVMHALenv()
+	VMHAL_enviroment_t *env = GlobalVMHALenv();
 
 	if(env->readback || env->readback)
 	{

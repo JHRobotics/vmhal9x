@@ -1,12 +1,12 @@
 # VMHAL9x
 
-This is DirectDraw HAL implementation for [VMDisp9x](https://github.com/JHRobotics/vmdisp9x) driver.
+This is DirectDraw/DirectX HAL implementation for [VMDisp9x](https://github.com/JHRobotics/vmdisp9x) driver.
 
 ## Usage
 
-Binaries will be included with [VMDisp9x releases](https://github.com/JHRobotics/vmdisp9x/releases). When you install the driver, DirectDraw should be available automatically. You can check it with `dxdiag` utility.
+Binaries are included with [VMDisp9x releases](https://github.com/JHRobotics/vmdisp9x/releases). When you install the driver, DirectDraw should be available automatically. You can check it with `dxdiag` utility.
 
-![dxdiag.exe](docs/dxdiag.png)
+![dxdiag.exe](docs/dxdiag_ddi8.png)
 
 
 ## DirectDraw
@@ -14,7 +14,7 @@ Binaries will be included with [VMDisp9x releases](https://github.com/JHRobotics
 Microsoft DirectDraw (**DD**) is relatively simple API for HW accelerated drawing (2D only). Often used by 2D games (usually real-time strategies, adventures) without request of 3D rendering and requirement to DirectX. Or by earlier games 3D games with software renderer and with demand for fast frame-buffer rendering/double buffering.
 
 
-## Limitation
+### Limitation
 
 Good **DD** implementation requited only a few HW things:
 1) Linear frame buffer access
@@ -34,11 +34,11 @@ Tearing is situation where you see on screen part of old picture and part on new
 
 [^1]: Cathode-ray tube
 
-## HAL vs. HEL
+### HAL vs. HEL
 
 HAL = hardware abstraction layer. HEL = hardware emulation layer. Application using *DD* should check if functionality is available by HAL and if not pass it to HEL to emulate behaviour. Unlike DirectX, HEL is able to completely and relatively fast emulate all HAL behaviour. Why need to implement HAL? Because lots of applications denied to work when HAL is unavailable.
 
-## Code
+### Code
 
 DD HAL is relative normal looking DLL with one exception, you have to loaded it to shared space (from `0x80000000` to `0xBFFFFFFF`) and code and data section have to be marked as shared (`IMAGE_SCN_MEM_SHARED` flag). Microsoft linker has some legacy option to do it (`/SHARED`), but it cannot be done with GCC/LD (`-shared` option on GCC produces shared library aka DLL, equivalent `/DLL` for MSC). So I wrote utility called *makeshared* (source `makeshared.c`) that adds `IMAGE_SCN_MEM_SHARED` flag to all important PE[^2] sections and recalculates image hash. If you want to use this utility in another project, you can free to do it, but don't forget to set image base (`--image-base` on LD or `-Wl,--image-base` on GCC) above 2G space.
 
@@ -48,6 +48,10 @@ And one more limitation, library is loaded once after **DD* is first time loaded
 
 [^2]: PE = portable image = EXE or DLL file on Windows
 
+## DirectX
+
+Current implementation support DDI 8 (device driver interface). DDI is forward compatible with DirectX runtime, so this allows to run DirectX 9 programs and games. DDI 9 may be supported in future. Currently is also supported multi-texturing and HW T&L. **Currently unsupported are Bump mapping and shaders**
+
 ## Compilation
 
 Copy `config.mk-sample` to `config.mk` and follow instructions in this file. Please note, that on non win32 compatible systems, you've to set different `CC` (mingw32) and `HOST_CC` (your native C compiler) values. When it's done, type make
@@ -56,20 +60,14 @@ Copy `config.mk-sample` to `config.mk` and follow instructions in this file. Ple
 make
 ```
 
-Result is file named `vmhal9x.dll`.
+Results are files named `vmhal9x.dll`. and `vmdisp9x.dll`
 
 ## Installation
 
-Copy `vmhal9x.dll` to `C:\WINDOWS\SYSTEM`. When you have corresponding driver [vmdisp9x](https://github.com/JHRobotics/vmdisp9x) >= **v1.2024.0.32**), DirectDraw will be enabled automatically. 
-
-
-## DirectX
-
-DirectX support is planned, meantime you can use [wine9x](https://github.com/JHRobotics/wine9x/) to emulate this though OpenGL.
+Copy both `vmhal9x.dll` and `vmdisp9x.dll` to `C:\WINDOWS\SYSTEM`. Driver , DirectDraw will be enabled automatically. To enable Direct3D you need also `mesa3d.dll` and/or `vmwsgl32.dll` (from [Mesa9X project](https://github.com/jhRobotics/mesa9x/)). Mesa3D libs does software or hardware 3D rasterization.
 
 
 ## TODO
 
-- DirectX
-- Accelerate frequently used ROP3 BLITs (0xCC, 0xF0). 
-
+- DDI 9
+- compatibility testing
