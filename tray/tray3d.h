@@ -10,3 +10,4 @@
 #define ID_SHOW_ERROR 5
 #define ID_INSTALL 6
 #define ID_MONITOR 7
+#define ID_VESAMODE 8

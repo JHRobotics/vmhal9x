@@ -123,8 +123,8 @@ static BOOL FBHDA_handle()
 			LoadAddress(FBHDA_access_rect);
 			LoadAddress(FBHDA_swap);
 			LoadAddress(FBHDA_page_modify);
+			LoadAddress(FBHDA_mode_query);
 		}
-		
 		//TRACE("FBHDA_handle() = TRUE");
 
 		return TRUE;
@@ -222,6 +222,21 @@ BOOL FBHDA_page_modify(DWORD flat_address, DWORD size, const BYTE *new_data)
 	if(FBHDA_handle())
 	{
 		rc = fbhda_lib.pFBHDA_page_modify(flat_address, size, new_data);
+	}
+	FBHDA_call_unlock();
+	
+	return rc;
+}
+
+BOOL FBHDA_mode_query(DWORD index, FBHDA_mode_t *mode)
+{
+	TRACE_ENTRY
+	BOOL rc = FALSE;
+	
+	FBHDA_call_lock();
+	if(FBHDA_handle())
+	{
+		rc = fbhda_lib.pFBHDA_mode_query(index, mode);
 	}
 	FBHDA_call_unlock();
 	

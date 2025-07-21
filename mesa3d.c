@@ -1182,7 +1182,7 @@ static void ApplyBlend(mesa3d_ctx_t *ctx)
 	{
 		GL_CHECK(entry->proc.pglEnable(GL_BLEND));
 		
-		if(ctx->state.blend.edgeantialias)
+		if(ctx->state.blend.edgeantialias && ctx->entry->env.lowdetail == 0)
 		{
 			GL_CHECK(entry->proc.pglEnable(GL_LINE_SMOOTH));
 		}
@@ -1214,7 +1214,7 @@ static void ApplyBlend(mesa3d_ctx_t *ctx)
 #else
 	mesa3d_entry_t *entry = ctx->entry;
 
-	if(ctx->state.blend.edgeantialias)
+	if(ctx->state.blend.edgeantialias && ctx->entry->env.lowdetail == 0)
 	{
 		GL_CHECK(entry->proc.pglEnable(GL_LINE_SMOOTH));
 	}
@@ -1300,11 +1300,27 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 
 	GL_CHECK(entry->proc.pglLightModeli(GL_LIGHT_MODEL_COLOR_CONTROL, GL_SEPARATE_SPECULAR_COLOR));
 	//GL_CHECK(entry->proc.pglLightModeli(GL_LIGHT_MODEL_COLOR_CONTROL, GL_SINGLE_COLOR));
+	
+	if(ctx->entry->env.lowdetail >= 1)
+	{
+		GL_CHECK(entry->proc.pglHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_FASTEST));
+		GL_CHECK(entry->proc.pglHint(GL_LINE_SMOOTH_HINT, GL_FASTEST));
+		GL_CHECK(entry->proc.pglHint( GL_POLYGON_SMOOTH_HINT, GL_FASTEST));
+		GL_CHECK(entry->proc.pglDisable(GL_DITHER));
+	}
+
+	if(ctx->entry->env.lowdetail >= 3)
+	{
+		GL_CHECK(entry->proc.pglShadeModel(GL_FLAT));
+	}
 
 	// enable edge filtering on cubemap
 	if(entry->gl_major >= 3)
 	{
-		GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS));
+		if(ctx->entry->env.lowdetail == 1)
+		{
+			GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS));
+		}
 	}
 
 	// extends clamp over z-depth range
@@ -2573,17 +2589,24 @@ NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DHAL_DP2RENDERSTATE s
 			}
 			break;
 		RENDERSTATE(D3DRENDERSTATE_SHADEMODE) /* D3DSHADEMODE */
-			switch((D3DSHADEMODE)state->dwState)
+			if(ctx->entry->env.lowdetail >= 3)
 			{
-        case D3DSHADE_FLAT:
-					GL_CHECK(entry->proc.pglShadeModel(GL_FLAT));
-					break;
-				case D3DSHADE_GOURAUD:
-				/* Note from WINE: D3DSHADE_PHONG in practice is the same as D3DSHADE_GOURAUD in D3D */
-				case D3DSHADE_PHONG:
-				default:
-					GL_CHECK(entry->proc.pglShadeModel(GL_SMOOTH));
-					break;
+				GL_CHECK(entry->proc.pglShadeModel(GL_FLAT));
+			}
+			else
+			{
+				switch((D3DSHADEMODE)state->dwState)
+				{
+	        case D3DSHADE_FLAT:
+						GL_CHECK(entry->proc.pglShadeModel(GL_FLAT));
+						break;
+					case D3DSHADE_GOURAUD:
+					/* Note from WINE: D3DSHADE_PHONG in practice is the same as D3DSHADE_GOURAUD in D3D */
+					case D3DSHADE_PHONG:
+					default:
+						GL_CHECK(entry->proc.pglShadeModel(GL_SMOOTH));
+						break;
+				}
 			}
 			TOPIC("LIGHT", "SHADEMODE=%d", state->dwState);
 			break;
@@ -2741,7 +2764,7 @@ NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DHAL_DP2RENDERSTATE s
 			ctx->state.tmu[0].update = TRUE;
 			break;
 		RENDERSTATE(D3DRENDERSTATE_DITHERENABLE) /* TRUE to enable dithering */
-			if(state->dwState)
+			if(state->dwState && ctx->entry->env.lowdetail == 0)
 			{
 				GL_CHECK(entry->proc.pglEnable(GL_DITHER));
 			}
@@ -3586,6 +3609,30 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 					break;
 			}
 		}
+
+		if(ctx->entry->env.lowdetail >= 2)
+		{
+			if(filter_min == GL_LINEAR || filter_min == GL_NEAREST)
+			{
+				filter_min = GL_NEAREST;
+			}
+			else
+			{
+				filter_min = GL_NEAREST_MIPMAP_NEAREST;
+			}
+
+			if(filter_mag == GL_LINEAR || filter_mag == GL_NEAREST)
+			{
+				filter_mag = GL_NEAREST;
+			}
+			else
+			{
+				filter_mag = GL_NEAREST_MIPMAP_NEAREST;
+			}
+
+			use_anisotropic = FALSE;
+		}
+
 		GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MIN_FILTER, filter_min));
 		GL_CHECK(entry->proc.pglTexParameteri(target, GL_TEXTURE_MAG_FILTER, filter_mag));
 		

@@ -153,6 +153,39 @@ void FBHDA_clean()
 	DeviceIoControl(hda_vxd, OP_FBHDA_CLEAN, NULL, 0, NULL, 0, NULL, NULL);
 }
 
+BOOL FBHDA_mode_query(DWORD index, FBHDA_mode_t *mode)
+{
+	if(!FBHDA_valid()) return FALSE;
+
+	struct
+	{
+		DWORD result;
+		FBHDA_mode_t mode;
+	} output;
+	output.result = 0;
+	output.mode.cb = sizeof(FBHDA_mode_t);
+
+	if(DeviceIoControl(hda_vxd, OP_FBHDA_MODE_QUERY,
+		&index, sizeof(DWORD), &output, sizeof(output),
+		NULL, NULL))
+	{
+		if(output.result)
+		{
+			if(mode)
+			{
+				if(mode->cb == output.mode.cb)
+				{
+					memcpy(mode, &output.mode, sizeof(FBHDA_mode_t));
+				}
+			}
+			return TRUE;
+		}
+		return FALSE;
+	}
+
+	return FALSE;
+}
+
 BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpvReserved)
 {
 	switch( dwReason )

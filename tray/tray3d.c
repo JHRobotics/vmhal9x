@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <ddraw.h>
 
+#include "../3d_accel.h"
+
 #define VERSION_ONLY
 #include "../vmhal9x.h"
 #include "tray3d.h"
@@ -158,12 +160,12 @@ static void run_monitor()
 	char exename[MAX_PATH];
 
 	GetModuleFileNameA(NULL, exename, MAX_PATH);
-	
+
 	memset(&si, 0,  sizeof(si));
 	si.cb = sizeof(si);
 	memset(&pi, 0, sizeof(pi));
 
-	// Start the child process. 
+	// Start the child process.
 	if(!CreateProcess(exename, "tray3d.exe /mon", NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi))
 	{
 		return;
@@ -172,6 +174,66 @@ static void run_monitor()
 	CloseHandle(pi.hProcess);
 	CloseHandle(pi.hThread);
 }
+
+static void run_vesamode(BOOL bpp15, BOOL bpp24)
+{
+	STARTUPINFO si;
+	PROCESS_INFORMATION pi;
+	char exename[MAX_PATH];
+	char cmd[64];
+
+	strcpy(cmd, "vesamode.exe /insert");
+
+	if(bpp15)
+	{
+		strcat(cmd, " /15");
+	}
+
+	if(bpp24)
+	{
+		strcat(cmd, " /24");
+	}
+
+	GetModuleFileNameA(NULL, exename, MAX_PATH);
+	char *ptr = strrchr(exename, '\\');
+	if(ptr != NULL)
+	{
+		strcpy(ptr+1, "vesamode.exe");
+	}
+
+	memset(&si, 0,  sizeof(si));
+	si.cb = sizeof(si);
+	memset(&pi, 0, sizeof(pi));
+
+	// Start the child process.
+	if(!CreateProcess(exename, cmd, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi))
+	{
+		return;
+	}
+
+	CloseHandle(pi.hProcess);
+	CloseHandle(pi.hThread);
+}
+
+BOOL check_vesa_modes()
+{
+	BOOL rc = FALSE;
+	HMODULE lib = LoadLibraryA("vmdisp9x.dll");
+	if(lib)
+	{
+		FBHDA_setup_t fn_setup = (FBHDA_setup_t)GetProcAddress(lib, "FBHDA_setup");
+		if(fn_setup != NULL)
+		{
+			FBHDA_t *hda = fn_setup();
+			rc = ((hda->flags & FB_VESA_MODES) == 0) ? FALSE : TRUE;
+		}
+		FreeLibrary(lib);
+	}
+
+	return rc;
+}
+
+static BOOL is_vesa = FALSE;
 
 LRESULT CALLBACK winproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
@@ -242,6 +304,12 @@ LRESULT CALLBACK winproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 							InsertMenuA(menu, 0, MF_BYPOSITION | MF_STRING, ID_SHOW_ERROR, "Interface patch error!");
 						}
 
+						if(is_vesa)
+						{
+							InsertMenuA(menu, 0, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
+							InsertMenuA(menu, 0, MF_BYPOSITION | MF_STRING, ID_VESAMODE, "Update display modes");
+						}
+
 						InsertMenuA(menu, 0, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
 						InsertMenuA(menu, 0, MF_BYPOSITION | MF_STRING, ID_MONITOR, "Open GPU monitor");
 
@@ -286,6 +354,9 @@ LRESULT CALLBACK winproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					break;
 				case ID_MONITOR:
 					run_monitor();
+					break;
+				case ID_VESAMODE:
+					run_vesamode(FALSE, TRUE);
 					break;
 			}
 			break;
@@ -344,6 +415,8 @@ int main(int argc, char **argv)
 	hDDraw = LoadLibraryA("ddraw.dll");
 
 	patchSuccess = install_hook(FALSE);
+
+	is_vesa = check_vesa_modes();
 
 	WNDCLASS wc_win;
 	HWND win;

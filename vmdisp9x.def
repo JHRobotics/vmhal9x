@@ -6,5 +6,6 @@ EXPORTS
 	FBHDA_swap
 	FBHDA_clean
 	FBHDA_page_modify
+	FBHDA_mode_query
 	vmhal_setup_str
 	vmhal_setup_dw

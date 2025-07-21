@@ -101,6 +101,8 @@ VMDISP9X_OBJS = $(NOCRT_OBJS) nocrt/nocrt_dll.c.o vmdisp9x.c.o regex/re.c.o vmse
 
 WINETRAY_OBJ = $(NOCRT_OBJS) nocrt/nocrt_exe.c.o tray/tray3d.c.o tray/monitor.c.o tray/tray3d.res
 
+VESAMODE_OBJ = $(NOCRT_OBJS) nocrt/nocrt_exe.c.o vesa/vesamode.c.o vesa/regdelnode.c.o 3d_accel.c.o vesa/vesamode.res
+
 ifdef D3DHAL
   ifdef CODENUKED
     VMHAL9X_OBJS += mesa3d_nuked.c.o
@@ -121,7 +123,10 @@ vmdisp9x.dll: $(VMDISP9X_OBJS)
 tray3d.exe: $(WINETRAY_OBJ)
 	$(CC) $(LDFLAGS) $(WINETRAY_OBJ) $(LIBS) $(EXEFLAGS)
 
-vmhal9x.dll: $(VMHAL9X_OBJS) fixlink$(HOST_SUFFIX) vmdisp9x.dll tray3d.exe
+vesamode.exe: $(VESAMODE_OBJ)
+	$(CC) $(LDFLAGS) $(VESAMODE_OBJ) $(LIBS) $(EXEFLAGS)
+
+vmhal9x.dll: $(VMHAL9X_OBJS) fixlink$(HOST_SUFFIX) vmdisp9x.dll tray3d.exe vesamode.exe
 	$(CC) $(LDFLAGS) $(VMHAL9X_OBJS) vmhal9x.def $(LIBS) $(DLLFLAGS)
 	$(RUNPATH)fixlink$(HOST_SUFFIX) -shared $@
 
@@ -139,4 +144,6 @@ clean:
 	-$(RM) libvmdisp9x.a
 	-$(RM) libddraw.a
 	-$(RM) $(WINETRAY_OBJ)
+	-$(RM) $(VESAMODE_OBJ)
 	-$(RM) tray3d.exe
+	-$(RM) vesamode.exe

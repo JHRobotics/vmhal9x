@@ -61,6 +61,11 @@ void Mesa3DCalibrate(BOOL loadonly)
 		env->sysmem = TRUE;
 	}
 
+	if((hda->flags & FB_VESA_MODES) != 0)
+	{
+		env->sysmem = TRUE;
+	}
+
 	do
 	{
 		if(!full_entry)

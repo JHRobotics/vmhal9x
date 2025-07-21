@@ -208,6 +208,7 @@ typedef struct _VMHAL_enviroment
 	BOOL filter_bug;
 	BOOL s3tc_bug;
 	BOOL sysmem;
+	DWORD lowdetail;
 } VMHAL_enviroment_t;
 
 #define DX7_SURFACE_NEST_TYPES (DDSCAPS_TEXTURE | DDSCAPS_3DDEVICE | DDSCAPS_ZBUFFER)

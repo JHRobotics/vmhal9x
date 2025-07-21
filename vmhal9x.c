@@ -88,7 +88,8 @@ static VMHAL_enviroment_t VMHALenv = {
 	FALSE, // use palette
 	FALSE,  // filter bug
 	FALSE, // s3tc bug
-	FALSE, // texture in sysmem
+	FALSE, // textures in sysmem
+	0,     // low detail
 };
 
 static DWORD CalcPitch(DWORD w, DWORD bpp)
@@ -320,6 +321,11 @@ static void ReadEnv(VMHAL_enviroment_t *dst)
 	if(vmhal_setup_str("hal", "sysmem", FALSE) != NULL)
 	{
 		dst->sysmem = vmhal_setup_dw("hal", "sysmem") ? TRUE : FALSE;
+	}
+
+	if(vmhal_setup_str("hal", "lowdetail", FALSE) != NULL)
+	{
+		dst->lowdetail = vmhal_setup_dw("hal", "lowdetail");
 	}
 }
 
