@@ -269,23 +269,11 @@ VMHAL_enviroment_t *GlobalVMHALenv()
 	return &VMHALenv;
 }
 
-static void ReadEnv(VMHAL_enviroment_t *dst)
+void UpdateVMHALenv(VMHAL_enviroment_t *dst)
 {
-	memcpy(dst, &VMHALenv, sizeof(VMHAL_enviroment_t));
-
 	if(vmhal_setup_str("hal", "forceos", FALSE) != NULL)
 	{
 		dst->forceos = vmhal_setup_dw("hal", "forceos") ? TRUE : FALSE; 
-	}
-
-	if(vmhal_setup_str("hal", "ddi", FALSE) != NULL)
-	{
-		dst->ddi = vmhal_setup_dw("hal", "ddi"); 
-	}
-	
-	if(vmhal_setup_str("hal", "hwtl", FALSE) != NULL)
-	{
-		dst->hwtl_ddi = vmhal_setup_dw("hal", "hwtl") ;
 	}
 	
 	if(vmhal_setup_str("hal", "readback", FALSE) != NULL)
@@ -296,6 +284,26 @@ static void ReadEnv(VMHAL_enviroment_t *dst)
 	if(vmhal_setup_str("hal", "touchdepth", FALSE) != NULL)
 	{
 		dst->touchdepth = vmhal_setup_dw("hal", "touchdepth") ? TRUE : FALSE;
+	}
+	
+	if(vmhal_setup_str("hal", "lowdetail", FALSE) != NULL)
+	{
+		dst->lowdetail = vmhal_setup_dw("hal", "lowdetail");
+	}	
+}
+
+static void ReadEnv(VMHAL_enviroment_t *dst)
+{
+	memcpy(dst, &VMHALenv, sizeof(VMHAL_enviroment_t));
+
+	if(vmhal_setup_str("hal", "ddi", FALSE) != NULL)
+	{
+		dst->ddi = vmhal_setup_dw("hal", "ddi"); 
+	}
+	
+	if(vmhal_setup_str("hal", "hwtl", FALSE) != NULL)
+	{
+		dst->hwtl_ddi = vmhal_setup_dw("hal", "hwtl") ;
 	}
 
 	if(vmhal_setup_str("hal", "vertexblend", FALSE) != NULL)
@@ -322,11 +330,8 @@ static void ReadEnv(VMHAL_enviroment_t *dst)
 	{
 		dst->sysmem = vmhal_setup_dw("hal", "sysmem") ? TRUE : FALSE;
 	}
-
-	if(vmhal_setup_str("hal", "lowdetail", FALSE) != NULL)
-	{
-		dst->lowdetail = vmhal_setup_dw("hal", "lowdetail");
-	}
+	
+	UpdateVMHALenv(dst);
 }
 
 void VMHALenv_RuntimeVer(int ver)
@@ -341,6 +346,8 @@ void VMHALenv_RuntimeVer(int ver)
 //VMDAHAL_t __stdcall *DriverInit(LPVOID ptr)
 DWORD __stdcall DriverInit(LPVOID ptr)
 {
+	TOPIC("EXE", "DriverInit(0x%X)", ptr);
+	
 	if(ptr == NULL)
 	{
 		return 1;
@@ -493,6 +500,8 @@ BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpvReserved)
 {
 	static long lProcessCount = 0;
 	long tmp;
+
+	TOPIC("EXE", "DllMain(..., %d, ...)", dwReason);
 
 	switch( dwReason )
 	{

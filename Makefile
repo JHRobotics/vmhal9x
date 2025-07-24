@@ -25,10 +25,14 @@ ifeq ($(GIT_IS),true)
   VERSION_BUILD := $(shell $(GIT) rev-list --count main)
 endif
 
-vmhal9x.dll:
+ifndef OUTNAME
+  OUTNAME=vmhal9x
+endif
 
-all: vmhal9x.dll
-.PHONY: all clean
+$(OUTNAME).dll:
+
+all: $(OUTNAME)
+.PHONY: all clean cleanjunk
 
 OBJ := .o
 LIBSUFFIX := .a
@@ -82,7 +86,7 @@ endif
 %.res: %.rc $(DEPS)
 	$(WINDRES) -DWINDRES -DVMHAL9X_BUILD=$(VERSION_BUILD) --input $< --output $@ --output-format=coff
 
-BASE_vmhal9x.dll := 0xB00B0000
+BASE_$(OUTNAME).dll := 0xB00B0000
 BASE_vmdisp9x.dll := 0x32500000
 
 d3d.c.o: d3d_caps.h
@@ -101,7 +105,7 @@ VMDISP9X_OBJS = $(NOCRT_OBJS) nocrt/nocrt_dll.c.o vmdisp9x.c.o regex/re.c.o vmse
 
 WINETRAY_OBJ = $(NOCRT_OBJS) nocrt/nocrt_exe.c.o tray/tray3d.c.o tray/monitor.c.o tray/tray3d.res
 
-VESAMODE_OBJ = $(NOCRT_OBJS) nocrt/nocrt_exe.c.o vesa/vesamode.c.o vesa/regdelnode.c.o 3d_accel.c.o vesa/vesamode.res
+VESAMODE_OBJ = $(NOCRT_OBJS) nocrt/nocrt_exe.c.o vesa/vesamode.c.o vesa/regdelnode.c.o 3d_accel.c.o debug.c.o vesa/vesamode.res
 
 ifdef D3DHAL
   ifdef CODENUKED
@@ -126,7 +130,7 @@ tray3d.exe: $(WINETRAY_OBJ)
 vesamode.exe: $(VESAMODE_OBJ)
 	$(CC) $(LDFLAGS) $(VESAMODE_OBJ) $(LIBS) $(EXEFLAGS)
 
-vmhal9x.dll: $(VMHAL9X_OBJS) fixlink$(HOST_SUFFIX) vmdisp9x.dll tray3d.exe vesamode.exe
+$(OUTNAME).dll: $(VMHAL9X_OBJS) fixlink$(HOST_SUFFIX) vmdisp9x.dll tray3d.exe vesamode.exe
 	$(CC) $(LDFLAGS) $(VMHAL9X_OBJS) vmhal9x.def $(LIBS) $(DLLFLAGS)
 	$(RUNPATH)fixlink$(HOST_SUFFIX) -shared $@
 
@@ -134,16 +138,18 @@ vmhal9x.dll: $(VMHAL9X_OBJS) fixlink$(HOST_SUFFIX) vmdisp9x.dll tray3d.exe vesam
 libddraw.a: ddraw.def
 	$(DLLTOOL) -C -k -d $< -l $@
 
-clean:
+cleanjunk:
 	-$(RM) fixlink$(HOST_SUFFIX)
 	-$(RM) $(VMHAL9X_OBJS)
-	-$(RM) vmhal9x.dll
 	-$(RM) libvmhal9x.a
 	-$(RM) $(VMDISP9X_OBJS)
-	-$(RM) vmdisp9x.dll
 	-$(RM) libvmdisp9x.a
 	-$(RM) libddraw.a
 	-$(RM) $(WINETRAY_OBJ)
 	-$(RM) $(VESAMODE_OBJ)
+
+clean: cleanjunk
+	-$(RM) vmdisp9x.dll
+	-$(RM) $(OUTNAME).dll
 	-$(RM) tray3d.exe
 	-$(RM) vesamode.exe

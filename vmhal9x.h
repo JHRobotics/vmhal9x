@@ -216,6 +216,7 @@ typedef struct _VMHAL_enviroment
 BOOL GetVMHALenv(VMHAL_enviroment_t *dst);
 void VMHALenv_RuntimeVer(int ver);
 VMHAL_enviroment_t *GlobalVMHALenv();
+void UpdateVMHALenv(VMHAL_enviroment_t *dst);
 
 #endif /* VERSION_ONLY */
 

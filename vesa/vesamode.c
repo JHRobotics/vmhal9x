@@ -269,7 +269,7 @@ void insert_modes(BOOL allow_15bpp, BOOL allow_24bpp)
 			RegCreateValue(HKEY_LOCAL_MACHINE, pathbuf, "vdd", "*vdd");
 		}
 		
-		sprintf(msgbuf, "Inserted %d VESA modes + 2 SVGA modes. Please reboot the computer to take effect", insert_modes);
+		sprintf(msgbuf, "Inserted %d VESA modes + 2 SVGA modes. You should see the new modes in the settings, if not, please restart the computer.", insert_modes);
 		
 		MessageBoxA(NULL, msgbuf, "Resolution update", MB_OK);
 	}

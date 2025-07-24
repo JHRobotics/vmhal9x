@@ -134,6 +134,7 @@ static mesa3d_entry_t *Mesa3DCreate(DWORD pid, mesa3d_entry_t *mesa)
 		#include "mesa3d_api.h"
 
 		GetVMHALenv(&mesa->env);
+		UpdateVMHALenv(&mesa->env);
 		//memcpy(&mesa->env, &VMHALenv, sizeof(VMHAL_enviroment_t));
 
 	} while(0);
@@ -144,6 +145,14 @@ static mesa3d_entry_t *Mesa3DCreate(DWORD pid, mesa3d_entry_t *mesa)
 
 		mesa = NULL;
 	}
+
+#ifdef TRACE_ON
+	{
+		char exename[MAX_PATH];
+		GetModuleFileNameA(NULL, exename, MAX_PATH);
+		TOPIC("EXE", "Exe loader: %s", exename);
+	}
+#endif
 
 	return mesa;
 }

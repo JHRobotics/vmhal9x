@@ -34,14 +34,31 @@ CODENUKED=1
 
 # extra compiler option:
 # this should be used for targeting Windows 95
-TUNE=-march=pentium2 -mtune=core2
+TUNE += -march=pentium2 -mtune=core2
 # this is for Windows 98/Me only and Core2 (SSSE3) CPU (minimal HW for virtualization)
-#TUNE=-march=core2
+#TUNE += -march=core2
 # this is the highest possible optimalization target (SSE4 and without AVX) for Windows 98/Me
-#TUNE=-march=westmere
+#TUNE += -march=westmere
 
 # faster code generation
 TUNE += -pipe
 
 # Remove all debug symbols, so reduce file size by a lot, turn off only if you wish debug
 TUNE_LD=,--strip-all
+
+# Example to build multi target HAL:
+#ifdef i486
+#  TUNE += -march=i486 -ffast-math -DROP_EXPAND_LEVEL=0
+#  OUTNAME = vmhal486
+#else
+#  D3DHAL = 1
+#  TUNE += -march=pentium2 -mtune=core2
+#endif
+#
+# Now build with this sequence of commands
+#   make
+#   make cleanjunk
+#   make i486=1
+# This will produced vmhal9x.dll for modern cpu and vmhal486.dll
+# for compurers without MMX and FXSR support (usually emulator with bad config)
+# Don't forget also ucomment I486=1 in vmdisp9 makefile
