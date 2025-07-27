@@ -43,6 +43,10 @@
 #include "nocrt.h"
 #endif
 
+#ifndef _BS
+#define _BS(_bit) (1 << (_bit))
+#endif /* _BS */
+
 NUKED_LOCAL void MesaRecState(mesa3d_ctx_t *ctx, DWORD state, DWORD value)
 {
 	if(state <= MESA_REC_MAX_STATE && ctx->state.record != NULL)
@@ -215,6 +219,7 @@ NUKED_LOCAL void state_apply_mask(mesa_rec_state_t *rec, D3DSTATEBLOCKTYPE sbTyp
 		SET_BIT(extraset, MESA_REC_EXTRA_VIEWPORT);
 		SET_BIT(extraset, MESA_REC_EXTRA_MATERIAL);
 		SET_BIT(extraset, MESA_REC_EXTRA_VERTEXSHADER);
+		SET_BIT(extraset, MESA_REC_EXTRA_LIGHTS);
 	}
 	else if(sbType == D3DSBT_PIXELSTATE)
 	{
@@ -346,6 +351,7 @@ NUKED_LOCAL void state_apply_mask(mesa_rec_state_t *rec, D3DSTATEBLOCKTYPE sbTyp
 		SET_BIT(tmu_mask, D3DTSS_TEXTURETRANSFORMFLAGS);
 
 		SET_BIT(extraset, MESA_REC_EXTRA_VERTEXSHADER);
+		SET_BIT(extraset, MESA_REC_EXTRA_LIGHTS);
 	}
 	
 	DWORD i;
@@ -376,22 +382,41 @@ NUKED_LOCAL void MesaApplyState(mesa3d_ctx_t *ctx, mesa_rec_state_t *rec)
 		}
 	}
 
-	if(rec->extraset[0] & (1 << MESA_REC_EXTRA_VIEWPORT))
+	if(rec->extraset[0] & _BS(MESA_REC_EXTRA_VIEWPORT))
 	{
 		TRACE("STATESET", "restoring dw=%d %d %d %d", rec->viewport.dwY, rec->viewport.dwWidth, rec->viewport.dwHeight);
 		MesaApplyViewport(ctx, rec->viewport.dwX, rec->viewport.dwY, rec->viewport.dwWidth, rec->viewport.dwHeight, TRUE);
 	}
 
-	if(rec->extraset[0] & (1 << MESA_REC_EXTRA_MATERIAL))
+	if(rec->extraset[0] & _BS(MESA_REC_EXTRA_MATERIAL))
 	{
 		MesaApplyMaterialSet(ctx, &rec->material);
 	}
 
-	if(rec->extraset[0] & (1 << MESA_REC_EXTRA_VERTEXSHADER))
+	if(rec->extraset[0] & _BS(MESA_REC_EXTRA_VERTEXSHADER))
 	{
 		ctx->state.fvf_shader = rec->vertexshader;
 		ctx->state.current.vertexshader = rec->vertexshader;
-		ctx->state.current.extraset[0] |= 1 << MESA_REC_EXTRA_VERTEXSHADER;
+		ctx->state.current.extraset[0] |= _BS(MESA_REC_EXTRA_VERTEXSHADER);
+	}
+	
+	if(rec->extraset[0] & _BS(MESA_REC_EXTRA_LIGHTS))
+	{
+		for(i = 0; i < MESA_REC_MAX_LIGHTS; i++)
+		{
+			DWORD id = rec->lights[i].id;
+			if(id)
+			{
+				MesaLightCreate(ctx, id);
+				if(ctx->light.lights[id])
+				{
+					memcpy(ctx->light.lights[id], &rec->lights[i], sizeof(mesa3d_light_t));
+					MesaLightApply(ctx, id);
+				}
+			}
+		}
+		ctx->state.current.extraset[0] |= _BS(MESA_REC_EXTRA_LIGHTS);
+		memcpy(&ctx->state.current.lights[0], &rec->lights[0], sizeof(mesa3d_light_t)*MESA_REC_MAX_LIGHTS);
 	}
 
 	for(i = 0; i <= MESA_REC_MAX_STATE; i++)
@@ -423,6 +448,7 @@ NUKED_LOCAL void MesaApplyState(mesa3d_ctx_t *ctx, mesa_rec_state_t *rec)
 		}
 	}
 	
+	MesaApplyLighting(ctx);
 	MesaStencilApply(ctx);
 	MesaDrawRefreshState(ctx);
 }

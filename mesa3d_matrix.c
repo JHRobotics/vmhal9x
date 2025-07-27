@@ -520,6 +520,7 @@ NUKED_FAST void MesaTMUApplyMatrix(mesa3d_ctx_t *ctx, int tmu)
 		memcpy(m, ts->matrix, sizeof(m));
 		if(ts->projected)
 		{
+#if 0
 			switch(ts->coordscalc_used)
 			{
 				case 2:
@@ -537,10 +538,12 @@ NUKED_FAST void MesaTMUApplyMatrix(mesa3d_ctx_t *ctx, int tmu)
 					Mgl(m, 1, 3) = Mgl(m, 2, 3) = Mgl(m, 3, 3) = Mgl(m, 4, 3) = 0.0f;
 					break;
 			}
+#endif
 			GL_CHECK(entry->proc.pglLoadMatrixf(&m[0]));
 		}
 		else
 		{
+#if 0
 			switch(ts->coordscalc_used)
 			{
 				case 2:
@@ -558,7 +561,7 @@ NUKED_FAST void MesaTMUApplyMatrix(mesa3d_ctx_t *ctx, int tmu)
 					Mgl(m, 4, 4) = 1.0f;
 					break;
 			}
-
+#endif
 			GL_CHECK(entry->proc.pglLoadMatrixf(&m[0]));
 		}
 

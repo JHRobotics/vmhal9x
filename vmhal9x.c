@@ -79,7 +79,7 @@ static VMHAL_enviroment_t VMHALenv = {
 	FALSE, // touchdepth
 	16384, // tex w  (can be query by GL_MAX_TEXTURE_SIZE)
 	16384, // tex h
-	8, // tex units
+	4, // tex units
 	8, // lights (GL min. is 8)
 	6, // clip planes (GL min. is 6), GL_MAX_CLIP_PLANES
 	TRUE, // use float32 in Z buffer (eg 64-bit F32_S8_X24 depth plane), on FALSE 32-bit S24_S8 depth plane
@@ -329,6 +329,15 @@ static void ReadEnv(VMHAL_enviroment_t *dst)
 	if(vmhal_setup_str("hal", "sysmem", FALSE) != NULL)
 	{
 		dst->sysmem = vmhal_setup_dw("hal", "sysmem") ? TRUE : FALSE;
+	}
+	
+	if(vmhal_setup_str("hal", "reduce_tex_units", FALSE) != NULL)
+	{
+		DWORD t = vmhal_setup_dw("hal", "reduce_tex_units");
+		if(t == 0)
+		{
+			dst->texture_num_units = 8;
+		}
 	}
 	
 	UpdateVMHALenv(dst);

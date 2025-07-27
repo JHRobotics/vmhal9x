@@ -112,6 +112,8 @@ NUKED_LOCAL void MesaBufferUploadColor(mesa3d_ctx_t *ctx, const void *src)
 		GL_CHECK(entry->proc.pglTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, ctx->state.sw, ctx->state.sh, format, type, src));
 
 		GL_CHECK(entry->proc.pglPopMatrix());
+		
+		GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_2D));
 	}
 	else
 	{
@@ -161,6 +163,8 @@ NUKED_LOCAL void MesaBufferUploadColor(mesa3d_ctx_t *ctx, const void *src)
 		GL_CHECK(entry->proc.pglBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo->plane_fb));
 		
 		GL_CHECK(entry->proc.pglPopMatrix());
+		
+		GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_2D));
 	}
 	
 	if(ctx->fbo_tmu < ctx->tmu_count)

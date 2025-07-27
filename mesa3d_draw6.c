@@ -44,7 +44,7 @@
 
 //#define STRICT_DATA 1
 
-static void LightApply(mesa3d_ctx_t *ctx, DWORD id)
+NUKED_LOCAL void MesaLightApply(mesa3d_ctx_t *ctx, DWORD id)
 {
 	TRACE_ENTRY
 
@@ -111,7 +111,7 @@ static void LightApply(mesa3d_ctx_t *ctx, DWORD id)
 	} // switch(light->type)
 }
 
-static void LightData(mesa3d_ctx_t *ctx, DWORD id, D3DLIGHT7 *dxlight)
+static void MesaLightData(mesa3d_ctx_t *ctx, DWORD id, D3DLIGHT7 *dxlight)
 {
 	TRACE_ENTRY
 
@@ -124,6 +124,7 @@ static void LightData(mesa3d_ctx_t *ctx, DWORD id, D3DLIGHT7 *dxlight)
 
 	TOPIC("LIGHT", "LightData light=%X, dxlight=%X", light, dxlight);
 
+	light->id = id;
 	light->type = dxlight->dltType;
 
 	MESA_D3DCOLORVALUE_TO_FV(dxlight->dcvDiffuse,  light->diffuse);
@@ -194,10 +195,10 @@ static void LightData(mesa3d_ctx_t *ctx, DWORD id, D3DLIGHT7 *dxlight)
 		}
 	}
 
-	LightApply(ctx, id);
+	MesaLightApply(ctx, id);
 }
 
-static void LightCreate(mesa3d_ctx_t *ctx, DWORD id)
+NUKED_LOCAL void MesaLightCreate(mesa3d_ctx_t *ctx, DWORD id)
 {
 	TRACE_ENTRY
 
@@ -239,7 +240,7 @@ NUKED_LOCAL void MesaLightDestroyAll(mesa3d_ctx_t *ctx)
 	}
 }
 
-static void LightActive(mesa3d_ctx_t *ctx, DWORD id, BOOL activate)
+static void MesaLightActive(mesa3d_ctx_t *ctx, DWORD id, BOOL activate)
 {
 	TRACE_ENTRY
 
@@ -286,12 +287,30 @@ static void LightActive(mesa3d_ctx_t *ctx, DWORD id, BOOL activate)
 				ctx->entry->proc.pglEnable(GL_LIGHT0 + gl_id);
 
 				MesaSpaceModelviewSet(ctx);
-				LightApply(ctx, id);
+				MesaLightApply(ctx, id);
 				MesaSpaceModelviewReset(ctx);
 
 			}
 		}
 	}
+}
+
+static void MesaLightStateSave(mesa3d_ctx_t *ctx, DWORD id)
+{
+	if(id < MESA_REC_MAX_LIGHTS)
+	{
+		memcpy(&ctx->state.current.lights[id], ctx->light.lights[id], sizeof(mesa3d_light_t));
+	}
+	ctx->state.current.extraset[0] |= 1 << MESA_REC_EXTRA_LIGHTS;
+}
+
+static void MesaLightStateSwitch(mesa3d_ctx_t *ctx, DWORD id, BOOL active)
+{
+	if(id < MESA_REC_MAX_LIGHTS)
+	{
+		ctx->state.current.lights[id].active = active;
+	}
+	ctx->state.current.extraset[0] |= 1 << MESA_REC_EXTRA_LIGHTS;
 }
 
 static void PlaneApply(mesa3d_ctx_t *ctx, DWORD id)
@@ -318,7 +337,7 @@ NUKED_LOCAL void MesaTLRecalcModelview(mesa3d_ctx_t *ctx)
 		{
 			if(ctx->light.lights[i]->active)
 			{
-				LightApply(ctx, i);
+				MesaLightApply(ctx, i);
 			}
 		}
 	}
@@ -1154,10 +1173,12 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 						switch(lightset->dwDataType)
 						{
 							case D3DHAL_SETLIGHT_ENABLE:
-								LightActive(ctx, lightset->dwIndex, TRUE);
+								MesaLightActive(ctx, lightset->dwIndex, TRUE);
+								MesaLightStateSwitch(ctx, lightset->dwIndex, TRUE);
 								break;
 							case D3DHAL_SETLIGHT_DISABLE:
-								LightActive(ctx, lightset->dwIndex, FALSE);
+								MesaLightActive(ctx, lightset->dwIndex, FALSE);
+								MesaLightStateSwitch(ctx, lightset->dwIndex, FALSE);
 								break;
 							case D3DHAL_SETLIGHT_DATA:
 							{
@@ -1168,7 +1189,8 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 									light_data->dltType, lightset->dwIndex, light_data);
 
 								MesaSpaceModelviewSet(ctx);
-								LightData(ctx, lightset->dwIndex, light_data);
+								MesaLightData(ctx, lightset->dwIndex, light_data);
+								MesaLightStateSave(ctx, lightset->dwIndex);
 								MesaSpaceModelviewReset(ctx);
 							}
 						} // switch(light->dwDataType)
@@ -1182,7 +1204,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 						D3DHAL_DP2CREATELIGHT *lightcreate = (D3DHAL_DP2CREATELIGHT*)prim;
 						prim += sizeof(D3DHAL_DP2CREATELIGHT);
 
-						LightCreate(ctx, lightcreate->dwIndex);
+						MesaLightCreate(ctx, lightcreate->dwIndex);
 					}
 					NEXT_INST(0);
 					break;

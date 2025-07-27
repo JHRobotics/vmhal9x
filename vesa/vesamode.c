@@ -190,7 +190,7 @@ void insert_modes(BOOL allow_15bpp, BOOL allow_24bpp)
 		char pathbuf[MAX_PATH];
 		char pathbuf2[MAX_PATH];
 
-		sprintf(msgbuf, "Video card report %d usable modes, do you want insert them to registry?", count_modes);
+		sprintf(msgbuf, "Video card reports %d usable modes, do you want insert them to registry?", count_modes);
 		
 		if(MessageBoxA(NULL, msgbuf, "Resolution update", MB_YESNO | MB_ICONQUESTION) != IDYES)
 		{

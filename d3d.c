@@ -896,6 +896,21 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 	}
 }
 
+DDENTRY_FPUSAVE(GetAvailDriverMemory32, LPDDHAL_GETAVAILDRIVERMEMORYDATA, pgadmd)
+{
+	DWORD used;
+	DWORD free;
+	FBHDA_t *hda = FBHDA_setup();
+	VidMemInfo(&used, &free);
+
+	pgadmd->dwTotal = hda->vram_bar_size;
+	pgadmd->dwFree = pgadmd->dwTotal - used;
+
+	pgadmd->ddRVal = DD_OK;
+	return DDHAL_DRIVER_HANDLED;
+}
+
+
 #define COPY_INFO(_in, _s, _t) do{ \
 	DWORD size = min(_in->dwExpectedSize, sizeof(_t)); \
 	_in->dwActualSize = sizeof(_t); \
@@ -987,8 +1002,9 @@ DDENTRY_FPUSAVE(GetDriverInfo32, LPDDHAL_GETDRIVERINFODATA, lpInput)
 		DDHAL_DDMISCELLANEOUSCALLBACKS misccb;
 		memset(&misccb, 0, sizeof(DDHAL_DDMISCELLANEOUSCALLBACKS));
 		misccb.dwSize = sizeof(DDHAL_DDMISCELLANEOUSCALLBACKS);
-		misccb.dwFlags = DDHAL_MISCCB32_GETSYSMEMBLTSTATUS;
+		misccb.dwFlags = DDHAL_MISCCB32_GETSYSMEMBLTSTATUS | DDHAL_MISCCB32_GETAVAILDRIVERMEMORY;
 		misccb.GetSysmemBltStatus = GetBltStatus32;
+		misccb.GetAvailDriverMemory = GetAvailDriverMemory32;
 		
 		VMHALenv_RuntimeVer(5);
 
@@ -2019,7 +2035,7 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, LP
 		DDSCAPS_VIDEOMEMORY |
 	0;
 	lpHALFlags->zcaps = DDBD_16 | DDBD_24 | DDBD_32;
-	lpHALFlags->caps2 = DDCAPS2_WIDESURFACES/* | DDCAPS2_CANMANAGETEXTURE*/;
+	lpHALFlags->caps2 = DDCAPS2_WIDESURFACES | D3DCAPS2_FULLSCREENGAMMA /* | DDCAPS2_CANMANAGETEXTURE*/;
 	/*
 		cap DDCAPS2_NO2DDURING3DSCENE should be theoretically safer to set,
 		BUT some games forbid to start with this flag set.

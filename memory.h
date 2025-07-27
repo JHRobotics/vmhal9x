@@ -43,6 +43,8 @@ void hal_vfree(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf);
 void hal_vblock_add(LPDDRAWI_DIRECTDRAW_GBL lpDD, LPDDRAWI_DDRAWSURFACE_LCL surf);
 void hal_vblock_reset();
 
+BOOL __stdcall VidMemInfo(DWORD *pused, DWORD *pfree);
+
 #ifndef DEBUG_MEMORY
 void *hal_alloc(int heap, size_t size, DWORD width);
 void *hal_calloc(int heap, size_t size, DWORD width);

@@ -93,6 +93,7 @@ typedef struct mesa3d_texture
 
 typedef struct mesa3d_light
 {
+	DWORD id;
 	BOOL active;
 	DWORD active_index;
 	D3DLIGHTTYPE type;
@@ -224,6 +225,9 @@ typedef struct mesa_rec_tmu
 #define MESA_REC_EXTRA_VIEWPORT 0
 #define MESA_REC_EXTRA_MATERIAL 1
 #define MESA_REC_EXTRA_VERTEXSHADER 2
+#define MESA_REC_EXTRA_LIGHTS 3
+
+#define MESA_REC_MAX_LIGHTS 32
 
 typedef struct mesa_rec_state
 {
@@ -238,7 +242,8 @@ typedef struct mesa_rec_state
 	D3DHAL_DP2VIEWPORTINFO viewport;
 	D3DHAL_DP2SETMATERIAL material;
 	DWORD vertexshader;
-	// TODO: missing: lights, clips
+	mesa3d_light_t lights[MESA_REC_MAX_LIGHTS];
+	// TODO: missing: clips
 } mesa_rec_state_t;
 
 #define SURFACE_TABLES_PER_ENTRY 8 /* in theory there should by only 1 */
@@ -592,6 +597,8 @@ NUKED_LOCAL mesa3d_ctx_t *MesaCreateCtx(mesa3d_entry_t *entry, DWORD dds_sid, DW
 NUKED_LOCAL void MesaDestroyCtx(mesa3d_ctx_t *ctx);
 NUKED_LOCAL void MesaDestroyAllCtx(mesa3d_entry_t *entry);
 NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx);
+NUKED_LOCAL void MesaLightCreate(mesa3d_ctx_t *ctx, DWORD id);
+NUKED_LOCAL void MesaLightApply(mesa3d_ctx_t *ctx, DWORD id);
 NUKED_LOCAL void MesaLightDestroyAll(mesa3d_ctx_t *ctx);
 
 NUKED_LOCAL void MesaBlockLock(mesa3d_ctx_t *ctx);
@@ -786,6 +793,8 @@ NUKED_LOCAL void mesa_dump(mesa3d_ctx_t *ctx);
 NUKED_LOCAL void MesaMemInfo(mesa3d_entry_t *entry);
 
 NUKED_LOCAL void MesaVSDump(mesa_dx_shader_t *vs);
+
+const char *dbg_glenum_name(GLenum e);
 #endif
 
 #define MESA_DEF_TEXCOORDS 0.0f, 0.0f, 0.0f, 1.0f

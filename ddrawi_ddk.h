@@ -70,6 +70,18 @@ typedef struct _DDHAL_GETBLTSTATUSDATA
 #define DDHAL_MISCCB32_GETHEAPALIGNMENT        0x00000004l
 #define DDHAL_MISCCB32_GETSYSMEMBLTSTATUS      0x00000008l
 
+typedef struct _DDHAL_GETAVAILDRIVERMEMORYDATA
+{
+    LPDDRAWI_DIRECTDRAW_GBL lpDD;        // driver struct
+    DDSCAPS                 DDSCaps;     // caps for type of surface memory
+    DWORD                   dwTotal;     // total memory for this kind of surface
+    DWORD                   dwFree;      // free memory for this kind of surface
+    HRESULT                 ddRVal;      // return value
+    LPDDHAL_GETAVAILDRIVERMEMORY   GetAvailDriverMemory; // PRIVATE: ptr to callback
+    DDSCAPSEX               ddsCapsEx;       // Added in V6. Driver should check DDVERSION info
+                                                 // to see if this field is present.
+} DDHAL_GETAVAILDRIVERMEMORYDATA;
+
 /*
  * More driver surface capabilities (in addition to those described in DDCORECAPS).
  * This struct contains the caps bits added to the DDCAPS.ddsCaps structure in DX6.

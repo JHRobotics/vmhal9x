@@ -1262,19 +1262,24 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 	int i = 0;
+	GLint real_tus;
 	
 	GL_CHECK(entry->proc.pglClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT));
 	
+	entry->proc.pglGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &real_tus);
+	
 	ctx->tmu_count = entry->env.texture_num_units > MESA_TMU_MAX ? MESA_TMU_MAX : entry->env.texture_num_units;
-	if(entry->env.texture_num_units > MESA_TMU_MAX)
+	
+	if(real_tus > ctx->tmu_count)
 	{
-		ctx->fbo_tmu = MESA_TMU_MAX;
+		ctx->fbo_tmu = ctx->tmu_count;
 	}
 	else
 	{
-		ctx->fbo_tmu = 0; /* VMHALenv.texture_num_units-1 */
+		ctx->fbo_tmu = 0;
 	}
-
+	WARN("ctx->fbo_tmu = %d, ctx->fbo_tmu = %d, real_tus = %d", ctx->tmu_count, ctx->fbo_tmu, real_tus);
+	
 	ctx->state.tmu[0].active = 1;
 
 	GL_CHECK(entry->proc.pglPixelStorei(GL_UNPACK_ALIGNMENT, FBHDA_ROW_ALIGN));
@@ -1326,7 +1331,7 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 	// enable edge filtering on cubemap
 	if(entry->gl_major >= 3)
 	{
-		if(ctx->entry->env.lowdetail == 1)
+		if(ctx->entry->env.lowdetail <= 1)
 		{
 			GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS));
 		}
@@ -1898,6 +1903,10 @@ static void MesaSetFog(mesa3d_ctx_t *ctx)
 			GL_CHECK(entry->proc.pglFogi(GL_FOG_COORD_SRC, GL_FRAGMENT_DEPTH));
 			return;
 		}
+		else
+		{
+			GL_CHECK(entry->proc.pglDisable(GL_FOG));
+		}
 	}
 	
 	GL_CHECK(entry->proc.pglDisable(GL_FOG));
@@ -2147,6 +2156,7 @@ NUKED_LOCAL void MesaSetTextureState(mesa3d_ctx_t *ctx, int tmu, DWORD state, vo
 					ts->image->dirty = TRUE;
 				}
 			}
+			TOPIC("GLTEXENV", "texture TU%d = %p", tmu, ts->image);
 			break;
 		/* D3DTEXTUREOP - per-stage blending controls for color channels */
 		RENDERSTATE(D3DTSS_COLOROP)
@@ -2513,6 +2523,7 @@ NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DHAL_DP2RENDERSTATE s
 				}
 			}
 
+			TOPIC("GLTEXENV", "texture TU%d = %p", 0, ctx->state.tmu[0].image);
 			ctx->state.tmu[0].reload = TRUE;
 			break;
 		}
@@ -2832,6 +2843,10 @@ NUKED_LOCAL void MesaSetRenderState(mesa3d_ctx_t *ctx, LPD3DHAL_DP2RENDERSTATE s
 		{
 			TOPIC("FOG", "D3DRENDERSTATE_FOGTABLEMODE=%X", state->dwState);
   		ctx->state.fog.tmode = GetGLFogMode(state->dwState);
+  		if(ctx->state.fog.tmode != 0)
+  		{
+  			ctx->state.fog.vmode = 0;
+  		}
   		MesaSetFog(ctx);
 			break;
 		}
@@ -3852,6 +3867,12 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 				color_arg3_op     = GL_SRC_COLOR;
 				color_arg4_source = GL_ZERO;
 				color_arg4_op     = GL_SRC_COLOR;
+				
+				if(tmu == 0 && color_arg1_source == GL_PRIMARY_COLOR && color_arg2_source == GL_PRIMARY_COLOR)
+				{
+					color_arg2_source = GL_ZERO;
+					color_arg2_op     = GL_ONE_MINUS_SRC_COLOR;
+				}
 			}
 			break;
 		case D3DTOP_MODULATE2X:
@@ -4242,6 +4263,12 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 				alpha_arg3_op     = GL_SRC_ALPHA;
 				alpha_arg4_source = GL_ZERO;
 				alpha_arg4_op     = GL_SRC_ALPHA;
+				
+				if(tmu == 0 && alpha_arg1_source == GL_PRIMARY_COLOR && alpha_arg2_source == GL_PRIMARY_COLOR)
+				{
+					alpha_arg2_source = GL_ZERO;
+					alpha_arg2_op     = GL_ONE_MINUS_SRC_ALPHA;
+				}
 			}
 			break;
 		case D3DTOP_MODULATE2X:
@@ -4459,55 +4486,82 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 			break;
 	}
 
+	TOPIC("GLTEXENV", "env setting for TU: %d", tmu);
+	
 	if(use_nv4)
 	{
 		GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE4_NV));
+		TOPIC("GLTEXENV", "glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, %s)", dbg_glenum_name(GL_COMBINE4_NV));
 	}
 	else
 	{
 		GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE));
+		TOPIC("GLTEXENV", "glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, %s)", dbg_glenum_name(GL_COMBINE));
 	}
 	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB, color_fn));
 	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_ALPHA, alpha_fn));
+	TOPIC("GLTEXENV", "glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB, %s)", dbg_glenum_name(color_fn));
+	TOPIC("GLTEXENV", "glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_ALPHA, %s)", dbg_glenum_name(alpha_fn));
 
 	GL_CHECK(entry->proc.pglTexEnvfv(GL_TEXTURE_ENV, GL_TEXTURE_ENV_COLOR, &ctx->state.tfactor[0]));
+	TOPIC("GLTEXENV", "glTexEnfv(GL_TEXTURE_ENV, GL_TEXTURE_ENV_COLOR, [%f %f %f %f])",
+		ctx->state.tfactor[0], ctx->state.tfactor[1], ctx->state.tfactor[2], ctx->state.tfactor[3]);
 
 	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC0_RGB, color_arg1_source));
 	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_RGB, color_arg1_op));
 	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC1_RGB, color_arg2_source));
 	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_RGB, color_arg2_op));
 
+	TOPIC("GLTEXENV", "glTexEnvi(GL_TEXTURE_ENV, GL_SRC0_RGB, %s)", dbg_glenum_name(color_arg1_source));
+	TOPIC("GLTEXENV", "glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_RGB, %s)", dbg_glenum_name(color_arg1_op));
+	TOPIC("GLTEXENV", "glTexEnvi(GL_TEXTURE_ENV, GL_SRC1_RGB, %s)", dbg_glenum_name(color_arg2_source));
+	TOPIC("GLTEXENV", "glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_RGB, %s)", dbg_glenum_name(color_arg2_op));
+
 	if(color_fn == GL_INTERPOLATE || use_nv4)
 	{
-	 	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC2_RGB, color_arg3_source));
+		GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC2_RGB, color_arg3_source));
 		GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND2_RGB, color_arg3_op));
+		TOPIC("GLTEXENV", "glTexEnvi(GL_TEXTURE_ENV, GL_SRC2_RGB, %s)", dbg_glenum_name(color_arg3_source));
+		TOPIC("GLTEXENV", "glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND2_RGB, %s)", dbg_glenum_name(color_arg3_op));
 	}
 
 	if(use_nv4)
 	{
-	 	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SOURCE3_RGB_NV, color_arg4_source));
+		GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SOURCE3_RGB_NV, color_arg4_source));
 		GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND3_RGB_NV, color_arg4_op));
+		TOPIC("GLTEXENV", "glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE3_RGB_NV, %s)", dbg_glenum_name(color_arg4_source));
+		TOPIC("GLTEXENV", "glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND3_RGB_NV, %s)", dbg_glenum_name(color_arg4_op));
 	}
 
 	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC0_ALPHA, alpha_arg1_source));
 	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_ALPHA, alpha_arg1_op));
 	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC1_ALPHA, alpha_arg2_source));
 	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_ALPHA, alpha_arg2_op));
+	TOPIC("GLTEXENV", "glTexEnvi(GL_TEXTURE_ENV, GL_SRC0_ALPHA, %s)", dbg_glenum_name(alpha_arg1_source));
+	TOPIC("GLTEXENV", "glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_ALPHA, %s)", dbg_glenum_name(alpha_arg1_op));
+	TOPIC("GLTEXENV", "glTexEnvi(GL_TEXTURE_ENV, GL_SRC1_ALPHA, %s)", dbg_glenum_name(alpha_arg2_source));
+	TOPIC("GLTEXENV", "glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_ALPHA, %s)", dbg_glenum_name(alpha_arg2_op));
 
 	if(alpha_fn == GL_INTERPOLATE || use_nv4)
 	{
 	 	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SRC2_ALPHA, alpha_arg3_source));
 		GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND2_ALPHA, alpha_arg3_op));
+		TOPIC("GLTEXENV", "glTexEnvi(GL_TEXTURE_ENV, GL_SRC2_ALPHA, %s)", dbg_glenum_name(alpha_arg3_source));
+		TOPIC("GLTEXENV", "glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND2_ALPHA, %s)", dbg_glenum_name(alpha_arg3_op));
 	}
 
 	if(use_nv4)
 	{
 	 	GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_SOURCE3_ALPHA_NV, alpha_arg4_source));
 		GL_CHECK(entry->proc.pglTexEnvi(GL_TEXTURE_ENV, GL_OPERAND3_ALPHA_NV, alpha_arg4_op));
+		TOPIC("GLTEXENV", "glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE3_ALPHA_NV, %s)", dbg_glenum_name(alpha_arg4_source));
+		TOPIC("GLTEXENV", "glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND3_ALPHA_NV, %s)", dbg_glenum_name(alpha_arg4_op));
 	}
 
 	GL_CHECK(entry->proc.pglTexEnvf(GL_TEXTURE_ENV, GL_RGB_SCALE,   color_mult));
 	GL_CHECK(entry->proc.pglTexEnvf(GL_TEXTURE_ENV, GL_ALPHA_SCALE, alpha_mult));
+	TOPIC("GLTEXENV", "glTexEnvi(GL_TEXTURE_ENV, GL_RGB_SCALE, %d)",   color_mult);
+	TOPIC("GLTEXENV", "glTexEnvi(GL_TEXTURE_ENV, GL_ALPHA_SCALE, %d)", alpha_mult);
 
 	TOPIC("TEXENV2", "#%d color: %s (%s, %s, %s)", tmu,
 		debug_dxtextureop_str(ts->color_op),
