@@ -92,7 +92,7 @@ BASE_vmdisp9x.dll := 0x32500000
 d3d.c.o: d3d_caps.h
 mesa3d_buffer.c.o: mesa3d_zconv.h mesa3d_flip.h
 mesa3d_nuked.c.o: mesa3d.c mesa3d_buffer.c mesa3d_draw.c mesa3d_chroma.c \
-  mesa3d_matrix.c mesa3d_draw6.c mesa3d_dump.c mesa3d_state.c mesa3d_shader.c
+  mesa3d_matrix.c mesa3d_draw6.c mesa3d_dump.c mesa3d_state.c mesa3d_shader.c mesa3d_test.c
 
 NOCRT_OBJS = nocrt/nocrt.c.o nocrt/nocrt_math.c.o nocrt/nocrt_math_calc.c.o \
   nocrt/nocrt_file_win.c.o nocrt/nocrt_mem_win.c.o

@@ -47,7 +47,6 @@ void Mesa3DCalibrate(BOOL loadonly)
 	if(env->scanned)
 		return;
 	
-	FBHDA_t *hda = FBHDA_setup();
 	DWORD pid = GetCurrentProcessId();
 	mesa3d_ctx_t *ctx_ptr = NULL;
 	BOOL restart_os = FALSE;
@@ -56,6 +55,9 @@ void Mesa3DCalibrate(BOOL loadonly)
 
 	env->s3tc_bug = TRUE;
 
+	/* vmware is broken, for safety sysmem is default */
+#if 0
+	FBHDA_t *hda = FBHDA_setup();
 	if(hda->vram_size < hda->vram_bar_size)
 	{
 		env->sysmem = TRUE;
@@ -65,6 +67,7 @@ void Mesa3DCalibrate(BOOL loadonly)
 	{
 		env->sysmem = TRUE;
 	}
+#endif
 
 	do
 	{

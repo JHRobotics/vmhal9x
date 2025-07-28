@@ -91,6 +91,142 @@ DDENTRY(CanCreateSurface32, LPDDHAL_CANCREATESURFACEDATA, pccsd)
 	return DDHAL_DRIVER_HANDLED;
 } /* CanCreateSurface */
 
+#ifdef D3DHAL
+
+static DWORD CreateOneSurface(LPDDRAWI_DIRECTDRAW_GBL dd, LPDDRAWI_DDRAWSURFACE_LCL lpSurf, LPDDSURFACEDESC desc, DWORD screen_bpp, int num)
+{
+	VMHAL_enviroment_t *env = GlobalVMHALenv();
+	DDPIXELFORMAT *fmt = &desc->ddpfPixelFormat;
+	BOOL is_primary = (desc->ddsCaps.dwCaps & (DDSCAPS_PRIMARYSURFACE | DDSCAPS_FLIP)) == 0 ? FALSE : TRUE;
+
+	/* JH: when allocating primary, fmt->dwFlags is not valid, also is important allocate primary
+	 * surface everytime by runtime! (vidmem=DDHAL_PLEASEALLOC_BLOCKSIZE)
+	 */
+
+	TOPIC("TARGET", "CreateOneSurface dwFlags=0x%X, fmt->dwFlags=0x%X, desc->ddsCaps.dwCaps=0x%X",
+		lpSurf->lpGbl->ddpfSurface.dwFlags, fmt->dwFlags, desc->ddsCaps.dwCaps);
+	
+/*	if(lpSurf->dwReserved1 != 0)
+	{
+		TOPIC("TARGET", "Surface exists sid=%d", lpSurf->dwReserved1); 
+	}*/
+
+	if(!is_primary && (fmt->dwFlags & DDPF_FOURCC) != 0)
+	{
+		DWORD pitch;
+		DWORD size = SurfaceDataSize(lpSurf->lpGbl, &pitch);
+
+		lpSurf->lpGbl->lPitch = pitch; // for FOURCC needs to be fill
+		if(num == 0)
+		{
+			desc->lPitch = pitch;
+			desc->dwFlags |= DDSD_PITCH;
+		}
+
+		lpSurf->lpGbl->dwBlockSizeX = size;
+		lpSurf->lpGbl->dwBlockSizeY = 1;
+
+		TOPIC("ALLOC", "FourCC(%08X) %d x %d = %d", fmt->dwFourCC, lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX);
+
+		if(!hal_valloc(dd, lpSurf, env->sysmem, FALSE))
+		{
+			WARN("DDERR_OUTOFVIDEOMEMORY");
+			return DDERR_OUTOFMEMORY;
+		}
+	}
+	else if(!is_primary && (fmt->dwFlags & DDPF_RGB) != 0)
+	{
+		lpSurf->lpGbl->dwBlockSizeX = (DWORD)lpSurf->lpGbl->wHeight * lpSurf->lpGbl->lPitch;
+		lpSurf->lpGbl->dwBlockSizeY = 1;
+
+		TOPIC("ALLOC", "RGB %d x %d = %d (pitch %d)", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->lPitch);
+		TOPIC("ALLOC", "RGB %d x %d (pitch %d)", 
+			desc->dwWidth, desc->dwHeight, desc->lPitch);
+
+		TOPIC("ALLOCTRACE", "create: %d x %d, dwFlags=0x%X, dwCaps=0x%X", lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->dwBlockSizeY, fmt->dwFlags, desc->ddsCaps.dwCaps);
+		if(!hal_valloc(dd, lpSurf, env->sysmem, FALSE))
+		{
+			WARN("DDERR_OUTOFVIDEOMEMORY");
+			return DDERR_OUTOFMEMORY;
+		}
+		if(num == 0)
+		{
+			desc->lPitch = lpSurf->lpGbl->lPitch;
+			desc->dwFlags |= DDSD_PITCH;
+		}
+	}
+	else if(!is_primary && (fmt->dwFlags & DDPF_ZBUFFER) != 0)
+	{
+		TOPIC("MEMORY", "zbuf: %d x %d", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight);
+		if(fmt->dwZBufferBitDepth >= 24)
+		{
+			lpSurf->lpGbl->lPitch = SurfacePitch(lpSurf->lpGbl->wWidth, 32);
+		}
+
+		lpSurf->lpGbl->dwBlockSizeX = (DWORD)lpSurf->lpGbl->wHeight * lpSurf->lpGbl->lPitch;
+		lpSurf->lpGbl->dwBlockSizeY = 1;
+		TOPIC("ALLOC", "ZBUF %d x %d = %d (pitch %d)", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->lPitch);
+
+		if(!hal_valloc(dd, lpSurf, env->sysmem, FALSE))
+		{
+			WARN("DDERR_OUTOFVIDEOMEMORY");
+			return DDERR_OUTOFMEMORY;
+		}
+		if(num == 0)
+		{
+			desc->lPitch = lpSurf->lpGbl->lPitch;
+			desc->dwFlags |= DDSD_PITCH;
+		}
+	}
+	else
+	{
+		DWORD s = (DWORD)lpSurf->lpGbl->wHeight * lpSurf->lpGbl->lPitch;
+
+		TOPIC("MEMORY", "Unknown format %X, allocated primary surface (%d x %d) = %d, fpVidMem=%X",
+			fmt->dwFlags,
+			lpSurf->lpGbl->wWidth,
+			lpSurf->lpGbl->wHeight, s, lpSurf->lpGbl->fpVidMem);
+				
+		TRACE("Alternate desc: fmt flags=%X flags=0x%X", desc->ddpfPixelFormat.dwFlags, desc->dwFlags);
+
+		lpSurf->lpGbl->dwBlockSizeX = s;
+		lpSurf->lpGbl->dwBlockSizeY = 1;
+
+		hal_vblock_add(dd, lpSurf);
+		lpSurf->lpGbl->fpVidMem = DDHAL_PLEASEALLOC_BLOCKSIZE;
+
+		if(num == 0)
+		{
+			desc->lPitch = lpSurf->lpGbl->lPitch;
+			desc->dwFlags |= DDSD_PITCH;
+		}
+		TOPIC("MEMORY", "HAL allocated surface, flags=0x%X, caps=0x%X",
+			fmt->dwFlags,
+			lpSurf->ddsCaps.dwCaps
+		);
+	}
+
+	surface_id sid = SurfaceCreate(lpSurf);
+	if(sid == 0)
+	{
+		return DDERR_OUTOFMEMORY;
+	}
+	else
+	{
+		SurfaceSetFormat(sid, fmt, screen_bpp);
+		SurfaceEmptySet(sid);
+	}
+
+	//TOPIC("MEMORY", "Created sid=%d", lpSurf->dwReserved1);
+	TOPIC("TARGET", "Created sid=%d", lpSurf->dwReserved1);
+
+	TOPIC("GL", "Mipmam %d created", num+1);
+	
+	return DD_OK;
+}
+
+#endif
+
 DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 {
 	TRACE_ENTRY
@@ -98,146 +234,48 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
  	VMDAHAL_t *hal = GetHAL(pcsd->lpDD);
   if(!hal) return DDHAL_DRIVER_NOTHANDLED;
 
-#ifdef D3DHAL
-	VMHAL_enviroment_t *env = GlobalVMHALenv();
+  DWORD screen_bpp = hal->pFBHDA32->bpp;
 
+  TOPIC("TARGET", "CreateSurface32: dwSCnt=%d", pcsd->dwSCnt);
+
+#ifdef D3DHAL
 	if(pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps & (DDSCAPS_TEXTURE | DDSCAPS_ZBUFFER | DDSCAPS_FLIP |
 		DDSCAPS_FRONTBUFFER | DDSCAPS_BACKBUFFER | DDSCAPS_PRIMARYSURFACE | DDSCAPS_OFFSCREENPLAIN))
 	{
 		LPDDRAWI_DDRAWSURFACE_LCL *lplpSList = pcsd->lplpSList;
 		int i;
 
-		pcsd->ddRVal = DD_OK;
-
 		for(i = 0; i < (int)pcsd->dwSCnt; i++)
 		{
 			LPDDRAWI_DDRAWSURFACE_LCL lpSurf = lplpSList[i];
-			DDPIXELFORMAT *fmt = &pcsd->lpDDSurfaceDesc->ddpfPixelFormat;
-			BOOL is_primary = (pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps & (DDSCAPS_PRIMARYSURFACE | DDSCAPS_FLIP)) == 0 ? FALSE : TRUE;
-
-			/* JH: when allocating primary, fmt->dwFlags is not valid, also is important allocate primary
-			 * surface everytime by runtime! (vidmem=DDHAL_PLEASEALLOC_BLOCKSIZE)
-			 */
-
-			TOPIC("MEMORY", "CreateSurface32 dwFlags=0x%X, fmt->dwFlags=0x%X, pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps=0x%X",
-				lpSurf->lpGbl->ddpfSurface.dwFlags, fmt->dwFlags, pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps);
-
-			if(!is_primary && (fmt->dwFlags & DDPF_FOURCC) != 0)
+			DWORD s = CreateOneSurface(pcsd->lpDD, lpSurf, pcsd->lpDDSurfaceDesc, screen_bpp, i);
+			if(s != DD_OK)
 			{
-				DWORD pitch;
-				DWORD size = SurfaceDataSize(lpSurf->lpGbl, &pitch);
-
-				lpSurf->lpGbl->lPitch = pitch; // for FOURCC needs to be fill
-				if(i == 0)
-				{
-					pcsd->lpDDSurfaceDesc->lPitch = pitch;
-					pcsd->lpDDSurfaceDesc->dwFlags |= DDSD_PITCH;
-				}
-				
-				lpSurf->lpGbl->dwBlockSizeX = size;
-				lpSurf->lpGbl->dwBlockSizeY = 1;
-
-				TOPIC("ALLOC", "FourCC(%08X) %d x %d = %d", fmt->dwFourCC, lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX);
-
-				if(!hal_valloc(pcsd->lpDD, lpSurf, env->sysmem, FALSE))
-				{
-					WARN("DDERR_OUTOFVIDEOMEMORY");
-					pcsd->ddRVal = DDERR_OUTOFMEMORY;
-					return DDHAL_DRIVER_HANDLED;
-				}
-			}
-			else if(!is_primary && (fmt->dwFlags & DDPF_RGB) != 0)
-			{
-				lpSurf->lpGbl->dwBlockSizeX = (DWORD)lpSurf->lpGbl->wHeight * lpSurf->lpGbl->lPitch;
-				lpSurf->lpGbl->dwBlockSizeY = 1;
-
-				TOPIC("ALLOC", "RGB %d x %d = %d (pitch %d)", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->lPitch);
-				TOPIC("ALLOC", "RGB %d x %d (pitch %d)", 
-					pcsd->lpDDSurfaceDesc->dwWidth, pcsd->lpDDSurfaceDesc->dwHeight, pcsd->lpDDSurfaceDesc->lPitch);
-
-				TOPIC("ALLOCTRACE", "create: %d x %d, dwFlags=0x%X, dwCaps=0x%X", lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->dwBlockSizeY, fmt->dwFlags, pcsd->lpDDSurfaceDesc->ddsCaps.dwCaps);
-				if(!hal_valloc(pcsd->lpDD, lpSurf, env->sysmem, FALSE))
-				{
-					WARN("DDERR_OUTOFVIDEOMEMORY");
-					pcsd->ddRVal = DDERR_OUTOFMEMORY;
-					return DDHAL_DRIVER_HANDLED;
-				}
-				if(i == 0)
-				{
-					pcsd->lpDDSurfaceDesc->lPitch = lpSurf->lpGbl->lPitch;
-					pcsd->lpDDSurfaceDesc->dwFlags |= DDSD_PITCH;
-				}
-			}
-			else if(!is_primary && (fmt->dwFlags & DDPF_ZBUFFER) != 0)
-			{
-				TOPIC("MEMORY", "zbuf: %d x %d", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight);
-				if(fmt->dwZBufferBitDepth >= 24)
-				{
-					lpSurf->lpGbl->lPitch = SurfacePitch(lpSurf->lpGbl->wWidth, 32);
-				}
-				
-				lpSurf->lpGbl->dwBlockSizeX = (DWORD)lpSurf->lpGbl->wHeight * lpSurf->lpGbl->lPitch;
-				lpSurf->lpGbl->dwBlockSizeY = 1;
-				TOPIC("ALLOC", "ZBUF %d x %d = %d (pitch %d)", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->lPitch);
-				
-				if(!hal_valloc(pcsd->lpDD, lpSurf, env->sysmem, FALSE))
-				{
-					WARN("DDERR_OUTOFVIDEOMEMORY");
-					pcsd->ddRVal = DDERR_OUTOFMEMORY;
-					return DDHAL_DRIVER_HANDLED;
-				}
-				if(i == 0)
-				{
-					pcsd->lpDDSurfaceDesc->lPitch = lpSurf->lpGbl->lPitch;
-					pcsd->lpDDSurfaceDesc->dwFlags |= DDSD_PITCH;
-				}
-			}
-			else
-			{
-				DWORD s = (DWORD)lpSurf->lpGbl->wHeight * lpSurf->lpGbl->lPitch;
-
-				TOPIC("MEMORY", "Unknown format %X, allocated primary surface (%d x %d) = %d, fpVidMem=%X",
-					fmt->dwFlags,
-					lpSurf->lpGbl->wWidth,
-					lpSurf->lpGbl->wHeight, s, lpSurf->lpGbl->fpVidMem);
-				
-				TRACE("Alternate desc: fmt flags=%X flags=0x%X", pcsd->lpDDSurfaceDesc->ddpfPixelFormat.dwFlags, pcsd->lpDDSurfaceDesc->dwFlags);
-
-				lpSurf->lpGbl->dwBlockSizeX = s;
-				lpSurf->lpGbl->dwBlockSizeY = 1;
-
-				hal_vblock_add(pcsd->lpDD, lpSurf);
-				lpSurf->lpGbl->fpVidMem = DDHAL_PLEASEALLOC_BLOCKSIZE;
-
-				if(i == 0)
-				{
-					pcsd->lpDDSurfaceDesc->lPitch = lpSurf->lpGbl->lPitch;
-					pcsd->lpDDSurfaceDesc->dwFlags |= DDSD_PITCH;
-				}
-				TOPIC("MEMORY", "HAL allocated surface, flags=0x%X, caps=0x%X",
-				fmt->dwFlags,
-				lpSurf->ddsCaps.dwCaps
-				);
-			}
-
-			surface_id sid = SurfaceCreate(lpSurf);
-			if(sid == 0)
-			{
-				pcsd->ddRVal = DDERR_OUTOFMEMORY;
+				pcsd->ddRVal = s;
 				return DDHAL_DRIVER_HANDLED;
 			}
-			else
+
+#if 0
+			LPATTACHLIST list = lpSurf->lpAttachList;
+			while(list != NULL)
 			{
-				SurfaceSetFormat(sid, fmt, hal->pFBHDA32->bpp);
-				SurfaceEmptySet(sid);
+				if(list->lpAttached != NULL)
+				{
+					if(list->lpAttached == lpSurf)
+					{
+						break;
+					}
+					CreateOneSurface(pcsd->lpDD, list->lpAttached, pcsd->lpDDSurfaceDesc, screen_bpp, -1);
+				}
+
+				list = list->lpLink;
 			}
+#endif
 
-			TOPIC("MEMORY", "Created sid=%d", lpSurf->dwReserved1);
-
-			TOPIC("GL", "Mipmam %d/%d created", i+1, pcsd->dwSCnt);
 		} // for
 
 		TOPIC("GL", "Texture created");
+		pcsd->ddRVal = DD_OK;
 		return DDHAL_DRIVER_HANDLED;
 	}
 

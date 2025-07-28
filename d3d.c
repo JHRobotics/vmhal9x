@@ -555,6 +555,23 @@ DDENTRY_FPUSAVE(CreateSurfaceEx32, LPDDHAL_CREATESURFACEEXDATA, lpcsxd)
 			lpcsxd->ddRVal = DDERR_OUTOFMEMORY;
 			return DDHAL_DRIVER_HANDLED;
 		}
+
+		LPATTACHLIST list = surf->lpAttachList;
+
+		while(list != NULL)
+		{
+			if(list->lpAttached != NULL)
+			{
+				if(list->lpAttached == surf)
+				{
+					break;
+				}
+				TOPIC("TARGET", "CreateSurfaceEx32 sub HANDLE=%d", list->lpAttached->lpSurfMore->dwSurfaceHandle);
+				SurfaceExInsert(entry, lpcsxd->lpDDLcl, list->lpAttached);
+			}
+
+			list = list->lpLink;
+		}
 	}
 	else
 	{

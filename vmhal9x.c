@@ -88,7 +88,7 @@ static VMHAL_enviroment_t VMHALenv = {
 	FALSE, // use palette
 	FALSE,  // filter bug
 	FALSE, // s3tc bug
-	FALSE, // textures in sysmem
+	TRUE,  // textures in sysmem
 	0,     // low detail
 };
 

@@ -1278,8 +1278,7 @@ NUKED_LOCAL void MesaInitCtx(mesa3d_ctx_t *ctx)
 	{
 		ctx->fbo_tmu = 0;
 	}
-	WARN("ctx->fbo_tmu = %d, ctx->fbo_tmu = %d, real_tus = %d", ctx->tmu_count, ctx->fbo_tmu, real_tus);
-	
+
 	ctx->state.tmu[0].active = 1;
 
 	GL_CHECK(entry->proc.pglPixelStorei(GL_UNPACK_ALIGNMENT, FBHDA_ROW_ALIGN));
