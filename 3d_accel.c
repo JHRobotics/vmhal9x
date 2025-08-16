@@ -198,7 +198,7 @@ void FBHDA_access_end(DWORD flags)
 	FBHDA_call_unlock();
 }
 
-BOOL FBHDA_swap(DWORD offset)
+BOOL FBHDA_swap(DWORD offset, DWORD flags)
 {
 	TRACE_ENTRY
 	BOOL rc = FALSE;
@@ -206,7 +206,7 @@ BOOL FBHDA_swap(DWORD offset)
 	FBHDA_call_lock();
 	if(FBHDA_handle())
 	{
-		rc = fbhda_lib.pFBHDA_swap(offset);
+		rc = fbhda_lib.pFBHDA_swap(offset, flags);
 	}
 	FBHDA_call_unlock();
 	

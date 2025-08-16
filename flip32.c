@@ -121,7 +121,7 @@ static void DoFlipping(VMDAHAL_t *ddhal, void *from, void *to, DWORD from_pitch,
 			}
 			else if(ddhal->pFBHDA32->flags & FB_SUPPORT_FLIPING) /* HW flip support */
 			{
-				if(!FBHDA_swap(offTo))
+				if(!FBHDA_swap(offTo, FBHDA_SWAP_NOWAIT))
 				{
 					ERR("FBHDA_swap failed (flip)");
 				}
@@ -139,7 +139,7 @@ BOOL FlipPrimary(VMDAHAL_t *ddhal, void *to)
 	if(ddhal->pFBHDA32->flags & FB_SUPPORT_FLIPING) /* HW flip support */
 	{
 		uint32_t offTo = GetOffset(ddhal, to);
-		if(!FBHDA_swap(offTo))
+		if(!FBHDA_swap(offTo, 0))
 		{
 			ERR("SWAP failed, offset=%d", offTo);
 			return FALSE;
@@ -261,7 +261,16 @@ DDENTRY_FPUSAVE(GetFlipStatus32, LPDDHAL_GETFLIPSTATUSDATA, pfd)
 		pfd->ddRVal = DDERR_WASSTILLDRAWING;
 		return DDHAL_DRIVER_HANDLED;
 	}
-	
+	else if(ddhal->pFBHDA32->onflip)
+	{
+		FBHDA_swap(0, FBHDA_SWAP_QUERY);
+		if(ddhal->pFBHDA32->onflip)
+		{
+			pfd->ddRVal = DDERR_WASSTILLDRAWING;
+			return DDHAL_DRIVER_HANDLED;
+		}
+	}
+
 	if(pfd->dwFlags == DDGFS_CANFLIP && halVSync)
 	{
 		uint64_t flip_time = GetTimeTMS();

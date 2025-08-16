@@ -93,7 +93,7 @@ DDENTRY(CanCreateSurface32, LPDDHAL_CANCREATESURFACEDATA, pccsd)
 
 #ifdef D3DHAL
 
-static DWORD CreateOneSurface(LPDDRAWI_DIRECTDRAW_GBL dd, LPDDRAWI_DDRAWSURFACE_LCL lpSurf, LPDDSURFACEDESC desc, DWORD screen_bpp, int num)
+static DWORD CreateOneSurface(FBHDA_t *hda, LPDDRAWI_DIRECTDRAW_GBL dd, LPDDRAWI_DDRAWSURFACE_LCL lpSurf, LPDDSURFACEDESC desc, int num)
 {
 	VMHAL_enviroment_t *env = GlobalVMHALenv();
 	DDPIXELFORMAT *fmt = &desc->ddpfPixelFormat;
@@ -180,7 +180,19 @@ static DWORD CreateOneSurface(LPDDRAWI_DIRECTDRAW_GBL dd, LPDDRAWI_DDRAWSURFACE_
 	}
 	else
 	{
-		DWORD s = (DWORD)lpSurf->lpGbl->wHeight * lpSurf->lpGbl->lPitch;
+		DWORD s;
+		if(is_primary)
+		{
+			if((hda->flags & FB_VESA_MODES) != 0)
+			{
+				if(hda->width == lpSurf->lpGbl->wWidth)
+				{
+					lpSurf->lpGbl->lPitch = hda->pitch;
+				}
+			}
+		}
+
+		s = (DWORD)lpSurf->lpGbl->wHeight * lpSurf->lpGbl->lPitch;
 
 		TOPIC("MEMORY", "Unknown format %X, allocated primary surface (%d x %d) = %d, fpVidMem=%X",
 			fmt->dwFlags,
@@ -213,7 +225,7 @@ static DWORD CreateOneSurface(LPDDRAWI_DIRECTDRAW_GBL dd, LPDDRAWI_DDRAWSURFACE_
 	}
 	else
 	{
-		SurfaceSetFormat(sid, fmt, screen_bpp);
+		SurfaceSetFormat(sid, fmt, hda->bpp);
 		SurfaceEmptySet(sid);
 	}
 
@@ -234,8 +246,6 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
  	VMDAHAL_t *hal = GetHAL(pcsd->lpDD);
   if(!hal) return DDHAL_DRIVER_NOTHANDLED;
 
-  DWORD screen_bpp = hal->pFBHDA32->bpp;
-
   TOPIC("TARGET", "CreateSurface32: dwSCnt=%d", pcsd->dwSCnt);
 
 #ifdef D3DHAL
@@ -248,7 +258,7 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 		for(i = 0; i < (int)pcsd->dwSCnt; i++)
 		{
 			LPDDRAWI_DDRAWSURFACE_LCL lpSurf = lplpSList[i];
-			DWORD s = CreateOneSurface(pcsd->lpDD, lpSurf, pcsd->lpDDSurfaceDesc, screen_bpp, i);
+			DWORD s = CreateOneSurface(hal->pFBHDA32, pcsd->lpDD, lpSurf, pcsd->lpDDSurfaceDesc, i);
 			if(s != DD_OK)
 			{
 				pcsd->ddRVal = s;
@@ -265,7 +275,7 @@ DDENTRY_FPUSAVE(CreateSurface32, LPDDHAL_CREATESURFACEDATA, pcsd)
 					{
 						break;
 					}
-					CreateOneSurface(pcsd->lpDD, list->lpAttached, pcsd->lpDDSurfaceDesc, screen_bpp, -1);
+					CreateOneSurface(hal->pFBHDA32, pcsd->lpDD, list->lpAttached, pcsd->lpDDSurfaceDesc, -1);
 				}
 
 				list = list->lpLink;
@@ -474,15 +484,15 @@ DDENTRY(SetExclusiveMode32, LPDDHAL_SETEXCLUSIVEMODEDATA, psem)
 
 	if(psem->dwEnterExcl)
 	{
-		TRACE("exclusive mode: ON");
+		FBHDA_access_begin(FBHDA_ACCESS_EXCLUSIVE_BEGIN);
 	}
 	else
 	{
-		TRACE("exclusive mode: OFF");
+		FBHDA_access_begin(FBHDA_ACCESS_EXCLUSIVE_END);
 	}
-	
+	FBHDA_access_end(0);
 	psem->ddRVal = DD_OK;
-	return DDHAL_DRIVER_HANDLED;
+	return DDHAL_DRIVER_NOTHANDLED;
 }
 
 DDENTRY(SetMode32, LPDDHAL_SETMODEDATA, psmod)

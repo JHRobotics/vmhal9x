@@ -916,11 +916,11 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 DDENTRY_FPUSAVE(GetAvailDriverMemory32, LPDDHAL_GETAVAILDRIVERMEMORYDATA, pgadmd)
 {
 	DWORD used;
-	DWORD free;
+	DWORD freemem;
 	FBHDA_t *hda = FBHDA_setup();
-	VidMemInfo(&used, &free);
+	VidMemInfo(&used, &freemem);
 
-	pgadmd->dwTotal = hda->vram_bar_size;
+	pgadmd->dwTotal = hda->vram_size_virt;
 	pgadmd->dwFree = pgadmd->dwTotal - used;
 
 	pgadmd->ddRVal = DD_OK;

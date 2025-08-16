@@ -385,7 +385,7 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 	globalHal->cb32.WaitForVerticalBlank = WaitForVerticalBlank32;
 	globalHal->cb32.Blt = Blt32;
 	globalHal->cb32.GetBltStatus = GetBltStatus32;
-//	globalHal->cb32.SetExclusiveMode = SetExclusiveMode32;
+	globalHal->cb32.SetExclusiveMode = SetExclusiveMode32;
 #ifdef DEBUG
 	globalHal->cb32.SetMode = SetMode32;
 #endif
