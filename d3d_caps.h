@@ -453,6 +453,15 @@ static DDSURFACEDESC myTextureFormats[] = {
 	TEXFORMAT_LA(8, 0x00FF, 8, 0xFF00),
 	TEXFORMAT_PAL8,
 
+#if 0
+	TEXFORMAT_FOURCC('Y', 'U', 'Y', '2'),
+	TEXFORMAT_FOURCC('U', 'Y', 'V', 'Y'),
+	TEXFORMAT_FOURCC('Y', 'V', '1', '2'),
+	TEXFORMAT_FOURCC('I', 'Y', 'U', 'V'),
+	TEXFORMAT_FOURCC('N', 'V', '2', '1'),
+	TEXFORMAT_FOURCC('N', 'V', '1', '2'),
+#endif
+
 	/* removed formats: */
 //	TEXFORMAT_RGB(24, 0x00FF0000, 0x0000FF00, 0x000000FF), /* BGR 888 */ - not needed
 //	TEXFORMAT_ZBUF(16, 0x0000FFFF),

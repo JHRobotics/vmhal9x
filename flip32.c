@@ -102,7 +102,7 @@ static void CopyFrontByLines(VMDAHAL_t *ddhal, void *src, DWORD src_pitch)
 	FBHDA_access_end(0);
 }
 
-static void DoFlipping(VMDAHAL_t *ddhal, void *from, void *to, DWORD from_pitch, DWORD to_pitch)
+static void DoFlipping(VMDAHAL_t *ddhal, void *from, void *to, DWORD from_pitch, DWORD to_pitch, BOOL wait, BOOL vtrace)
 {
 	TRACE_ENTRY
 	
@@ -121,7 +121,14 @@ static void DoFlipping(VMDAHAL_t *ddhal, void *from, void *to, DWORD from_pitch,
 			}
 			else if(ddhal->pFBHDA32->flags & FB_SUPPORT_FLIPING) /* HW flip support */
 			{
-				if(!FBHDA_swap(offTo, FBHDA_SWAP_NOWAIT))
+				DWORD fp_flags = 0;
+				if(!wait)
+					fp_flags |= FBHDA_SWAP_NOWAIT;
+
+				if(vtrace)
+					fp_flags |= FBHDA_SWAP_VTRACE;
+
+				if(!FBHDA_swap(offTo, fp_flags))
 				{
 					ERR("FBHDA_swap failed (flip)");
 				}
@@ -215,7 +222,10 @@ DDENTRY_FPUSAVE(Flip32, LPDDHAL_FLIPDATA, pfd)
 		//SurfaceFlipMesa(pfd->lpSurfCurr, pfd->lpSurfTarg);
 
 		DoFlipping(ddhal, (void*)pfd->lpSurfCurr->lpGbl->fpVidMem, (void*)pfd->lpSurfTarg->lpGbl->fpVidMem,
-			pfd->lpSurfCurr->lpGbl->lPitch, pfd->lpSurfTarg->lpGbl->lPitch);
+			pfd->lpSurfCurr->lpGbl->lPitch, pfd->lpSurfTarg->lpGbl->lPitch,
+			(pfd->dwFlags & DDFLIP_DONOTWAIT) != 0 ? FALSE : TRUE,
+			(pfd->dwFlags & DDFLIP_NOVSYNC) != 0 ? FALSE : TRUE
+		);
 		
 		TOPIC("TARGET", "Fliped (on screen: %X)", pfd->lpSurfTarg->lpGbl->fpVidMem);
 		

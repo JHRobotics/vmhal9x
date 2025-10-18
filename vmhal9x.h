@@ -218,6 +218,18 @@ void VMHALenv_RuntimeVer(int ver);
 VMHAL_enviroment_t *GlobalVMHALenv();
 void UpdateVMHALenv(VMHAL_enviroment_t *dst);
 
-#endif /* VERSION_ONLY */
+void perf_init();
+void perf_destroy();
+void perf_dump();
+void perf_mark();
+void perf_point(const char *file, int line_no);
+
+#define PERF_INIT perf_init();
+#define PERF_DUMP perf_dump();
+#define PERF_DESTROY perf_destroy();
+#define PERF_MARK perf_mark();
+#define PERF_POINT perf_point(__FILE__, __LINE__);
+
+#endif /* !VERSION_ONLY */
 
 #endif /* __VMHAL9X_H__INCLUDED__ */

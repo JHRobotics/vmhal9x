@@ -582,7 +582,7 @@ NUKED_LOCAL void Mesa3DFree(DWORD pid, BOOL unload);
 #  define GL_ERR_TOPIC VMHAL_DSTR(DEBUG_GL_TOPIC)
 # endif
 
-#define GL_CHECK(_code) _code; \
+#define GL_CHECK(_code) PERF_MARK _code; PERF_POINT \
 	do{ GLenum err; \
 		while((err = entry->proc.pglGetError()) != GL_NO_ERROR){ \
 			TOPIC(GL_ERR_TOPIC, "GL error: %s = %X", #_code, err); \

@@ -2052,7 +2052,7 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, LP
 		DDSCAPS_VIDEOMEMORY |
 	0;
 	lpHALFlags->zcaps = DDBD_16 | DDBD_24 | DDBD_32;
-	lpHALFlags->caps2 = DDCAPS2_WIDESURFACES | D3DCAPS2_FULLSCREENGAMMA /* | DDCAPS2_CANMANAGETEXTURE*/;
+	lpHALFlags->caps2 = DDCAPS2_WIDESURFACES | D3DCAPS2_FULLSCREENGAMMA | /*DDCAPS2_COPYFOURCC |*/ DDCAPS2_FLIPNOVSYNC /* | DDCAPS2_CANMANAGETEXTURE*/;
 	/*
 		cap DDCAPS2_NO2DDURING3DSCENE should be theoretically safer to set,
 		BUT some games forbid to start with this flag set.

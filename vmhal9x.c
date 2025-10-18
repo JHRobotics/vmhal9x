@@ -526,6 +526,7 @@ BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpvReserved)
 			{
 				TRACE("--- vmhal9x created ---");
 				hal_memory_init();
+				PERF_INIT
 			}
 			tmp += 1;
 			InterlockedExchange(&lProcessCount, tmp);
@@ -556,6 +557,8 @@ BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpvReserved)
 
 			if(tmp == 0)         // Last process?
 			{
+				PERF_DUMP
+				PERF_DESTROY
 				UninstallWineHook();
 				hal_memory_destroy();
 				TRACE("--- vmhal9x destroyed ---");
