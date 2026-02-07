@@ -129,7 +129,7 @@ static mesa3d_entry_t *Mesa3DCreate(DWORD pid, mesa3d_entry_t *mesa)
 		{
 			mesa->os = TRUE;
 		}
-		TRACE("Loaded, ?OS=%d", mesa->os);
+		TOPIC("OSR", "Loaded, ?OS=%d", mesa->os);
 
 		#include "mesa3d_api.h"
 
@@ -5021,6 +5021,7 @@ NUKED_LOCAL void MesaSceneEnd(mesa3d_ctx_t *ctx)
 	void *ptr = SurfaceGetVidMem(ctx->backbuffer, MesaOldFlip(ctx));
 	if(ptr)
 	{
+#if 1
 		if(is_visible) /* fixme: check for DDSCAPS_PRIMARYSURFACE */
 			FBHDA_access_begin(0);
 
@@ -5040,6 +5041,25 @@ NUKED_LOCAL void MesaSceneEnd(mesa3d_ctx_t *ctx)
 
 		if(is_visible)
 			FBHDA_access_end(0);
+#else
+		if(is_visible) /* fixme: check for DDSCAPS_PRIMARYSURFACE */
+		{
+			FBHDA_access_begin(0);
+
+			TOPIC("TARGET", "MesaBufferDownloadColor(ctx, 0x%X)", ptr);
+			if(ctx->render.dirty)
+			{
+				MesaBufferDownloadColor(ctx, ptr);
+			}
+			FBHDA_access_end(0);
+		}
+		
+		if(ctx->state.textarget)
+		{
+			TOPIC("TEXTARGET", "Render to texture");
+			SurfaceToMesaTex(ctx->backbuffer);
+		}
+#endif
 	}
 
 	//ctx->entry->proc.pglFinish();

@@ -40,7 +40,7 @@
 DWORD GetOffset(VMDAHAL_t *ddhal, void *ptr)
 {
 	DWORD vram_begin = (DWORD)(ddhal->pFBHDA32->vram_pm32);
-	DWORD vram_end   = vram_begin + ddhal->pFBHDA32->vram_size;
+	DWORD vram_end   = vram_begin + ddhal->pFBHDA32->vram_size_virt;
 	DWORD dptr       = (DWORD)ptr;
 	
 	if(dptr >= vram_begin && dptr < vram_end)

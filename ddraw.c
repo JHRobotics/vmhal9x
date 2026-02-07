@@ -95,7 +95,7 @@ DDENTRY(CanCreateSurface32, LPDDHAL_CANCREATESURFACEDATA, pccsd)
 
 static DWORD CreateOneSurface(FBHDA_t *hda, LPDDRAWI_DIRECTDRAW_GBL dd, LPDDRAWI_DDRAWSURFACE_LCL lpSurf, LPDDSURFACEDESC desc, int num)
 {
-	VMHAL_enviroment_t *env = GlobalVMHALenv();
+//	VMHAL_enviroment_t *env = GlobalVMHALenv();
 	DDPIXELFORMAT *fmt = &desc->ddpfPixelFormat;
 	BOOL is_primary = (desc->ddsCaps.dwCaps & (DDSCAPS_PRIMARYSURFACE | DDSCAPS_FLIP)) == 0 ? FALSE : TRUE;
 
@@ -125,30 +125,14 @@ static DWORD CreateOneSurface(FBHDA_t *hda, LPDDRAWI_DIRECTDRAW_GBL dd, LPDDRAWI
 
 		lpSurf->lpGbl->dwBlockSizeX = size;
 		lpSurf->lpGbl->dwBlockSizeY = 1;
-
-		TOPIC("ALLOC", "FourCC(%08X) %d x %d = %d", fmt->dwFourCC, lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX);
-
-		if(!hal_valloc(dd, lpSurf, env->sysmem, FALSE))
-		{
-			WARN("DDERR_OUTOFVIDEOMEMORY");
-			return DDERR_OUTOFMEMORY;
-		}
+		lpSurf->lpGbl->fpVidMem = DDHAL_PLEASEALLOC_BLOCKSIZE;
 	}
 	else if(!is_primary && (fmt->dwFlags & DDPF_RGB) != 0)
 	{
 		lpSurf->lpGbl->dwBlockSizeX = (DWORD)lpSurf->lpGbl->wHeight * lpSurf->lpGbl->lPitch;
 		lpSurf->lpGbl->dwBlockSizeY = 1;
+		lpSurf->lpGbl->fpVidMem = DDHAL_PLEASEALLOC_BLOCKSIZE;
 
-		TOPIC("ALLOC", "RGB %d x %d = %d (pitch %d)", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->lPitch);
-		TOPIC("ALLOC", "RGB %d x %d (pitch %d)", 
-			desc->dwWidth, desc->dwHeight, desc->lPitch);
-
-		TOPIC("ALLOCTRACE", "create: %d x %d, dwFlags=0x%X, dwCaps=0x%X", lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->dwBlockSizeY, fmt->dwFlags, desc->ddsCaps.dwCaps);
-		if(!hal_valloc(dd, lpSurf, env->sysmem, FALSE))
-		{
-			WARN("DDERR_OUTOFVIDEOMEMORY");
-			return DDERR_OUTOFMEMORY;
-		}
 		if(num == 0)
 		{
 			desc->lPitch = lpSurf->lpGbl->lPitch;
@@ -165,13 +149,8 @@ static DWORD CreateOneSurface(FBHDA_t *hda, LPDDRAWI_DIRECTDRAW_GBL dd, LPDDRAWI
 
 		lpSurf->lpGbl->dwBlockSizeX = (DWORD)lpSurf->lpGbl->wHeight * lpSurf->lpGbl->lPitch;
 		lpSurf->lpGbl->dwBlockSizeY = 1;
-		TOPIC("ALLOC", "ZBUF %d x %d = %d (pitch %d)", lpSurf->lpGbl->wWidth, lpSurf->lpGbl->wHeight, lpSurf->lpGbl->dwBlockSizeX, lpSurf->lpGbl->lPitch);
+		lpSurf->lpGbl->fpVidMem = DDHAL_PLEASEALLOC_BLOCKSIZE;
 
-		if(!hal_valloc(dd, lpSurf, env->sysmem, FALSE))
-		{
-			WARN("DDERR_OUTOFVIDEOMEMORY");
-			return DDERR_OUTOFMEMORY;
-		}
 		if(num == 0)
 		{
 			desc->lPitch = lpSurf->lpGbl->lPitch;
@@ -203,8 +182,6 @@ static DWORD CreateOneSurface(FBHDA_t *hda, LPDDRAWI_DIRECTDRAW_GBL dd, LPDDRAWI
 
 		lpSurf->lpGbl->dwBlockSizeX = s;
 		lpSurf->lpGbl->dwBlockSizeY = 1;
-
-		hal_vblock_add(dd, lpSurf);
 		lpSurf->lpGbl->fpVidMem = DDHAL_PLEASEALLOC_BLOCKSIZE;
 
 		if(num == 0)
@@ -323,17 +300,6 @@ DDENTRY_FPUSAVE(DestroySurface32, LPDDHAL_DESTROYSURFACEDATA, lpd)
 
 #ifdef D3DHAL
 	SurfaceDelete(lpd->lpDDSurface->dwReserved1);
-	
-	BOOL is_primary = (lpd->lpDDSurface->ddsCaps.dwCaps & (DDSCAPS_PRIMARYSURFACE | DDSCAPS_FLIP)) == 0 ? FALSE : TRUE;
-	if(!is_primary)
-	{
-		hal_vfree(lpd->lpDD, lpd->lpDDSurface);
-	}
-	else
-	{
-		TRACE("primary surface keep memory");
-	}
-	
 #endif
 
 	TOPIC("GARBAGE", "SurfaceDelete() success");
@@ -559,7 +525,6 @@ DDENTRY_FPUSAVE(DestroyDriver32, LPDDHAL_DESTROYDRIVERDATA, pdstr)
 #ifdef D3DHAL
 		Mesa3DCleanProc();
 		SurfaceDeleteAll();
-		hal_vblock_reset();
 #endif
 		//FBHDA_free();
 	}

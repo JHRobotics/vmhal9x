@@ -41,7 +41,10 @@
 #endif
 
 /* when 1 invert projection matrix, 0 invert viewmodel matrix */
-#define DX_INVERT_PROJECTION 1
+#define INV_NONE 0
+#define INV_PROJECTION 1
+#define INV_VIEW 2
+#define DX_INVERT INV_PROJECTION
 
 #define Mgl(_m, _y, _x) _m[4*((_y)-1) + ((_x)-1)]
 #define Mdx(_m, _y, _x) _m->_ ## _y  ## _x
@@ -336,7 +339,7 @@ NUKED_LOCAL void MesaApplyTransform(mesa3d_ctx_t *ctx, DWORD changes)
 
 	if(changes & MESA_TF_PROJECTION)
 	{
-#if DX_INVERT_PROJECTION
+#if DX_INVERT == INV_PROJECTION
 		matmultf(ctx->matrix.proj, initmatrix, ctx->matrix.projfix);
 #else
 		memcpy(ctx->matrix.projfix, ctx->matrix.proj, sizeof(GLfloat[16]));
@@ -352,11 +355,11 @@ NUKED_LOCAL void MesaApplyTransform(mesa3d_ctx_t *ctx, DWORD changes)
 	if(changes & (MESA_TF_WORLD | MESA_TF_VIEW))
 	{
 		entry->proc.pglMatrixMode(GL_MODELVIEW);
-#if DX_INVERT_PROJECTION
-		entry->proc.pglLoadMatrixf(&ctx->matrix.view[0]);
-#else
+#if DX_INVERT == INV_VIEW
 		entry->proc.pglLoadMatrixf(&initmatrix[0]);
 		entry->proc.pglMultMatrixf(&ctx->matrix.view[0]);
+#else
+		entry->proc.pglLoadMatrixf(&ctx->matrix.view[0]);
 #endif
 		if(changes & MESA_TF_VIEW)
 		{

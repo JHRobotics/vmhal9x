@@ -915,13 +915,9 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 
 DDENTRY_FPUSAVE(GetAvailDriverMemory32, LPDDHAL_GETAVAILDRIVERMEMORYDATA, pgadmd)
 {
-	DWORD used;
-	DWORD freemem;
-	FBHDA_t *hda = FBHDA_setup();
-	VidMemInfo(&used, &freemem);
-
-	pgadmd->dwTotal = hda->vram_size_virt;
-	pgadmd->dwFree = pgadmd->dwTotal - used;
+	/* this function only report size off private heaps, that not expose to DD via heap */
+	pgadmd->dwTotal = 0;
+	pgadmd->dwFree = 0;
 
 	pgadmd->ddRVal = DD_OK;
 	return DDHAL_DRIVER_HANDLED;
@@ -1839,12 +1835,7 @@ DDENTRY_FPUSAVE(CreateExecuteBuffer32, LPDDHAL_CREATESURFACEDATA, csd)
 		/* alloc buffer in video memory */
 		surf->lpGbl->dwBlockSizeX = surf->lpGbl->dwLinearSize;
 		surf->lpGbl->dwBlockSizeY = 1;
-
-		if(!hal_valloc(csd->lpDD, surf, !alloc_vram, FALSE))
-		{
-			csd->ddRVal = DDERR_OUTOFVIDEOMEMORY;
-			return DDHAL_DRIVER_HANDLED;
-		}
+		surf->lpGbl->fpVidMem = DDHAL_PLEASEALLOC_BLOCKSIZE;
 
 		if(SurfaceCreate(surf) == 0)
 		{
@@ -1871,12 +1862,6 @@ DDENTRY_FPUSAVE(DestroyExecuteBuffer32, LPDDHAL_DESTROYSURFACEDATA, dsd)
 		dsd->lpDDSurface->lpGbl->fpVidMem
 		);
 
-	if(dsd->lpDDSurface->lpGbl->fpVidMem != 0)
-	{
-		hal_vfree(dsd->lpDD, dsd->lpDDSurface);
-		dsd->lpDDSurface->lpGbl->fpVidMem = 0;
-	}
-	
 	SurfaceDelete(dsd->lpDDSurface->dwReserved1);
 
 	dsd->ddRVal = DD_OK;
