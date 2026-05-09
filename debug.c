@@ -33,11 +33,15 @@
 #include "vmhal9x.h"
 
 #if defined(D3DHAL) && defined(DEBUG)
-#include "d3dhal_ddk.h"
-#include "mesa3d.h"
+//#include "d3dhal_ddk.h"
+//#include "mesa3d.h"
+#include <GL/gl.h>
+#include <GL/glext.h>
 #endif
 
 #include "nocrt.h"
+
+static const char *log_file = "C:\\vmhal9x.log";
 
 void dbg_prefix_printf(const char *topic, const char *prefix, const char *file, int line, const char *fmt, ...)
 {
@@ -63,7 +67,7 @@ void dbg_prefix_printf(const char *topic, const char *prefix, const char *file, 
 	}
 #endif
 
-  fa = fopen("C:\\vmhal9x.log", "ab");
+  fa = fopen(log_file, "ab");
   if(!fa) return;
   fputs(prefix, fa);
   
@@ -77,6 +81,11 @@ void dbg_prefix_printf(const char *topic, const char *prefix, const char *file, 
   
   fprintf(fa, "|%s:%d\r\n", file, line);
   fclose(fa);
+}
+
+void dbg_log_set(const char *fn)
+{
+	log_file = fn;
 }
 
 #ifdef DEBUG

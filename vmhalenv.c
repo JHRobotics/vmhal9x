@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright (c) 2025 Jaroslav Hensl                                          *
+ * Copyright (c) 2026 Jaroslav Hensl                                          *
  *                                                                            *
  * Permission is hereby granted, free of charge, to any person                *
  * obtaining a copy of this software and associated documentation             *
@@ -24,41 +24,66 @@
  *                                                                            *
  ******************************************************************************/
 #include <windows.h>
-#include <initguid.h>
-#include <stddef.h>
-#include <stdint.h>
 #include <ddraw.h>
 #include <ddrawi.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <math.h>
-#include "d3dhal_ddk.h"
-#include "ddrawi_ddk.h"
 #include "vmdahal32.h"
-#include <d3d8caps.h>
-#include "vmhal9x.h"
-#include "mesa3d.h"
-#include "d3dhal.h"
-#include "osmesa.h"
 
-#define VMHAL9X_LIB
+#include "vmhal9x.h"
+#include "wine.h"
+
 #include "vmsetup.h"
 
 #include "nocrt.h"
 
-#define NUKED_SKIP
+static VMHAL_enviroment_t VMHALenv = {
+	FALSE, /* scanned */
+	FALSE, /* only2d */
+	FALSE, /* forceos */
+	FALSE, /* runtime dx5 */
+	FALSE, /* runtime dx6 */
+	FALSE, /* runtime dx7 */
+	FALSE, /* runtime dx8 */
+	FALSE, /* runtime dx9 */
+	8, // DDI (maximum)
+	8, // HW T&L
+	FALSE, // readback
+	FALSE, // touchdepth
+	16384, // tex w  (can be query by GL_MAX_TEXTURE_SIZE)
+	16384, // tex h
+	4, // tex units
+	8, // lights (GL min. is 8)
+	6, // clip planes (GL min. is 6), GL_MAX_CLIP_PLANES
+	TRUE, // use float32 in Z buffer (eg 64-bit F32_S8_X24 depth plane), on FALSE 32-bit S24_S8 depth plane
+	16, // max anisotropy
+	FALSE, // vertexblend
+	FALSE, // use palette
+	FALSE,  // filter bug
+	FALSE, // s3tc bug
+	FALSE, ///TRUE,  // textures in sysmem
+	0,     // low detail
+};
 
-#include "ht.c"
-#include "d3dhal.c"
-#include "d3dhal_mem.c"
-#include "surfindex.c"
-#include "mesa3d.c"
-#include "mesa3d_buffer.c"
-#include "mesa3d_draw.c"
-#include "mesa3d_chroma.c"
-#include "mesa3d_matrix.c"
-#include "mesa3d_draw6.c"
-#include "mesa3d_dump.c"
-#include "mesa3d_state.c"
-#include "mesa3d_shader.c"
-#include "mesa3d_test.c"
+VMHAL_enviroment_t* __stdcall hal_env()
+{
+	return &VMHALenv;
+}
+
+BOOL GetVMHALenv(VMHAL_enviroment_t *dst)
+{
+	if(dst == NULL) return FALSE;
+
+	memcpy(dst, &VMHALenv, sizeof(VMHAL_enviroment_t));
+
+	return TRUE;
+}
+
+void VMHALenv_RuntimeVer(int ver)
+{
+	if(ver >= 9) VMHALenv.dx9 = TRUE;
+	if(ver >= 8) VMHALenv.dx8 = TRUE;
+	if(ver >= 7) VMHALenv.dx7 = TRUE;
+	if(ver >= 6) VMHALenv.dx6 = TRUE;
+	if(ver >= 5) VMHALenv.dx5 = TRUE;
+}

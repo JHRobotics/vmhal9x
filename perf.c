@@ -32,6 +32,7 @@
 #include <x86intrin.h>
 
 #include "vmhal9x.h"
+#include "d3dhal_mem.h"
 
 #include "nocrt.h"
 
@@ -83,7 +84,7 @@ static perf_item_t *perf_get_item(const char *file, int line_no)
 		pitem = &((*pitem)->next);
 	}
 	
-	*pitem = hal_calloc(HEAP_NORMAL, sizeof(perf_item_t), 0);
+	*pitem = hal3d_calloc(sizeof(perf_item_t));
 	if(*pitem != NULL)
 	{
 		strncpy((*pitem)->fname, file, PERF_FILE_MAX-1);
@@ -111,7 +112,7 @@ void perf_destroy()
 		{
 			garbage = *pitem;
 			*pitem = garbage->next;
-			hal_free(HEAP_NORMAL, garbage);
+			hal3d_free((void**)&garbage);
 		}
 	}
 }

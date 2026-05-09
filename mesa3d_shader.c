@@ -59,12 +59,12 @@ NUKED_LOCAL void MesaVSCreate(mesa3d_ctx_t *ctx, D3DHAL_DP2CREATEVERTEXSHADER *s
 	}
 
 	size_t s = sizeof(mesa_dx_shader_t) + shader->dwDeclSize + shader->dwCodeSize;
-	BYTE *buf = hal_alloc(HEAP_NORMAL, s, 0);
+	BYTE *buf = hal3d_malloc(s);
 	if(buf)
 	{
 		if((*last_ptr) != NULL)
 		{
-			hal_free(HEAP_NORMAL, *last_ptr);
+			hal3d_free((void**)last_ptr);
 		}
 
 		mesa_dx_shader_t *vs = (mesa_dx_shader_t *)buf;
@@ -94,7 +94,7 @@ NUKED_LOCAL void MesaVSDestroy(mesa3d_ctx_t *ctx, DWORD handle)
 		{
 			mesa_dx_shader_t *vs = (*ptr);
 			*ptr = vs->next;
-			hal_free(HEAP_NORMAL, vs);
+			hal3d_free((void**)&vs);
 		}
 		else
 		{
@@ -109,7 +109,7 @@ NUKED_LOCAL void MesaVSDestroyAll(mesa3d_ctx_t *ctx)
 	{
 		mesa_dx_shader_t *vs = ctx->shader.vs;
 		ctx->shader.vs = vs->next;
-		hal_free(HEAP_NORMAL, vs);
+		hal3d_free((void**)&vs);
 	}
 }
 
@@ -136,7 +136,7 @@ NUKED_LOCAL void MesaVSDump(mesa_dx_shader_t *vs)
 
 	if(vs->decl_size > 0)
 	{
-		buf = hal_alloc(HEAP_NORMAL, vs->decl_size * 3 + 1, 0);
+		buf = hal3d_malloc(vs->decl_size * 3 + 1);
 
 		for(i = 0; i < vs->decl_size; i++)
 		{
@@ -144,7 +144,7 @@ NUKED_LOCAL void MesaVSDump(mesa_dx_shader_t *vs)
 		}
 
 		TOPIC("SHADER", "DECL (%d): %s", vs->decl_size, buf);
-		hal_free(HEAP_NORMAL, buf);
+		hal3d_free((void**)&buf);
 	}
 	else
 	{
@@ -153,7 +153,7 @@ NUKED_LOCAL void MesaVSDump(mesa_dx_shader_t *vs)
 
 	if(vs->code_size > 0)
 	{
-		buf = hal_alloc(HEAP_NORMAL, vs->code_size * 3 + 1, 0);
+		buf = hal3d_malloc(vs->code_size * 3 + 1);
 
 		for(i = 0; i < vs->code_size; i++)
 		{
@@ -161,7 +161,7 @@ NUKED_LOCAL void MesaVSDump(mesa_dx_shader_t *vs)
 		}
 
 		TOPIC("SHADER", "CODE (%d): %s", vs->code_size, buf);
-		hal_free(HEAP_NORMAL, buf);
+		hal3d_free((void**)&buf);
 	}
 	else
 	{

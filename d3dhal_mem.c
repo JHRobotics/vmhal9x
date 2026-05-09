@@ -23,42 +23,69 @@
  * OTHER DEALINGS IN THE SOFTWARE.                                            *
  *                                                                            *
  ******************************************************************************/
-#include <windows.h>
-#include <initguid.h>
-#include <stddef.h>
+#include <Windows.h>
 #include <stdint.h>
-#include <ddraw.h>
-#include <ddrawi.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <math.h>
-#include "d3dhal_ddk.h"
-#include "ddrawi_ddk.h"
-#include "vmdahal32.h"
-#include <d3d8caps.h>
-#include "vmhal9x.h"
-#include "mesa3d.h"
-#include "d3dhal.h"
-#include "osmesa.h"
 
-#define VMHAL9X_LIB
-#include "vmsetup.h"
+#include "d3dhal_mem.h"
 
-#include "nocrt.h"
+static HANDLE hal3d_heap = NULL;
 
-#define NUKED_SKIP
+static HANDLE hal3d_create_heap()
+{
+	return HeapCreate(0, 0, 0);
+}
 
-#include "ht.c"
-#include "d3dhal.c"
-#include "d3dhal_mem.c"
-#include "surfindex.c"
-#include "mesa3d.c"
-#include "mesa3d_buffer.c"
-#include "mesa3d_draw.c"
-#include "mesa3d_chroma.c"
-#include "mesa3d_matrix.c"
-#include "mesa3d_draw6.c"
-#include "mesa3d_dump.c"
-#include "mesa3d_state.c"
-#include "mesa3d_shader.c"
-#include "mesa3d_test.c"
+void *hal3d_malloc(size_t size)
+{
+	if(hal3d_heap == NULL) hal3d_heap = hal3d_create_heap();
+
+	if(hal3d_heap != NULL)
+	{
+		return HeapAlloc(hal3d_heap, 0, size);
+	}
+	
+	return NULL;
+}
+
+void *hal3d_calloc(size_t size)
+{
+	if(hal3d_heap == NULL) hal3d_heap = hal3d_create_heap();
+
+	if(hal3d_heap != NULL)
+	{
+		return HeapAlloc(hal3d_heap, HEAP_ZERO_MEMORY, size);
+	}
+	
+	return NULL;
+}
+
+BOOL hal3d_realloc(void **mem, size_t newsize)
+{
+	if(hal3d_heap == NULL) hal3d_heap = hal3d_create_heap();
+
+	if(*mem == NULL)
+	{
+		*mem = HeapAlloc(hal3d_heap, HEAP_ZERO_MEMORY, newsize);
+		return *mem == NULL ? FALSE : TRUE;
+	}
+	else
+	{
+		void *ptr = HeapReAlloc(hal3d_heap, HEAP_ZERO_MEMORY, *mem, newsize);
+		if(ptr != NULL)
+		{
+			*mem = ptr;
+			return TRUE;
+		}
+	}
+	
+	return FALSE;
+}
+
+void hal3d_free(void **ptr)
+{
+	if(hal3d_heap != NULL)
+	{
+		HeapFree(hal3d_heap, 0, *ptr);
+		*ptr = NULL;
+	}
+}

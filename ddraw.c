@@ -29,8 +29,13 @@
 #include <stdint.h>
 #include "ddrawi_ddk.h"
 
+#ifdef D3DHAL
+#include "d3dhal_ddk.h"
+#endif
+
 #include "vmdahal32.h"
 #include "vmhal9x.h"
+#include "ddsurface.h"
 #include "nocrt.h"
 
 /* Display mode should by controled by system/HEL all time */
@@ -93,6 +98,97 @@ DDENTRY(CanCreateSurface32, LPDDHAL_CANCREATESURFACEDATA, pccsd)
 
 #ifdef D3DHAL
 
+static DWORD SurfaceDataSize(LPDDRAWI_DDRAWSURFACE_GBL gbl, DWORD *outPitch)
+{
+	if(gbl)
+	{
+		if(gbl->ddpfSurface.dwFlags & DDPF_FOURCC)
+		{
+			DWORD blksize = 0;
+			BOOL align = TRUE;
+			DWORD dx = gbl->wWidth;
+			DWORD dy = gbl->wHeight;
+			
+			switch(gbl->ddpfSurface.dwFourCC)
+			{
+				case MAKEFOURCC('D', 'X', 'T', '1'):
+					blksize = 8;
+					dx = (gbl->wWidth  + 3) >> 2;
+					dy = (gbl->wHeight + 3) >> 2;
+					align = FALSE;
+					break;
+				case MAKEFOURCC('D', 'X', 'T', '2'):
+				case MAKEFOURCC('D', 'X', 'T', '3'):
+					blksize = 16;
+					dx = (gbl->wWidth  + 3) >> 2;
+					dy = (gbl->wHeight + 3) >> 2;
+					align = FALSE;
+					break;
+				case MAKEFOURCC('D', 'X', 'T', '4'):
+				case MAKEFOURCC('D', 'X', 'T', '5'):
+					blksize = 16;
+					dx = (gbl->wWidth  + 3) >> 2;
+					dy = (gbl->wHeight + 3) >> 2;
+					align = FALSE;
+					break;
+				case D3DFMT_R5G6B5:
+				case D3DFMT_A1R5G5B5:
+				case D3DFMT_X1R5G5B5:
+				case D3DFMT_A4R4G4B4:
+				case D3DFMT_X4R4G4B4:
+				case D3DFMT_A8P8:
+				case D3DFMT_A8L8:
+				case D3DFMT_D16_LOCKABLE:
+				case D3DFMT_D16:
+					blksize = 2;
+					break;
+				case D3DFMT_X8R8G8B8:
+				case D3DFMT_A8R8G8B8:
+				case D3DFMT_D32:
+				case D3DFMT_S8D24:
+				case D3DFMT_D24X8:
+					blksize = 4;
+					break;
+				case D3DFMT_R8G8B8:
+					blksize = 3;
+					break;
+				case D3DFMT_R3G3B2:
+				case D3DFMT_A8:
+				case D3DFMT_L8:
+					blksize = 1;
+					break;
+				default:
+					return 0;
+					break;
+			}
+			
+			if(align)
+			{
+				DWORD pitch = ((dx * blksize) + FBHDA_ROW_ALIGN - 1) & (~(FBHDA_ROW_ALIGN-1));
+				if(outPitch)
+				{
+					*outPitch = pitch;
+				}
+				return dy * pitch;
+			}
+			
+			if(outPitch)
+			{
+			 *outPitch = dx * blksize;
+			}
+			return dx * dy *  blksize;
+		}
+		
+		if(outPitch)
+		{
+			*outPitch = gbl->lPitch;
+		}
+		return gbl->wHeight * gbl->lPitch;
+	}
+	
+	return 0;
+}
+
 static DWORD CreateOneSurface(FBHDA_t *hda, LPDDRAWI_DIRECTDRAW_GBL dd, LPDDRAWI_DDRAWSURFACE_LCL lpSurf, LPDDSURFACEDESC desc, int num)
 {
 //	VMHAL_enviroment_t *env = GlobalVMHALenv();
@@ -113,7 +209,7 @@ static DWORD CreateOneSurface(FBHDA_t *hda, LPDDRAWI_DIRECTDRAW_GBL dd, LPDDRAWI
 
 	if(!is_primary && (fmt->dwFlags & DDPF_FOURCC) != 0)
 	{
-		DWORD pitch;
+		DWORD pitch = 0;
 		DWORD size = SurfaceDataSize(lpSurf->lpGbl, &pitch);
 
 		lpSurf->lpGbl->lPitch = pitch; // for FOURCC needs to be fill
@@ -195,6 +291,11 @@ static DWORD CreateOneSurface(FBHDA_t *hda, LPDDRAWI_DIRECTDRAW_GBL dd, LPDDRAWI
 		);
 	}
 
+	/* copy desc to global */
+	lpSurf->lpGbl->ddpfSurface = *fmt;
+	
+
+/*
 	surface_id sid = SurfaceCreate(lpSurf);
 	if(sid == 0)
 	{
@@ -204,7 +305,7 @@ static DWORD CreateOneSurface(FBHDA_t *hda, LPDDRAWI_DIRECTDRAW_GBL dd, LPDDRAWI
 	{
 		SurfaceSetFormat(sid, fmt, hda->bpp);
 		SurfaceEmptySet(sid);
-	}
+	}*/
 
 	//TOPIC("MEMORY", "Created sid=%d", lpSurf->dwReserved1);
 	TOPIC("TARGET", "Created sid=%d", lpSurf->dwReserved1);
@@ -298,10 +399,11 @@ DDENTRY_FPUSAVE(DestroySurface32, LPDDHAL_DESTROYSURFACEDATA, lpd)
 
 	TOPIC("GARBAGE", "destroy surface vram=%X", lpd->lpDDSurface->lpGbl->fpVidMem);
 
+/*
 #ifdef D3DHAL
 	SurfaceDelete(lpd->lpDDSurface->dwReserved1);
 #endif
-
+*/
 	TOPIC("GARBAGE", "SurfaceDelete() success");
 	lpd->ddRVal = DD_OK;
 	return DDHAL_DRIVER_HANDLED;
@@ -370,54 +472,31 @@ DDENTRY_FPUSAVE(Lock32, LPDDHAL_LOCKDATA, pld)
 	TRACE_ENTRY
 	
 	VMDAHAL_t *ddhal = GetHAL(pld->lpDD);
-	if(IsInFront(ddhal, (void*)pld->lpDDSurface->lpGbl->fpVidMem))
+	
+	void *flat = (void*)pld->lpDDSurface->lpGbl->fpVidMem;
+	if(flat != NULL)
 	{
-#if 0
-		/* idea from sample driver, where they need wait to be done flipping before can be surface locked */
-		uint64_t timestamp = GetTimeTMS();
-		
-		if(timestamp >= last_flip_time)
+		FBHDA_DD_surface_notify(flat);
+	
+		if(IsInFront(ddhal, flat))
 		{
-			if((last_flip_time + SCREEN_TIME) >= timestamp)
+			TOPIC("READBACK", "LOCK %X (primary)", pld->lpDDSurface->lpGbl->fpVidMem);
+			FBHDA_access_begin(0);
+		}
+		else
+		{
+			if(pld->lpDDSurface->ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
 			{
-				pld->ddRVal = DDERR_WASSTILLDRAWING;
-				return DDHAL_DRIVER_HANDLED;
+				WARN("Surface primary but not in front, trying to fix...");
+				if(FlipPrimary(ddhal, flat))
+				{
+					FBHDA_access_begin(0);
+				}
 			}
+			
+			TOPIC("READBACK", "LOCK %X (non primary, primary %X)", pld->lpDDSurface->lpGbl->fpVidMem, ddhal->pFBHDA32->surface);
 		}
-#endif
-		TOPIC("READBACK", "LOCK %X (primary)", pld->lpDDSurface->lpGbl->fpVidMem);
-		FBHDA_access_begin(0);
 	}
-	else
-	{
-		if(pld->lpDDSurface->ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
-		{
-			WARN("Surface primary but not in front, trying to fix...");
-			if(FlipPrimary(ddhal, (void*)pld->lpDDSurface->lpGbl->fpVidMem))
-			{
-				FBHDA_access_begin(0);
-			}
-		}
-		
-		TOPIC("READBACK", "LOCK %X (non primary, primary %X)", pld->lpDDSurface->lpGbl->fpVidMem, ddhal->pFBHDA32->surface);
-	}
-
-#ifdef D3DHAL
-  // FIXME: implement DDLOCK_DISCARDCONTENTS flags
-	surface_id sid = pld->lpDDSurface->dwReserved1;
-	if(sid)
-	{
-		if(SurfaceIsEmpty(sid))
-		{
-			TOPIC("SURFACE", "Empty sid=%d => LOCK", sid);
-			SurfaceEmptyClear(sid);
-//			SurfaceClearData(sid);
-//			TOPIC("CLEAR", "clear in lock 0x%X", pld->lpDDSurface->lpGbl->fpVidMem);
-		}
-		SurfaceFromMesa(pld->lpDDSurface, FALSE);
-		SurfaceLock(pld->lpDDSurface);
-	}
-#endif
 
 	return DDHAL_DRIVER_NOTHANDLED; /* let the lock processed */
 }
@@ -425,19 +504,15 @@ DDENTRY_FPUSAVE(Lock32, LPDDHAL_LOCKDATA, pld)
 DDENTRY_FPUSAVE(Unlock32, LPDDHAL_UNLOCKDATA, pld)
 {
 	TRACE_ENTRY
-	VMDAHAL_t *ddhal = GetHAL(pld->lpDD);
-		
-	if(IsInFront(ddhal, (void*)pld->lpDDSurface->lpGbl->fpVidMem))
+
+	//surface_addr flat = DDSurfGetAddress(pld->lpDDSurface);
+	void *flat = (void*)pld->lpDDSurface->lpGbl->fpVidMem;
+	if(flat)
 	{
 		FBHDA_access_end(0);
+	
+		FBHDA_DD_surface_modify(flat);
 	}
-
-#ifdef D3DHAL
-	TOPIC("READBACK", "UNLOCK %X", pld->lpDDSurface->lpGbl->fpVidMem);
-	TOPIC("DEPTHCONV", "Unlock32");
-	SurfaceLock(pld->lpDDSurface);
-	SurfaceToMesa(pld->lpDDSurface, FALSE);
-#endif
 
 	return DDHAL_DRIVER_NOTHANDLED; /* let the unlock processed */
 }
@@ -523,8 +598,7 @@ DDENTRY_FPUSAVE(DestroyDriver32, LPDDHAL_DESTROYDRIVERDATA, pdstr)
 #endif
 
 #ifdef D3DHAL
-		Mesa3DCleanProc();
-		SurfaceDeleteAll();
+		//Mesa3DCleanProc();
 #endif
 		//FBHDA_free();
 	}
@@ -569,9 +643,10 @@ DDENTRY_FPUSAVE(SetColorKey32, LPDDHAL_SETCOLORKEYDATA, lpSetColorKey)
 		lpSetColorKey->lpDDSurface->ddckCKSrcBlt.dwColorSpaceLowValue  = c1_32;
 		lpSetColorKey->lpDDSurface->ddckCKSrcBlt.dwColorSpaceHighValue = c2_32;
 
+/*
 #ifdef D3DHAL
 		SurfaceApplyColorKey(lpSetColorKey->lpDDSurface->dwReserved1, c1_32, c2_32, c1, c2);
-#endif
+#endif*/
 	}
 
 	lpSetColorKey->ddRVal = DD_OK;

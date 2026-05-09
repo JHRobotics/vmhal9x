@@ -157,7 +157,7 @@ DDENTRY_FPUSAVE(Blt32, LPDDHAL_BLTDATA, pbd)
 			(LPBYTE)ddhal->pFBHDA32->vram_pm32 + ddhal->pFBHDA32->surface);
 
 #ifdef D3DHAL
-		SurfaceFromMesa(srcx, FALSE);
+		FBHDA_DD_surface_notify((void*)src->fpVidMem);
 #endif
 
 		/* check if need stretch */
@@ -284,7 +284,7 @@ DDENTRY_FPUSAVE(Blt32, LPDDHAL_BLTDATA, pbd)
 		} /* nostrech copy */
 		TOPIC("DEPTHCONV", "Blt32 - ROP 1:1");
 #ifdef D3DHAL
-		SurfaceToMesa(dstx, FALSE);
+		FBHDA_DD_surface_modify((void*)dst->fpVidMem);
 #endif
 	}
 	else if (dwFlags & (DDBLT_COLORFILL | DDBLT_DEPTHFILL))
@@ -320,9 +320,7 @@ DDENTRY_FPUSAVE(Blt32, LPDDHAL_BLTDATA, pbd)
 		TOPIC("DEPTHCONV", "Blt32 - DDBLT_COLORFILL | DDBLT_DEPTHFILL");
 
 #ifdef D3DHAL
-		SurfaceZToMesa(dstx, dwFillColor);
-
-		SurfaceToMesa(dstx, FALSE);
+		FBHDA_DD_surface_modify((void*)dst->fpVidMem);
 #endif
 	}
 	else

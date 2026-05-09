@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright (c) 2025 Jaroslav Hensl                                          *
+ * Copyright (c) 2026 Jaroslav Hensl                                          *
  *                                                                            *
  * Permission is hereby granted, free of charge, to any person                *
  * obtaining a copy of this software and associated documentation             *
@@ -23,71 +23,86 @@
  * OTHER DEALINGS IN THE SOFTWARE.                                            *
  *                                                                            *
  ******************************************************************************/
-#ifndef __SURFACE_H__INCLUDED__
-#define __SURFACE_H__INCLUDED__
+#include <windows.h>
+#include <stdint.h>
+#include "memory.h"
+#include "ids.h"
+#include "nocrt.h"
 
-typedef struct surface_info surface_info_t;
+static DWORD ids_bf_length = 0; /* in DWORDs */
+static DWORD *ids_bf = NULL;
 
-typedef struct _DDSURF_cache
+#define BF_BITS 32
+#define BF_FULL (~((DWORD)0))
+#define BF_LENGTH_INC 128
+#define BF_SHIFT 5
+#define BF_MASK 0x1F
+
+#define BF_ID_START 1
+
+BOOL __stdcall id_assign(DWORD *new_id)
 {
-	BOOL color_key;
-	DWORD dwColorKeyLow;
-	DWORD dwColorKeyHigh;
-	DWORD dwColorKeyLowPal;
-	DWORD dwColorKeyHighPal;
-	DWORD pal_stamp;
-	DWORD *data;
-} DDSURF_cache_t;
+	DWORD i, j;
+	for(i = 0; i < ids_bf_length; i++)
+	{
+		DWORD *ptr = &ids_bf[i];
+		if(*ptr != BF_FULL)
+		{
+			for(j = 0; j < BF_BITS; j++)
+			{
+				if((((*ptr) >> j) & 0x1) == 0)
+				{
+					*ptr |= 1 << j;
+					*new_id = (i * BF_BITS + j) + BF_ID_START;
+					return TRUE;
+				}
+			}
+		}
+	}
 
-#define DDSURF_ATTACH_MAX (6*16)
+	/* resize bit field */
+	DWORD new_size = ids_bf_length + BF_LENGTH_INC;
+	BOOL valid;
 
-typedef struct _DDSURF
+	if(ids_bf == NULL)
+	{
+		ids_bf = hal_calloc(HEAP_NORMAL, new_size*sizeof(DWORD), 0);
+		valid = ids_bf != NULL;
+	}
+	else
+	{
+		valid = hal_realloc(HEAP_NORMAL, (void**)&ids_bf, new_size*sizeof(DWORD), TRUE);
+	}
+
+	if(valid)
+	{
+		ids_bf[ids_bf_length] = 0x1;
+		*new_id = (ids_bf_length * BF_BITS) + BF_ID_START;
+		ids_bf_length = new_size;
+		return TRUE;
+	}
+	return FALSE;
+}
+
+void __stdcall id_free(DWORD id)
 {
-	FLATPTR fpVidMem;
-	LPDDRAWI_DDRAWSURFACE_GBL lpGbl;
-	LPDDRAWI_DDRAWSURFACE_LCL lpLclDX7; // DX7 and older only!
-	DDPIXELFORMAT pixfmt;
-	DWORD width;
-	DWORD height;
-	DWORD bpp;
-	DWORD dwFlags;
-	DWORD dwCaps;
-	DWORD dwCaps2;
-	DWORD dwSurfaceHandle;
-	DWORD dwColorKeyLow;
-	DWORD dwColorKeyHigh;
-	DWORD dwPaletteHandle;
-	DWORD dwPaletteFlags;
-	DWORD dwColorKeyLowPal;
-	DWORD dwColorKeyHighPal;
-	DWORD attachments_cnt;
-	DDSURF_cache_t *cache;
-	surface_id attachments[DDSURF_ATTACH_MAX];
-} DDSURF;
+	if(id >= BF_ID_START)
+	{
+		DWORD idd = id - BF_ID_START;
+		DWORD dw = idd >> BF_SHIFT;
+		if(dw < ids_bf_length)
+		{
+			ids_bf[dw] &= ~(idd & BF_MASK);
+		}
+	}
+}
 
-LPDDRAWI_DDRAWSURFACE_LCL SurfaceDuplicate(LPDDRAWI_DDRAWSURFACE_LCL original);
-
-NUKED_LOCAL DDSURF *SurfaceGetSURF(surface_id sid);
-NUKED_LOCAL void *SurfaceGetVidMem(surface_id sid, BOOL ddi6);
-NUKED_LOCAL void SurfaceAttachTexture(surface_id sid, void *mesa_tex, int level, int side);
-NUKED_LOCAL void SurfaceDeattachTexture(surface_id sid, void *mesa_tex, int level, int side);
-NUKED_LOCAL void SurfaceAttachCtx(void *mesa_ctx);
-NUKED_LOCAL void SurfaceDeattachCtx(void *mesa_ctx);
-NUKED_LOCAL LPDDRAWI_DDRAWSURFACE_LCL SurfaceGetLCL_DX7(surface_id sid);
-
-/* private, but for debuging sometimes needed in other files */
-struct surface_attachment;
-
-typedef struct surface_info
+void __stdcall id_destroy()
 {
-	DWORD magic;
-	struct surface_attachment *first;
-	DDSURF surf;
-	DWORD flags;
-	DWORD lock;
-#ifdef DEBUG_MEMORY
-	DWORD id;
-#endif
-} surface_info_t;
-
-#endif /* __SURFACE_H__INCLUDED__ */
+	if(ids_bf_length)
+	{
+		hal_free(HEAP_NORMAL, ids_bf);
+		ids_bf = NULL;
+		ids_bf_length = 0;
+	}
+}

@@ -124,6 +124,12 @@ static BOOL FBHDA_handle()
 			LoadAddress(FBHDA_swap);
 			LoadAddress(FBHDA_page_modify);
 			LoadAddress(FBHDA_mode_query);
+			LoadAddress(FBHDA_DD_surface_get);
+			LoadAddress(FBHDA_DD_surface_set);
+			LoadAddress(FBHDA_DD_surface_delete);
+			LoadAddress(FBHDA_DD_surface_modify);
+			LoadAddress(FBHDA_DD_surface_watch);
+			LoadAddress(FBHDA_DD_surface_notify);
 		}
 		//TRACE("FBHDA_handle() = TRUE");
 
@@ -173,72 +179,36 @@ FBHDA_t *FBHDA_setup()
 	return fbhda;
 }
 
+#define FBHDA_WRAP_VOID(_name, _pdefine, _pcall) \
+	void _name _pdefine { \
+	TRACE_ENTRY \
+	FBHDA_call_lock(); \
+	if(FBHDA_handle()){ \
+		fbhda_lib.p ## _name _pcall ; \
+	} \
+	FBHDA_call_unlock();}
 
-void FBHDA_access_begin(DWORD flags)
-{
-	TRACE_ENTRY
-	
-	FBHDA_call_lock();
-	if(FBHDA_handle())
-	{
-		fbhda_lib.pFBHDA_access_begin(flags);
-	}
-	FBHDA_call_unlock();
-}
+#define FBHDA_WRAP_BOOL(_name, _pdefine, _pcall) \
+	BOOL _name _pdefine { \
+	TRACE_ENTRY \
+	BOOL rc = FALSE; \
+	FBHDA_call_lock(); \
+	if(FBHDA_handle()){ \
+		rc = fbhda_lib.p##_name _pcall ; \
+	} \
+	FBHDA_call_unlock(); \
+	return rc;}
 
-void FBHDA_access_end(DWORD flags)
-{
-	TRACE_ENTRY
-	
-	FBHDA_call_lock();
-	if(FBHDA_handle())
-	{
-		fbhda_lib.pFBHDA_access_end(flags);
-	}
-	FBHDA_call_unlock();
-}
+FBHDA_WRAP_VOID(FBHDA_access_begin, (DWORD flags), (flags))
+FBHDA_WRAP_VOID(FBHDA_access_end, (DWORD flags), (flags))
+FBHDA_WRAP_VOID(FBHDA_access_rect, (DWORD left, DWORD top, DWORD right, DWORD bottom), (left, top, right, bottom))
+FBHDA_WRAP_BOOL(FBHDA_swap, (DWORD offset, DWORD flags), (offset, flags))
+FBHDA_WRAP_BOOL(FBHDA_page_modify, (DWORD flat_address, DWORD size, const BYTE *new_data), (flat_address, size, new_data))
+FBHDA_WRAP_BOOL(FBHDA_mode_query, (DWORD index, FBHDA_mode_t *mode), (index, mode))
 
-BOOL FBHDA_swap(DWORD offset, DWORD flags)
-{
-	TRACE_ENTRY
-	BOOL rc = FALSE;
-	
-	FBHDA_call_lock();
-	if(FBHDA_handle())
-	{
-		rc = fbhda_lib.pFBHDA_swap(offset, flags);
-	}
-	FBHDA_call_unlock();
-	
-	return rc;
-}
-
-BOOL FBHDA_page_modify(DWORD flat_address, DWORD size, const BYTE *new_data)
-{
-	TRACE_ENTRY
-	BOOL rc = FALSE;
-	
-	FBHDA_call_lock();
-	if(FBHDA_handle())
-	{
-		rc = fbhda_lib.pFBHDA_page_modify(flat_address, size, new_data);
-	}
-	FBHDA_call_unlock();
-	
-	return rc;
-}
-
-BOOL FBHDA_mode_query(DWORD index, FBHDA_mode_t *mode)
-{
-	TRACE_ENTRY
-	BOOL rc = FALSE;
-	
-	FBHDA_call_lock();
-	if(FBHDA_handle())
-	{
-		rc = fbhda_lib.pFBHDA_mode_query(index, mode);
-	}
-	FBHDA_call_unlock();
-	
-	return rc;
-}
+FBHDA_WRAP_BOOL(FBHDA_DD_surface_get, (void *flat, FBHDA_DD_surface_t *info), (flat, info))
+FBHDA_WRAP_BOOL(FBHDA_DD_surface_set, (void *flat, FBHDA_DD_surface_t *info), (flat, info))
+FBHDA_WRAP_VOID(FBHDA_DD_surface_delete, (void *flat), (flat))
+FBHDA_WRAP_BOOL(FBHDA_DD_surface_modify, (void *flat), (flat))
+FBHDA_WRAP_BOOL(FBHDA_DD_surface_watch, (void *flat, FBHDA_DD_watch_callback_t callback), (flat, callback))
+FBHDA_WRAP_VOID(FBHDA_DD_surface_notify, (void *flat), (flat))

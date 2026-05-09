@@ -211,7 +211,7 @@ DDENTRY_FPUSAVE(Flip32, LPDDHAL_FLIPDATA, pfd)
 		);
 
 #ifdef D3DHAL
-		SurfaceCtxLock();
+		//SurfaceCtxLock();
 #endif
 		is_flipping = TRUE;
 
@@ -231,7 +231,7 @@ DDENTRY_FPUSAVE(Flip32, LPDDHAL_FLIPDATA, pfd)
 		
 		is_flipping = FALSE;
 #ifdef D3DHAL
-		SurfaceCtxUnlock();
+		//SurfaceCtxUnlock();
 #endif
 	}
 #if 1
@@ -239,7 +239,7 @@ DDENTRY_FPUSAVE(Flip32, LPDDHAL_FLIPDATA, pfd)
 	{
 		/* surface isn't primary, so only refresh primary surface */
 #ifdef D3DHAL
-		SurfaceCtxLock();
+		//SurfaceCtxLock();
 #endif
 		is_flipping = TRUE;
 		FBHDA_access_begin(0);
@@ -250,7 +250,7 @@ DDENTRY_FPUSAVE(Flip32, LPDDHAL_FLIPDATA, pfd)
 		TOPIC("READBACK", "Flip, refresh: %X (!)", pfd->lpSurfTarg->lpGbl->fpVidMem);
 		is_flipping = FALSE;
 #ifdef D3DHAL
-		SurfaceCtxUnlock();
+		//SurfaceCtxUnlock();
 #endif
 	}
 #endif

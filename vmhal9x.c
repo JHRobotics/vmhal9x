@@ -60,37 +60,9 @@
 
 static HINSTANCE dllHinst = NULL;
 
-VMDAHAL_t *globalHal;
+VMDAHAL_t *globalHal = NULL;
 
 BOOL halVSync = FALSE;
-
-static VMHAL_enviroment_t VMHALenv = {
-	FALSE, /* scanned */
-	FALSE, /* only2d */
-	FALSE, /* forceos */
-	FALSE, /* runtime dx5 */
-	FALSE, /* runtime dx6 */
-	FALSE, /* runtime dx7 */
-	FALSE, /* runtime dx8 */
-	FALSE, /* runtime dx9 */
-	8, // DDI (maximum)
-	8, // HW T&L
-	FALSE, // readback
-	FALSE, // touchdepth
-	16384, // tex w  (can be query by GL_MAX_TEXTURE_SIZE)
-	16384, // tex h
-	4, // tex units
-	8, // lights (GL min. is 8)
-	6, // clip planes (GL min. is 6), GL_MAX_CLIP_PLANES
-	TRUE, // use float32 in Z buffer (eg 64-bit F32_S8_X24 depth plane), on FALSE 32-bit S24_S8 depth plane
-	16, // max anisotropy
-	FALSE, // vertexblend
-	FALSE, // use palette
-	FALSE,  // filter bug
-	FALSE, // s3tc bug
-	TRUE,  // textures in sysmem
-	0,     // low detail
-};
 
 static DWORD CalcPitch(DWORD w, DWORD bpp)
 {
@@ -255,103 +227,6 @@ BOOL ProcessExists(DWORD pid)
 	return rc;
 }
 
-BOOL GetVMHALenv(VMHAL_enviroment_t *dst)
-{
-	if(dst == NULL) return FALSE;
-
-	memcpy(dst, &VMHALenv, sizeof(VMHAL_enviroment_t));
-
-	return TRUE;
-}
-
-VMHAL_enviroment_t *GlobalVMHALenv()
-{
-	return &VMHALenv;
-}
-
-void UpdateVMHALenv(VMHAL_enviroment_t *dst)
-{
-	if(vmhal_setup_str("hal", "forceos", FALSE) != NULL)
-	{
-		dst->forceos = vmhal_setup_dw("hal", "forceos") ? TRUE : FALSE; 
-	}
-	
-	if(vmhal_setup_str("hal", "readback", FALSE) != NULL)
-	{
-		dst->readback = vmhal_setup_dw("hal", "readback") ? TRUE : FALSE;
-	}
-	
-	if(vmhal_setup_str("hal", "touchdepth", FALSE) != NULL)
-	{
-		dst->touchdepth = vmhal_setup_dw("hal", "touchdepth") ? TRUE : FALSE;
-	}
-	
-	if(vmhal_setup_str("hal", "lowdetail", FALSE) != NULL)
-	{
-		dst->lowdetail = vmhal_setup_dw("hal", "lowdetail");
-	}	
-}
-
-static void ReadEnv(VMHAL_enviroment_t *dst)
-{
-	memcpy(dst, &VMHALenv, sizeof(VMHAL_enviroment_t));
-
-	if(vmhal_setup_str("hal", "ddi", FALSE) != NULL)
-	{
-		dst->ddi = vmhal_setup_dw("hal", "ddi"); 
-	}
-	
-	if(vmhal_setup_str("hal", "hwtl", FALSE) != NULL)
-	{
-		dst->hwtl_ddi = vmhal_setup_dw("hal", "hwtl") ;
-	}
-
-	if(vmhal_setup_str("hal", "vertexblend", FALSE) != NULL)
-	{
-		dst->vertexblend = vmhal_setup_dw("hal", "vertexblend") ? TRUE : FALSE;
-	}
-
-	if(vmhal_setup_str("hal", "palette", FALSE) != NULL)
-	{
-		dst->allow_palette = vmhal_setup_dw("hal", "palette") ? TRUE : FALSE;
-	}
-
-	if(vmhal_setup_str("hal", "filter_bug", FALSE) != NULL)
-	{
-		dst->filter_bug = vmhal_setup_dw("hal", "filter_bug") ? TRUE : FALSE;
-	}
-
-	if(vmhal_setup_str("hal", "s3tc_bug", FALSE) != NULL)
-	{
-		dst->s3tc_bug = vmhal_setup_dw("hal", "s3tc_bug") ? TRUE : FALSE;
-	}
-
-	if(vmhal_setup_str("hal", "sysmem", FALSE) != NULL)
-	{
-		dst->sysmem = vmhal_setup_dw("hal", "sysmem") ? TRUE : FALSE;
-	}
-	
-	if(vmhal_setup_str("hal", "reduce_tex_units", FALSE) != NULL)
-	{
-		DWORD t = vmhal_setup_dw("hal", "reduce_tex_units");
-		if(t == 0)
-		{
-			dst->texture_num_units = 8;
-		}
-	}
-	
-	UpdateVMHALenv(dst);
-}
-
-void VMHALenv_RuntimeVer(int ver)
-{
-	if(ver >= 9) VMHALenv.dx9 = TRUE;
-	if(ver >= 8) VMHALenv.dx8 = TRUE;
-	if(ver >= 7) VMHALenv.dx7 = TRUE;
-	if(ver >= 6) VMHALenv.dx6 = TRUE;
-	if(ver >= 5) VMHALenv.dx5 = TRUE;
-}
-
 //VMDAHAL_t __stdcall *DriverInit(LPVOID ptr)
 DWORD __stdcall DriverInit(LPVOID ptr)
 {
@@ -372,8 +247,6 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 
 	globalHal = ptr;
 	
-	ReadEnv(&VMHALenv);
-
 	globalHal->cb32.CreateSurface = CreateSurface32;
 	globalHal->cb32.DestroySurface = DestroySurface32;
 	globalHal->cb32.CanCreateSurface = CanCreateSurface32;
@@ -411,65 +284,43 @@ DWORD __stdcall DriverInit(LPVOID ptr)
 	SetExceptionHandler();
 #endif
 
-	{
-		/*
-		 TODO: same key in in S3V
-				HKEY_CURRENT_CONFIG
-				"Display\\Settings"
-				"WaitForVSync"
-				"OFF"
-		*/
-		
-		HKEY reg;
-		if(RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\vmdisp9x", 0, KEY_READ, &reg) == ERROR_SUCCESS)
-		{
-			DWORD type;
-			BYTE buf[128];
-			DWORD size = sizeof(buf);
-			if(RegQueryValueExA(reg, "HAL_VSYNC", NULL, &type, (LPBYTE)&buf[0], &size) == ERROR_SUCCESS)
-			{
-		  	switch(type)
-		   	{
-					case REG_SZ:
-					case REG_MULTI_SZ:
-					case REG_EXPAND_SZ:
-					{
-						int n = atoi((char*)buf);
-						if(n != 0)
-						{
-							halVSync = TRUE;
-						}
-						break;
-					}
-					case REG_DWORD:
-					{
-						DWORD dw = *((LPDWORD)buf);
-						if(dw != 0)
-						{
-							halVSync = TRUE;
-						}
-						break;
-					}
-				}
-			}
-			RegCloseKey(reg);
-		}
-	}
+	/*
+	halVSync:
+	 TODO: same key in in S3V
+			HKEY_CURRENT_CONFIG
+			"Display\\Settings"
+			"WaitForVSync"
+			"OFF"
+	*/
+
 
 #ifdef D3DHAL
 	/* do cleanup */
-	Mesa3DCalibrate(TRUE);
-	Mesa3DCleanProc();
-	SurfaceDeleteAll();
+	//Mesa3DCalibrate(TRUE);
+	//Mesa3DCleanProc();
+	//SurfaceDeleteAll();
+	
+	DWORD only2d = 0;
+	DWORD ddi = 9;
 
-	if(!VMHALenv.only2d && VMHALenv.ddi >= 3)
+	if(vmhal_setup_str("hal", "only2d", FALSE) != NULL)
 	{
-		if(VMHALenv.ddi >= 5)
+		only2d = vmhal_setup_dw("hal", "only2d") ? TRUE : FALSE; 
+	}
+	
+	if(vmhal_setup_str("hal", "ddi", FALSE) != NULL)
+	{
+		ddi = vmhal_setup_dw("hal", "ddi") ? TRUE : FALSE; 
+	}
+
+	if(!only2d && ddi >= 3)
+	{
+		if(ddi >= 5)
 		{
 			globalHal->cb32.GetDriverInfo = GetDriverInfo32;
 		}
 		globalHal->cb32.flags = DDHALINFO_ISPRIMARYDISPLAY; // TODO: set for drivers DDHALINFO_MODEXILLEGAL (vmware workstation)
-		if(VMHALenv.ddi >= 8)
+		if(ddi >= 8)
 		{
 			globalHal->cb32.flags |= DDHALINFO_GETDRIVERINFO2;
 		}
@@ -524,14 +375,13 @@ BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpvReserved)
 			{
 				TRACE("--- vmhal9x created ---");
 				hal_memory_init();
-				PERF_INIT
 			}
 			tmp += 1;
 			InterlockedExchange(&lProcessCount, tmp);
 			
 			dllHinst = hModule;
 #ifdef D3DHAL
-			Mesa3DCleanProc();
+			//Mesa3DCleanProc();
 #endif
 			
 			break;
@@ -543,7 +393,7 @@ BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpvReserved)
 			 *         DLLs.
 			 */
 #ifdef D3DHAL
-			Mesa3DCleanProc();
+			//Mesa3DCleanProc();
 			hal_dump_allocs();
 #endif
 			FBHDA_free();
@@ -555,8 +405,6 @@ BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpvReserved)
 
 			if(tmp == 0)         // Last process?
 			{
-				PERF_DUMP
-				PERF_DESTROY
 				UninstallWineHook();
 				hal_memory_destroy();
 				TRACE("--- vmhal9x destroyed ---");

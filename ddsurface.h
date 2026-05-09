@@ -1,0 +1,6 @@
+#ifndef __VMHAL9X__DDSURFACE_H__INCLUDED__
+#define __VMHAL9X__DDSURFACE_H__INCLUDED__
+
+surface_addr DDSurfGetAddress(LPDDRAWI_DDRAWSURFACE_LCL lcl);
+
+#endif /* __VMHAL9X__DDSURFACE_H__INCLUDED__ */

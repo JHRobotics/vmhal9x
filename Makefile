@@ -38,7 +38,7 @@ OBJ := .o
 LIBSUFFIX := .a
 LIBPREFIX := lib
 
-DEPS= Makefile config.mk vmhal9x.h mesa3d.h mesa3d_api.h surface.h x86.h memory.h 3d_accel.h
+DEPS= Makefile config.mk vmhal9x.h mesa3d.h mesa3d_api.h surfindex.h x86.h memory.h 3d_accel.h
 RUNPATH=$(if $(filter $(OS),Windows_NT),.\,./)
 
 HOST_SUFFIX=
@@ -50,7 +50,8 @@ DLLFLAGS = -o $@ -shared -Wl,--dll,--out-implib,lib$(@:dll=a),--exclude-all-symb
 
 EXEFLAGS = -o $@ -static -nostdlib -nodefaultlibs -lgcc -luser32 -lkernel32 -lgdi32 -lole32 -lshell32 -Wl,-subsystem,windows$(TUNE_LD)
 
-DEFS = -DOPENGL_BLOCK_LOCK
+DEFS = -DD3DHAL
+#DEFS += -DOPENGL_BLOCK_LOCK 
 #DEFS += -DDD_LOCKING
 
 LIBS = -luser32 -lkernel32 -lgcc -lgdi32 -ladvapi32
@@ -88,35 +89,41 @@ endif
 
 BASE_$(OUTNAME).dll := 0xB00B0000
 BASE_vmdisp9x.dll := 0x32500000
+BASE_vmhal3d.dll  := 0x10000000
 
 d3d.c.o: d3d_caps.h
 mesa3d_buffer.c.o: mesa3d_zconv.h mesa3d_flip.h
-mesa3d_nuked.c.o: mesa3d.c mesa3d_buffer.c mesa3d_draw.c mesa3d_chroma.c \
-  mesa3d_matrix.c mesa3d_draw6.c mesa3d_dump.c mesa3d_state.c mesa3d_shader.c mesa3d_test.c
 
 NOCRT_OBJS = nocrt/nocrt.c.o nocrt/nocrt_math.c.o nocrt/nocrt_math_calc.c.o \
   nocrt/nocrt_file_win.c.o nocrt/nocrt_mem_win.c.o
 
+FBHDA_OBJS += fbhda.c.o regex/re.c.o vmsetup.c.o
+
+NUKED_OBJS = ht.c.o d3dhal.c.o d3dhal_mem.c.o surfindex.c.o \
+  mesa3d.c.o mesa3d_buffer.c.o mesa3d_draw.c.o mesa3d_chroma.c.o mesa3d_matrix.c.o \
+  mesa3d_draw6.c.o mesa3d_dump.c.o mesa3d_state.c.o mesa3d_shader.c.o mesa3d_test.c.o
+
+mesa3d_nuked.c.o: ht.c d3dhal.c d3dhal_mem.c surfindex.c \
+  mesa3d.c mesa3d_buffer.c mesa3d_draw.c mesa3d_chroma.c mesa3d_matrix.c \
+  mesa3d_draw6.c mesa3d_dump.c mesa3d_state.c mesa3d_shader.c mesa3d_test.c
+
 VMHAL9X_OBJS = $(NOCRT_OBJS) nocrt/nocrt_dll.c.o vmhal9x.c.o ddraw.c.o 3d_accel.c.o flip32.c.o \
   blt32.c.o rop3.c.o transblt.c.o debug.c.o dump.c.o fill.c.o memory.c.o \
-  hotpatch.c.o wine.c.o vmhal9x.res perf.c.o
+  hotpatch.c.o wine.c.o vmhal9x.res d3d.c.o ids.c.o vmhalenv.c.o
 
-VMDISP9X_OBJS = $(NOCRT_OBJS) nocrt/nocrt_dll.c.o vmdisp9x.c.o regex/re.c.o vmsetup.c.o vmdisp9x.res
+VMHAL3D_OBJS = $(NOCRT_OBJS) nocrt/nocrt_dll.c.o $(FBHDA_OBJS) debug.c.o perf.c.o dump.c.o 
+
+ifdef CODENUKED
+  VMHAL3D_OBJS += mesa3d_nuked.c.o
+else
+  VMHAL3D_OBJS += $(NUKED_OBJS)
+endif
+
+VMDISP9X_OBJS = $(NOCRT_OBJS) nocrt/nocrt_dll.c.o vmdisp9x.c.o $(FBHDA_OBJS) vmdisp9x.res
 
 WINETRAY_OBJ = $(NOCRT_OBJS) nocrt/nocrt_exe.c.o tray/tray3d.c.o tray/monitor.c.o tray/tray3d.res
 
 VESAMODE_OBJ = $(NOCRT_OBJS) nocrt/nocrt_exe.c.o vesa/vesamode.c.o vesa/regdelnode.c.o 3d_accel.c.o debug.c.o vesa/vesamode.res
-
-ifdef D3DHAL
-  ifdef CODENUKED
-    VMHAL9X_OBJS += mesa3d_nuked.c.o
-  else
-	  VMHAL9X_OBJS += d3d.c.o surface.c.o mesa3d.c.o mesa3d_buffer.c.o \
-	    mesa3d_draw.c.o mesa3d_chroma.c.o mesa3d_matrix.c.o mesa3d_draw6.c.o \
-	    mesa3d_dump.c.o mesa3d_state.c.o mesa3d_shader.c.o mesa3d_test.c.o
-	endif
-	CFLAGS += -DD3DHAL
-endif
 
 fixlink$(HOST_SUFFIX):
 	$(HOST_CC) -std=$(CSTD) fixlink/fixlink.c -o fixlink$(HOST_SUFFIX)
@@ -124,13 +131,16 @@ fixlink$(HOST_SUFFIX):
 vmdisp9x.dll: $(VMDISP9X_OBJS)
 	$(CC) $(LDFLAGS) $(VMDISP9X_OBJS) vmdisp9x.def $(LIBS) $(DLLFLAGS)
 
+vmhal3d.dll: $(VMHAL3D_OBJS)
+	$(CC) $(LDFLAGS) $(VMHAL3D_OBJS) vmhal3d.def $(LIBS) $(DLLFLAGS)
+
 tray3d.exe: $(WINETRAY_OBJ)
 	$(CC) $(LDFLAGS) $(WINETRAY_OBJ) $(LIBS) $(EXEFLAGS)
 
 vesamode.exe: $(VESAMODE_OBJ)
 	$(CC) $(LDFLAGS) $(VESAMODE_OBJ) $(LIBS) $(EXEFLAGS)
 
-$(OUTNAME).dll: $(VMHAL9X_OBJS) fixlink$(HOST_SUFFIX) vmdisp9x.dll tray3d.exe vesamode.exe
+$(OUTNAME).dll: $(VMHAL9X_OBJS) fixlink$(HOST_SUFFIX) vmhal3d.dll vmdisp9x.dll tray3d.exe vesamode.exe
 	$(CC) $(LDFLAGS) $(VMHAL9X_OBJS) vmhal9x.def $(LIBS) $(DLLFLAGS)
 	$(RUNPATH)fixlink$(HOST_SUFFIX) -shared $@
 
@@ -147,9 +157,11 @@ cleanjunk:
 	-$(RM) libddraw.a
 	-$(RM) $(WINETRAY_OBJ)
 	-$(RM) $(VESAMODE_OBJ)
+	-$(RM) $(VMHAL3D_OBJS)
 
 clean: cleanjunk
 	-$(RM) vmdisp9x.dll
+	-$(RM) vmdisp3d.dll
 	-$(RM) $(OUTNAME).dll
 	-$(RM) tray3d.exe
 	-$(RM) vesamode.exe

@@ -62,6 +62,8 @@
 
 void dbg_prefix_printf(const char *topic, const char *prefix, const char *file, int line, const char *fmt, ...);
 
+void dbg_log_set(const char *fn);
+
 #if DDDEBUG >= 4
 # define dbg_printf(_fmt, ...) dbg_prefix_printf(NULL, "D|", __FILE__, __LINE__, _fmt __VA_OPT__(,) __VA_ARGS__)
 #else
@@ -148,30 +150,8 @@ uint64_t GetTimeTMS();
 void Mesa3DCleanProc();
 void Mesa3DCalibrate(BOOL loadonly);
 
-void SurfaceCtxLock();
-void SurfaceCtxUnlock();
-
 typedef DWORD surface_id;
-
-#define MAX_SURFACES 65535
-
-DWORD SurfaceCreate(LPDDRAWI_DDRAWSURFACE_LCL surf);
-BOOL SurfaceDelete(surface_id sid);
-void SurfaceDeleteAll();
-void SurfaceToMesaTex(surface_id sid);
-void SurfaceToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly);
-void SurfaceZToMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, DWORD color);
-void SurfaceSetFormat(surface_id sid, DDPIXELFORMAT *fmt, DWORD screen_bpp);
-
-void SurfaceFromMesa(LPDDRAWI_DDRAWSURFACE_LCL surf, BOOL texonly);
-BOOL SurfaceIsEmpty(surface_id sid);
-void SurfaceEmptyClear(surface_id sid);
-void SurfaceEmptySet(surface_id sid);
-void SurfaceApplyColorKey(surface_id sid, DWORD low, DWORD hi, DWORD low_pal, DWORD hi_pal);
-DWORD SurfaceDataSize(LPDDRAWI_DDRAWSURFACE_GBL gbl, DWORD *outPitch);
-
-void SurfaceLock(LPDDRAWI_DDRAWSURFACE_LCL surf);
-void SurfaceUnlock(LPDDRAWI_DDRAWSURFACE_LCL surf);
+typedef void *surface_addr;
 
 inline static DWORD SurfacePitch(DWORD width, DWORD bpp)
 {

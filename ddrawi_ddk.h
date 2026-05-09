@@ -63,6 +63,11 @@ typedef struct _DDHAL_GETBLTSTATUSDATA
  */
 #define DDHAL_PLEASEALLOC_LINEARSIZE	0x00000003l
 
+/*
+ * value in the fpVidMem; indicates dwBlockSize is valid (surface object)
+ */
+#define DDHAL_PLEASEALLOC_USERMEM       0x00000004l
+
 // This structure can be queried from the driver from DX5 onward
 // using GetDriverInfo with GUID_MiscellaneousCallbacks
 #define DDHAL_MISCCB32_GETAVAILDRIVERMEMORY    0x00000001l

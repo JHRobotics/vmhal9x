@@ -158,7 +158,7 @@ NUKED_LOCAL void MesaDrawTLVertex(mesa3d_ctx_t *ctx, LPD3DTLVERTEX vertex)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 	
-	if(ctx->state.tmu[0].image)
+	if(ctx->state.tmu[0].active_dxid)
 	{
 		entry->proc.pglMultiTexCoord2f(GL_TEXTURE0, CONV_U_TO_S(vertex->tu), CONV_V_TO_T(vertex->tv));
 		TOPIC("TEX", "glTexCoord2f(%f, %f)", vertex->tu, vertex->tv);
@@ -176,7 +176,7 @@ NUKED_LOCAL void MesaDrawLVertex(mesa3d_ctx_t *ctx, LPD3DLVERTEX vertex)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 
-	if(ctx->state.tmu[0].image)
+	if(ctx->state.tmu[0].active_dxid)
 	{
 		entry->proc.pglMultiTexCoord2f(GL_TEXTURE0, CONV_U_TO_S(vertex->tu), CONV_V_TO_T(vertex->tv));
 	}
@@ -191,7 +191,7 @@ NUKED_LOCAL void MesaDrawVertex(mesa3d_ctx_t *ctx, LPD3DVERTEX vertex)
 {
 	mesa3d_entry_t *entry = ctx->entry;
 
-	if(ctx->state.tmu[0].image)
+	if(ctx->state.tmu[0].active_dxid)
 	{
 		entry->proc.pglMultiTexCoord2f(GL_TEXTURE0, CONV_U_TO_S(vertex->tu), CONV_V_TO_T(vertex->tv));
 	}
@@ -489,7 +489,7 @@ NUKED_FAST void MesaVertexStream(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int i
 
 	for(i = 0; i < ctx->tmu_count; i++)
 	{
-		if(ctx->state.tmu[i].image)
+		if(ctx->state.tmu[i].active_dxid)
 		{
 			int coordindex               = ctx->state.tmu[i].coordindex;
 			mesa_vertex_data_t coordtype = ctx->state.vertex.type.texcoords[coordindex];
@@ -646,7 +646,7 @@ NUKED_FAST void MesaVertexBuffer(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, BYTE 
 
 	for(i = 0; i < ctx->tmu_count; i++)
 	{
-		if(ctx->state.tmu[i].image)
+		if(ctx->state.tmu[i].active_dxid)
 		{
 			int coordindex               = ctx->state.tmu[i].coordindex;
 			mesa_vertex_data_t coordtype = ctx->state.vertex.type.texcoords[coordindex];

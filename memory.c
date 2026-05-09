@@ -25,7 +25,6 @@
  ******************************************************************************/
 #include <Windows.h>
 
-
 #include <stdint.h>
 #include <ddraw.h>
 #include <ddrawi.h>

@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright (c) 2025 Jaroslav Hensl                                          *
+ * Copyright (c) 2026 Jaroslav Hensl                                          *
  *                                                                            *
  * Permission is hereby granted, free of charge, to any person                *
  * obtaining a copy of this software and associated documentation             *
@@ -23,42 +23,23 @@
  * OTHER DEALINGS IN THE SOFTWARE.                                            *
  *                                                                            *
  ******************************************************************************/
-#include <windows.h>
-#include <initguid.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <ddraw.h>
-#include <ddrawi.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <math.h>
-#include "d3dhal_ddk.h"
-#include "ddrawi_ddk.h"
-#include "vmdahal32.h"
-#include <d3d8caps.h>
-#include "vmhal9x.h"
-#include "mesa3d.h"
-#include "d3dhal.h"
-#include "osmesa.h"
+#ifndef __VMHAL9X__IDS_H__INCLUDED__
+#define __VMHAL9X__IDS_H__INCLUDED__
 
-#define VMHAL9X_LIB
-#include "vmsetup.h"
+BOOL __stdcall id_assign(DWORD *new_id);
+void __stdcall id_free(DWORD id);
+void __stdcall id_destroy();
 
-#include "nocrt.h"
+typedef BOOL (__stdcall *id_assign_p)(DWORD *new_id);
+typedef void (__stdcall *id_free_p)(DWORD id);
+typedef void (__stdcall *id_destroy_p)(void);
 
-#define NUKED_SKIP
+typedef struct _ids_proc_t
+{
+	id_assign_p  id_assign;
+	id_free_p    id_free;
+	id_destroy_p id_destroy;
+	BOOL valid;
+} ids_proc_t;
 
-#include "ht.c"
-#include "d3dhal.c"
-#include "d3dhal_mem.c"
-#include "surfindex.c"
-#include "mesa3d.c"
-#include "mesa3d_buffer.c"
-#include "mesa3d_draw.c"
-#include "mesa3d_chroma.c"
-#include "mesa3d_matrix.c"
-#include "mesa3d_draw6.c"
-#include "mesa3d_dump.c"
-#include "mesa3d_state.c"
-#include "mesa3d_shader.c"
-#include "mesa3d_test.c"
+#endif

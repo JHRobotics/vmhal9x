@@ -485,7 +485,7 @@ NUKED_LOCAL mesa_rec_state_t *MesaRecLookup(mesa3d_ctx_t *ctx, DWORD handle, BOO
 		return NULL;
 	}
 
-	ctx->records[empty] = hal_calloc(HEAP_NORMAL, sizeof(mesa_rec_state_t), 0);
+	ctx->records[empty] = hal3d_calloc(sizeof(mesa_rec_state_t));
 	if(ctx->records[empty])
 	{
 		ctx->records[empty]->handle = handle;
@@ -551,7 +551,7 @@ NUKED_LOCAL void MesaRecDelete(mesa3d_ctx_t *ctx, DWORD handle)
 					ctx->state.recording = FALSE;
 				}
 			}
-			hal_free(HEAP_NORMAL, ctx->records[i]);
+			hal3d_free((void**)&ctx->records[i]);
 			ctx->records[i] = NULL;
 		}
 	} // for

@@ -205,7 +205,7 @@ NUKED_LOCAL void MesaLightCreate(mesa3d_ctx_t *ctx, DWORD id)
 	if(id >= ctx->light.lights_size)
 	{
 		DWORD new_size = (id + 8);
-		if(hal_realloc(HEAP_NORMAL, (void**)&ctx->light.lights, new_size*sizeof(mesa3d_light_t*), TRUE))
+		if(hal3d_realloc((void**)&ctx->light.lights, new_size*sizeof(mesa3d_light_t*)))
 		{
 			ctx->light.lights_size = new_size;
 		}
@@ -213,7 +213,7 @@ NUKED_LOCAL void MesaLightCreate(mesa3d_ctx_t *ctx, DWORD id)
 
 	if(ctx->light.lights[id] == NULL)
 	{
-		ctx->light.lights[id] = hal_calloc(HEAP_NORMAL, sizeof(mesa3d_light_t), 0);
+		ctx->light.lights[id] = hal3d_calloc(sizeof(mesa3d_light_t));
 
 		TOPIC("LIGHT", "Light %d created!", id);
 	}
@@ -230,11 +230,11 @@ NUKED_LOCAL void MesaLightDestroyAll(mesa3d_ctx_t *ctx)
 		{
 			if(ctx->light.lights[i] != NULL)
 			{
-				hal_free(HEAP_NORMAL, ctx->light.lights[i]);
+				hal3d_free((void**)&ctx->light.lights[i]);
 			}
 		}
 
-		hal_free(HEAP_NORMAL, ctx->light.lights);
+		hal3d_free((void**)&ctx->light.lights);
 		ctx->light.lights_size = 0;
 		ctx->light.lights = NULL;
 	}
@@ -1083,6 +1083,7 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 						D3DHAL_DP2SETPALETTE* lpSetPal = (D3DHAL_DP2SETPALETTE*)(prim);
 						prim += sizeof(D3DHAL_DP2SETPALETTE);
 
+#if 0 /* FIXME */
 						surface_id sid = ctx->surfaces->table[lpSetPal->dwSurfaceHandle];
 						if(sid)
 						{
@@ -1093,8 +1094,8 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 								dds->dwPaletteHandle = lpSetPal->dwPaletteHandle;
 							}
 						}
+#endif
 					}
-					// skipped
 					NEXT_INST(0);
 					break;
 				COMMAND(D3DDP2OP_UPDATEPALETTE)
@@ -1326,22 +1327,9 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 							TOPIC("TARGET", "hRenderTarget=%d, hZBuffer=%d", pSRTData->hRenderTarget, pSRTData->hZBuffer);
 							TOPIC("TEXTARGET", "hRenderTarget=%d, hZBuffer=%d", pSRTData->hRenderTarget, pSRTData->hZBuffer);
 
-							surface_id dds_sid = 0;
-							surface_id ddz_sid = 0;
-
-							if(pSRTData->hRenderTarget != 0 && pSRTData->hRenderTarget < ctx->surfaces->table_size)
+							if(pSRTData->hRenderTarget)
 							{
-								dds_sid = ctx->surfaces->table[pSRTData->hRenderTarget];
-							}
-
-							if(pSRTData->hZBuffer != 0 && pSRTData->hZBuffer < ctx->surfaces->table_size)
-							{
-								ddz_sid = ctx->surfaces->table[pSRTData->hZBuffer];
-							}
-
-							if(dds_sid)
-							{
-								MesaSetTarget(ctx, dds_sid, ddz_sid, FALSE);
+								MesaSetTarget(ctx, pSRTData->hRenderTarget, pSRTData->hZBuffer, FALSE);
 							}
 							else
 							{
@@ -1527,7 +1515,13 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 							if(vsrc->dwVBHandle > 0)
 							{
 								//surface_id sid = ctx->surfaces->table[vsrc->dwVBHandle];
-								void *buffer = MesaSurfacesGetBuffer(ctx, vsrc->dwVBHandle);
+								void *buffer = NULL;
+								ddsurface_t *dd = ddsurf_get_by_id(ctx, vsrc->dwVBHandle);
+								if(dd)
+								{
+									buffer = dd->flatptr;
+								}
+
 								if(buffer)
 								{
 //	    					ctx->vstream[vsrc->dwStream].sid = sid;
@@ -1587,7 +1581,13 @@ NUKED_LOCAL DWORD MesaDraw6(mesa3d_ctx_t *ctx,
 
 						if(si->dwVBHandle > 0)
 						{
-							ctx->state.bind_indices = MesaSurfacesGetBuffer(ctx, si->dwVBHandle);
+							ctx->state.bind_indices = NULL;
+							
+							ddsurface_t *dd = ddsurf_get_by_id(ctx, si->dwVBHandle);
+							if(dd)
+							{
+								ctx->state.bind_indices = dd->flatptr;
+							}
 							D8_VALIDATE_STRIDE(si->dwStride);
 							ctx->state.bind_indices_stride = si->dwStride;
 						}

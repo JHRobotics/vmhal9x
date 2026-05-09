@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright (c) 2024 Jaroslav Hensl                                          *
+ * Copyright (c) 2026 Jaroslav Hensl                                          *
  *                                                                            *
  * Permission is hereby granted, free of charge, to any person                *
  * obtaining a copy of this software and associated documentation             *
@@ -23,7 +23,6 @@
  * OTHER DEALINGS IN THE SOFTWARE.                                            *
  *                                                                            *
  ******************************************************************************/
-#ifndef NUKED_SKIP
 #include <windows.h>
 #include <initguid.h> /* this is only one file using GUID */
 #include <ddraw.h>
@@ -35,22 +34,13 @@
 #include "vmdahal32.h"
 #include <d3d8caps.h>
 #include "vmhal9x.h"
-#include "mesa3d.h"
+#include "ids.h"
+#include "d3dhal.h"
 
 #include "nocrt.h"
-#endif
 
 /* FROM ddrvmem.h */
 typedef DWORD HDDRVITEM, * LPHDDRVITEM;
-
-#define MESA_TMU_CNT() ((env.texture_num_units > MESA_TMU_MAX) ? MESA_TMU_MAX : env.texture_num_units)
-
-enum DDRV_RETURN {
-	DDRV_SUCCESS_STOP,
-	DDRV_SUCCESS_CONTINUE,
-	DDRV_ERROR_CONTINUE,
-	DDRV_ERROR_STOP
-};
 
 #ifndef D3DHAL2_CB32_SETRENDERTARGET
 #define D3DHAL2_CB32_SETRENDERTARGET    0x00000001L
@@ -60,334 +50,92 @@ enum DDRV_RETURN {
 #define D3DHAL2_CB32_DRAWPRIMITIVES     0x00000010L
 #endif
 
-static BOOL ValidateCtx(DWORD dwhContext)
-{
-	if(dwhContext != 0)
-	{
-		mesa3d_ctx_t *ctx = MESA_HANDLE_TO_CTX(dwhContext);
-		if(ctx->entry->pid != GetCurrentProcessId())
-		{
-			ERR("ctx->entry->pid=0x%X != 0x%X", ctx->entry->pid, GetCurrentProcessId());
-			return FALSE;
-		}
-#if 0
-		VMDAHAL_t *dd = GetHAL(ctx->dd);
-		if(!dd->invalid)
-		{
-			return TRUE;
-		}
-#else
-		return TRUE;
-#endif
-	}
-	
-	ERR("dwhContext=0x%X", dwhContext);
-	return FALSE;
-}
-
-#define VALIDATE(_d3d) if(!ValidateCtx((_d3d)->dwhContext)){ \
+#define VALIDATE(_d3d) if(_d3d->dwhContext == 0){ \
 		(_d3d)->ddrval = D3DHAL_CONTEXT_BAD; \
 		ERR("Invalid context");\
 		return DDHAL_DRIVER_HANDLED;}
+
+typedef void (__stdcall *userlib_fn_t)(void *dataptr);
+
+static hal9x_callbacks_t hal9x_cbs =
+{
+	hal_env,
+	{
+		id_assign,
+		id_free,
+		id_destroy
+	}
+};
+
+#define USER_LIB(_fn, _par) { \
+	HMODULE m = GetModuleHandleA(HAL3D_USERLIB_NAME); \
+	if(m == NULL){m = LoadLibraryA(HAL3D_USERLIB_NAME); if(m){\
+		hal3d_init_t init_p = (hal3d_init_t)GetProcAddress(m, "hal3d_init"); \
+		init_p(&hal9x_cbs); \
+	} } \
+	if(m != NULL){ \
+		userlib_fn_t fn = (userlib_fn_t)GetProcAddress(m, HAL3D_USERLIB_PREFIX #_fn); \
+		if(fn != NULL){ \
+			fn(_par); \
+	} } }
 
 #include "d3d_caps.h"
 
 DWORD __stdcall SetRenderTarget32(LPD3DHAL_SETRENDERTARGETDATA lpSetRenderData)
 {
 	TRACE_ENTRY
-
-	VALIDATE(lpSetRenderData)
-
-	if(lpSetRenderData->lpDDS != NULL)
-	{
-		TOPIC("GL", "SetRenderTarget32(0x%X, 0x%X)",
-			lpSetRenderData->lpDDS,
-			lpSetRenderData->lpDDSZ
-		);
-		
-		surface_id dds_sid = 0;
-		surface_id ddz_sid = 0;
-		
-		if(lpSetRenderData->lpDDS != NULL)
-		{
-			dds_sid = ((LPDDRAWI_DDRAWSURFACE_INT)lpSetRenderData->lpDDS)->lpLcl->dwReserved1;
-		}
-		
-		if(lpSetRenderData->lpDDSZ)
-		{
-			ddz_sid = ((LPDDRAWI_DDRAWSURFACE_INT)lpSetRenderData->lpDDSZ)->lpLcl->dwReserved1;
-		}
-		
-		if(dds_sid)
-		{
-			GL_BLOCK_BEGIN(lpSetRenderData->dwhContext)
-				MesaSetTarget(ctx, dds_sid, ddz_sid, FALSE);
-			GL_BLOCK_END
-
-			lpSetRenderData->ddrval = DD_OK;
-		}
-		else
-		{
-			lpSetRenderData->ddrval = DDERR_INVALIDPARAMS;
-			WARN("SetRenderTarget32: DDERR_INVALIDPARAMS");
-		}
-	}
-
+	USER_LIB(SetRenderTarget32, lpSetRenderData);
 	return DDHAL_DRIVER_HANDLED;
 }
 
 DWORD __stdcall Clear32(LPD3DHAL_CLEARDATA lpClearData)
 {
 	TRACE_ENTRY
-
-	VALIDATE(lpClearData)
-	
-	/* DDK98 - DX5: dwFillDepth will always be set to 0xffffffff which mens
-	fill to the maximum z-buffer value. This is currently the only supported z fill mode. */
-	GL_BLOCK_BEGIN(lpClearData->dwhContext)
-		MesaClear(ctx, lpClearData->dwFlags,
-			lpClearData->dwFillColor, 1.0f, 0x0,
-			lpClearData->dwNumRects, (LPRECT)lpClearData->lpRects);
-	GL_BLOCK_END
-
-	lpClearData->ddrval = DD_OK;
-
+	USER_LIB(Clear32, lpClearData);
 	return DDHAL_DRIVER_HANDLED;
 }
 
 DWORD __stdcall DrawOnePrimitive32(LPD3DHAL_DRAWONEPRIMITIVEDATA lpDrawData)
 {
 	TRACE_ENTRY
-	
-	VALIDATE(lpDrawData)
-	
-	GL_BLOCK_BEGIN(lpDrawData->dwhContext)
-		MesaDraw5(ctx, lpDrawData->PrimitiveType, lpDrawData->VertexType, lpDrawData->lpvVertices, lpDrawData->dwNumVertices);
-	GL_BLOCK_END
-
-	lpDrawData->ddrval = DD_OK;
-
+	USER_LIB(DrawOnePrimitive32, lpDrawData);
 	return DDHAL_DRIVER_HANDLED;
 }
 
 DWORD __stdcall DrawOneIndexedPrimitive32(LPD3DHAL_DRAWONEINDEXEDPRIMITIVEDATA lpDrawData)
 {
 	TRACE_ENTRY
-	
-	VALIDATE(lpDrawData)
-
-	GL_BLOCK_BEGIN(lpDrawData->dwhContext)
-		MesaDraw5Index(ctx, lpDrawData->PrimitiveType, lpDrawData->VertexType,
-			lpDrawData->lpvVertices, lpDrawData->dwNumVertices,
-			lpDrawData->lpwIndices, lpDrawData->dwNumIndices
-		);
-	GL_BLOCK_END
-
-	lpDrawData->ddrval = DD_OK;
-
+	USER_LIB(DrawOneIndexedPrimitive32, lpDrawData);
 	return DDHAL_DRIVER_HANDLED;
 }
 
-/**
- * From DDK98:
- *  Data block:
- * 
- *  Consists of interleaved D3DHAL_DRAWPRIMCOUNTS, state change pairs,
- *  and primitive drawing commands.
- *  
- *  D3DHAL_DRAWPRIMCOUNTS: gives number of state change pairs and
- *            the information on the primitive to draw.
- *            wPrimitiveType is of type D3DPRIMITIVETYPE. Drivers
- *                must support all 7 of the primitive types specified
- *                in the DrawPrimitive API.
- *            Currently, wVertexType will always be D3DVT_TLVERTEX.
- *            If the wNumVertices member is 0, then the driver should
- *                return after doing the state changing. This is the
- *                terminator for the command stream.
- *   state change pairs: DWORD pairs specify the state changes that
- *            the driver should effect before drawing the primitive.
- *            wNumStateChanges can be 0, in which case the next primitive
- *            should be drawn without any state changes in between.
- *            If present, the state change pairs are NOT aligned, they
- *            immediately follow the PRIMCOUNTS structure.
- *   vertex data (if any): is 32-byte aligned.
- *  
- *   If a primcounts structure follows (i.e. if wNumVertices was nonzero
- *   in the previous one), then it will immediately follow the state
- *   changes or vertex data with no alignment padding.
- **/
 DWORD __stdcall DrawPrimitives32(LPD3DHAL_DRAWPRIMITIVESDATA lpDrawData)
 {
 	TRACE_ENTRY
-	
-	VALIDATE(lpDrawData)
-	
-	LPBYTE lpData = (LPBYTE)lpDrawData->lpvData;
-	LPD3DHAL_DRAWPRIMCOUNTS	drawPrimitiveCounts;
-	int j;
-	
-	GL_BLOCK_BEGIN(lpDrawData->dwhContext)
-
-	TOPIC("TEX", "DrawPrimitives32");
-
-	do
-	{
-		drawPrimitiveCounts = (LPD3DHAL_DRAWPRIMCOUNTS)(lpData);
-		lpData += sizeof(D3DHAL_DRAWPRIMCOUNTS);
-		
-		/* state block */
-		LPD3DSTATE state;
-		for(j = drawPrimitiveCounts->wNumStateChanges; j > 0; j--)
-		{
-			state = (LPD3DSTATE)lpData;
-			D3DHAL_DP2RENDERSTATE rstate;
-			rstate.RenderState = state->drstRenderStateType;
-			rstate.dwState = state->dwArg[0];
-			MesaSetRenderState(ctx, &rstate, NULL);
-			lpData += sizeof(D3DSTATE);
-		}
-		
-		/* padding */
-		lpData += 31;
-		lpData = (LPBYTE)((ULONG)lpData & (~31));
-		
-		/* draw block */
-		if(drawPrimitiveCounts->wNumVertices)
-		{
-			TOPIC("TEX", "batch %d, type: %d", drawPrimitiveCounts->wNumVertices, drawPrimitiveCounts->wPrimitiveType);
-			
-			MesaDraw5(ctx, drawPrimitiveCounts->wPrimitiveType, drawPrimitiveCounts->wVertexType, (LPD3DTLVERTEX)lpData, drawPrimitiveCounts->wNumVertices);
-			/* wVertexType should be only D3DVT_TLVERTEX, but for all cases... */
-			switch(drawPrimitiveCounts->wVertexType)
-			{
-				case D3DVT_VERTEX:
-					lpData += drawPrimitiveCounts->wNumVertices * sizeof(D3DVERTEX);
-					break;
-				case D3DVT_LVERTEX:
-					lpData += drawPrimitiveCounts->wNumVertices * sizeof(D3DLVERTEX);
-					break;
-				case D3DVT_TLVERTEX:
-				default:
-					lpData += drawPrimitiveCounts->wNumVertices * sizeof(D3DTLVERTEX);
-					break;
-			}
-		}
-	} while(drawPrimitiveCounts->wNumVertices);
-
-	GL_BLOCK_END
-
-	lpDrawData->ddrval = DD_OK;
-
+	USER_LIB(DrawPrimitives32, lpDrawData);
 	return DDHAL_DRIVER_HANDLED;
 }
 
 DWORD __stdcall ValidateTextureStageState32(LPD3DHAL_VALIDATETEXTURESTAGESTATEDATA lpvtssd)
 {
 	TRACE_ENTRY
-	
 	VALIDATE(lpvtssd)
-
 	lpvtssd->dwNumPasses = 1;
 	lpvtssd->ddrval = DD_OK;
-	
 	return DDHAL_DRIVER_HANDLED;
 }
 
 DWORD __stdcall DrawPrimitives2_32(LPD3DHAL_DRAWPRIMITIVES2DATA pd)
 {
 	TRACE_ENTRY
-	
-	TRACE("context id=%X", pd->dwhContext);
-
-#ifdef DEBUG
-	SetExceptionHandler();
-#endif
-
-	VALIDATE(pd)
-
-	LPBYTE insStart;
-	LPBYTE vertices = NULL;
-	
-	insStart = (LPBYTE)(pd->lpDDCommands->lpGbl->fpVidMem);
-	if (insStart == NULL)
-	{
-		ERR("DrawPrimitives2_32: insStart == NULL, pd->dwFlags=%X", pd->dwFlags);
-		
-		pd->dwErrorOffset   = 0;
-		pd->ddrval          = DDERR_INVALIDPARAMS;
-		WARN("DrawPrimitives2_32: DDERR_INVALIDPARAMS");
-		return DDHAL_DRIVER_HANDLED;
-	}
-	
-	if(pd->lpVertices)
-	{
-		if(pd->dwFlags & D3DHALDP2_USERMEMVERTICES)
-		{
-			vertices = ((LPBYTE)pd->lpVertices) + pd->dwVertexOffset;
-		}
-		else
-		{
-			vertices = ((LPBYTE)pd->lpDDVertex->lpGbl->fpVidMem) + pd->dwVertexOffset;
-		}
-  }
-  
-  TRACE("DrawPrimitives2_32: dwFlags=0x%X, dwVertexType=0x%X",
-  	pd->dwFlags, pd->dwVertexType);
-  
-	LPDWORD RStates = NULL;
-	if(pd->dwFlags & D3DHALDP2_EXECUTEBUFFER)
-		RStates = pd->lpdwRStates;
-
-	LPBYTE cmdBufferStart    = insStart + pd->dwCommandOffset;
-	LPBYTE cmdBufferEnd      = cmdBufferStart + pd->dwCommandLength;
-	DWORD rc = DD_OK;
-
-	GL_BLOCK_BEGIN(pd->dwhContext)
-		LPBYTE UMVertices = pd->lpVertices;
-		if(UMVertices != NULL)
-		{
-			UMVertices += pd->dwVertexOffset;
-		}
-
-		rc = MesaDraw6(ctx, cmdBufferStart, cmdBufferEnd, vertices, UMVertices, pd->dwVertexType, &pd->dwErrorOffset, RStates, pd->dwVertexLength);
-
-		//MesaSpaceIdentityReset(ctx);
-	GL_BLOCK_END
-
-	pd->ddrval = rc;
-	TRACE("MesaDraw6(...) = %d", rc);
-
-#if 0
-	if(pd->dwFlags & D3DHALDP2_REQVERTEXBUFSIZE)
-	{
-		TRACE("want resize vertex buffer to %d bytes", pd->dwReqVertexBufSize);
-		pd->dwFlags &= ~(D3DHALDP2_SWAPVERTEXBUFFER | D3DHALDP2_REQVERTEXBUFSIZE);
-		pd->dwReqVertexBufSize = 1*1024*1024;
-	}
-	
-	if(pd->dwFlags & D3DHALDP2_REQCOMMANDBUFSIZE)
-	{
-		TRACE("want command vertex buffer to %d bytes", pd->dwReqCommandBufSize);
-		pd->dwFlags &= ~(D3DHALDP2_SWAPCOMMANDBUFFER | D3DHALDP2_REQCOMMANDBUFSIZE);
-	}
-#endif
-
+	USER_LIB(DrawPrimitives2_32, pd);
 	return DDHAL_DRIVER_HANDLED;
 }
 
 DWORD __stdcall Clear2_32(LPD3DHAL_CLEAR2DATA cd)
 {
 	TRACE_ENTRY
-	
-	VALIDATE(cd)
-	
-	GL_BLOCK_BEGIN(cd->dwhContext)
-		MesaClear(ctx, cd->dwFlags,
-			cd->dwFillColor, cd->dvFillDepth, cd->dwFillStencil,
-			cd->dwNumRects, (LPRECT)cd->lpRects);
-	GL_BLOCK_END
-	
-	cd->ddrval = DD_OK;
+	USER_LIB(Clear2_32, cd);
 	return DDHAL_DRIVER_HANDLED;
 }
 
@@ -436,220 +184,17 @@ DWORD __stdcall GetDriverState32(LPDDHAL_GETDRIVERSTATEDATA pGDSData)
 	return DDHAL_DRIVER_NOTHANDLED;
 }
 
-/*
- * 
- * Function:    D3DCreateSurfaceEx
- * Description: D3dCreateSurfaceEx creates a Direct3D surface from a DirectDraw  
- *              surface and associates a requested handle value to it.
- * 
- *              All Direct3D drivers must support D3dCreateSurfaceEx.
- * 
- *              D3dCreateSurfaceEx creates an association between a  
- *              DirectDraw surface and a small integer surface handle. 
- *              By creating these associations between a
- *              handle and a DirectDraw surface, D3dCreateSurfaceEx allows a 
- *              surface handle to be imbedded in the Direct3D command stream.
- *              For example when the D3DDP2OP_TEXBLT command token is sent
- *              to D3dDrawPrimitives2 to load a texture map, it uses a source 
- *              handle and destination handle which were associated
- *              with a DirectDraw surface through D3dCreateSurfaceEx.
- *
- *              For every DirectDraw surface created under the DirectDrawLocal 
- *              object, the runtime generates a valid handle that uniquely
- *              identifies the surface and places it in
- *              pcsxd->lpDDSLcl->lpSurfMore->dwSurfaceHandle. This handle value
- *              is also used with the D3DRENDERSTATE_TEXTUREHANDLE render state 
- *              to enable texturing, and with the D3DDP2OP_SETRENDERTARGET and 
- *              D3DDP2OP_CLEAR commands to set and/or clear new rendering and 
- *              depth buffers. The driver should fail the call and return
- *              DDHAL_DRIVER_HANDLED if it cannot create the Direct3D
- *              surface. If the DDHAL_CREATESURFACEEX_SWAPHANDLES flag is set, 
- *              the handles should be swapped over two sequential calls to 
- *              D3dCreateSurfaceEx. As appropriate, the driver should also 
- *              store any surface-related information that it will subsequently 
- *              need when using the surface. The driver must create
- *              a new surface table for each new lpDDLcl and implicitly grow 
- *              the table when necessary to accommodate more surfaces. 
- *              Typically this is done with an exponential growth algorithm 
- *              so that you don't have to grow the table too often. Direct3D 
- *              calls D3dCreateSurfaceEx after the surface is created by
- *              DirectDraw by request of the Direct3D runtime or the application.
- *
- * Parameters
- *
- *      lpcsxd
- *           pointer to CreateSurfaceEx structure that contains the information
- *           required for the driver to create the surface (described below). 
- *
- *           dwFlags
- *           lpDDLcl
- *                   Handle to the DirectDraw object created by the application.
- *                   This is the scope within which the lpDDSLcl handles exist.
- *                   A DD_DIRECTDRAW_LOCAL structure describes the driver.
- *           lpDDSLcl
- *                   Handle to the DirectDraw surface we are being asked to
- *                   create for Direct3D. These handles are unique within each
- *                   different DD_DIRECTDRAW_LOCAL. A DD_SURFACE_LOCAL structure
- *                   represents the created surface object.
- *           ddRVal
- *                   Specifies the location in which the driver writes the return
- *                   value of the D3dCreateSurfaceEx callback. A return code of
- *                   DD_OK indicates success.
- *
- * Return Value
- *
- *      DDHAL_DRIVER_HANDLE
- *      DDHAL_DRIVER_NOTHANDLE
- *
- * JH: pcsxd->lpDDSLcl->lpSurfMore->dwSurfaceHandle is prealocated by
- *     runtime/system/HEL/whatever so don't write to this variable your own numbers.
- *
- */
 DDENTRY_FPUSAVE(CreateSurfaceEx32, LPDDHAL_CREATESURFACEEXDATA, lpcsxd)
 {
 	TRACE_ENTRY
-	
-	lpcsxd->ddRVal = DD_OK;
-
-	if(lpcsxd->lpDDSLcl == NULL || lpcsxd->lpDDLcl == NULL)
-	{
-		return DDHAL_DRIVER_HANDLED;
-	}
-
-	mesa3d_entry_t *entry = Mesa3DGet(GetCurrentProcessId(), TRUE);
-
-	if(entry == NULL)
-	{
-		ERR("Mesa3DGet() failed");
-		return DDHAL_DRIVER_HANDLED;
-	}
-
-	LPDDRAWI_DDRAWSURFACE_LCL surf = lpcsxd->lpDDSLcl;
-
-	TOPIC("TARGET", "CreateSurfaceEx32 lpDDLcl=0x%X vidmem=0x%X handle=%d sid=%d", lpcsxd->lpDDLcl, surf->lpGbl->fpVidMem, surf->lpSurfMore->dwSurfaceHandle, surf->dwReserved1);
-
-	/* this is from 3dlabs driver... */
-	if(surf->lpGbl->fpVidMem == 0)
-	{
-		TOPIC("MEMORY", "Free surface handle=%d, caps=0x%X", surf->lpSurfMore->dwSurfaceHandle, surf->ddsCaps.dwCaps);
-		if(surf->ddsCaps.dwCaps & DDSCAPS_SYSTEMMEMORY)
-		{
-			// this is a system memory destroy notification
-			// so go ahead free the slot for this surface if we have it
-			SurfaceFree(entry, lpcsxd->lpDDLcl, surf);
-		}
-
-		// wait for DestroySurface to remove vram surface
-		return DDHAL_DRIVER_HANDLED;
-	}
-	
-	TOPIC("TARGET", "CreateSurfaceEx32 dwCaps=0x%X dwCaps2=0x%X", surf->ddsCaps.dwCaps,
-		surf->lpSurfMore->ddsCapsEx.dwCaps2
-	);
-	
-	if(surf->ddsCaps.dwCaps & DX7_SURFACE_NEST_TYPES)
-	{
-		if(!SurfaceExInsert(entry, lpcsxd->lpDDLcl, surf))
-		{
-			WARN("texture in private memory return DDERR_OUTOFMEMORY");
-			lpcsxd->ddRVal = DDERR_OUTOFMEMORY;
-			return DDHAL_DRIVER_HANDLED;
-		}
-
-		LPATTACHLIST list = surf->lpAttachList;
-
-		while(list != NULL)
-		{
-			if(list->lpAttached != NULL)
-			{
-				if(list->lpAttached == surf)
-				{
-					break;
-				}
-				TOPIC("TARGET", "CreateSurfaceEx32 sub HANDLE=%d", list->lpAttached->lpSurfMore->dwSurfaceHandle);
-				SurfaceExInsert(entry, lpcsxd->lpDDLcl, list->lpAttached);
-			}
-
-			list = list->lpLink;
-		}
-	}
-	else
-	{
-		/* is exec buffer */
-		if(surf->ddsCaps.dwCaps & DDSCAPS_EXECUTEBUFFER)
-		{
-			TOPIC("EXEBUF", "surface 0x%X, vram=0x%X", surf->lpSurfMore->dwSurfaceHandle, surf->lpGbl->fpVidMem);
-			/* DX8+ need register buffer too for usage with streams */
-			if(surf->ddsCaps.dwCaps & DDSCAPS_VIDEOMEMORY)
-			{
-				SurfaceExInsert(entry, lpcsxd->lpDDLcl, surf);
-			}
-			else
-			{
-				SurfaceExInsertBuffer(entry, lpcsxd->lpDDLcl, surf->lpSurfMore->dwSurfaceHandle, (void*)surf->lpGbl->fpVidMem);
-			}
-		}
-		else
-		{
-			WARN("CreateSurfaceEx32: ignoring type 0x%X, handle=%d", surf->ddsCaps.dwCaps, surf->lpSurfMore->dwSurfaceHandle);
-		}
-	}
-	
+	USER_LIB(CreateSurfaceEx32, lpcsxd);
 	return DDHAL_DRIVER_HANDLED;
 }
 
-/**
- *
- * Function:    D3DDestroyDDLocal
- *
- * Description: D3dDestroyDDLocal destroys all the Direct3D surfaces previously 
- *              created by D3DCreateSurfaceEx that belong to the same given 
- *              local DirectDraw object.
- *
- *              All Direct3D drivers must support D3dDestroyDDLocal.
- *              Direct3D calls D3dDestroyDDLocal when the application indicates 
- *              that the Direct3D context is no longer required and it will be 
- *              destroyed along with all surfaces associated to it. 
- *              The association comes through the pointer to the local 
- *              DirectDraw object. The driver must free any memory that the
- *              driver's D3dCreateSurfaceEx callback allocated for
- *              each surface if necessary. The driver should not destroy 
- *              the DirectDraw surfaces associated with these Direct3D surfaces; 
- *              this is the application's responsibility.
- *
- * Parameters
- *
- *      lpdddd
- *            Pointer to the DestoryLocalDD structure that contains the
- *            information required for the driver to destroy the surfaces.
- *
- *            dwFlags
- *                  Currently unused
- *            pDDLcl
- *                  Pointer to the local Direct Draw object which serves as a
- *                  reference for all the D3D surfaces that have to be destroyed.
- *            ddRVal
- *                  Specifies the location in which the driver writes the return
- *                  value of D3dDestroyDDLocal. A return code of DD_OK indicates
- *                   success.
- *
- * Return Value
- *
- *      DDHAL_DRIVER_HANDLED
- *      DDHAL_DRIVER_NOTHANDLED
- */
 DDENTRY_FPUSAVE(DestroyDDLocal32, LPDDHAL_DESTROYDDLOCALDATA, lpdddd)
 {
 	TRACE_ENTRY
-
-	mesa3d_entry_t *entry = Mesa3DGet(GetCurrentProcessId(), FALSE);
-	if(entry)
-	{
-		MesaSurfacesTableRemoveDDLcl(entry, lpdddd->pDDLcl);
-	}
-
-	TRACE("DestroyDDLocal32 SUCCESS");
-	lpdddd->ddRVal = DD_OK;
+	USER_LIB(DestroyDDLocal32, lpdddd);
 	return DDHAL_DRIVER_HANDLED;
 }
 
@@ -657,7 +202,7 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 {
 	VMHAL_enviroment_t env;
 	GetVMHALenv(&env);
-
+	
 	switch (pgdi2->dwType)
 	{
 		case D3DGDI2_TYPE_DXVERSION:
@@ -825,7 +370,7 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 			caps.TextureAddressCaps = myCaps6.dpcTriCaps.dwTextureAddressCaps | D3DPTADDRESSCAPS_MIRRORONCE;
 			caps.PresentationIntervals = 0;
 			caps.MaxTextureWidth = env.texture_max_width;
-			caps.MaxTextureHeight = env.texture_max_height;
+			caps.MaxTextureHeight = env.texture_max_width;
 			caps.MaxVolumeExtent = 2048;
 			caps.MaxTextureRepeat = 8192;
 			caps.MaxTextureAspectRatio = 0; // no limit
@@ -840,8 +385,8 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 			caps.StencilCaps = MYSTENCIL_CAPS;
 			caps.FVFCaps = 8;
 			caps.TextureOpCaps = MYTEXOPCAPS;
-			caps.MaxTextureBlendStages = MESA_TMU_CNT();
-			caps.MaxSimultaneousTextures = MESA_TMU_CNT();
+			caps.MaxTextureBlendStages = HAL3D_TMU_CNT;
+			caps.MaxSimultaneousTextures = HAL3D_TMU_CNT;
 			caps.VertexProcessingCaps = MYVERTEXPROCCAPS_DX8;
 
 			caps.MaxActiveLights = 0; /* when TL sets this below */
@@ -850,14 +395,14 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 			caps.MaxVertexBlendMatrixIndex = 0;
 			if(env.vertexblend)
 			{
-			 	caps.MaxVertexBlendMatrices = MESA_WORLDS_MAX;
+			 	caps.MaxVertexBlendMatrices = HAL3D_WORLDS_MAX;
 			 	caps.MaxVertexBlendMatrixIndex = 3;
 			}
 			caps.MaxPointSize = 1.0f;
 			caps.MaxPrimitiveCount = 0x0000FFFFF;
 			caps.MaxVertexIndex = 0x002000000;
 			/* A driver reports support for 32-bit indices by setting the value of the MaxVertexIndex field of D3DCAPS8 (currently also in D3DHAL_D3DEXTENDEDCAPS) to a value greater than 0xFFFF */
-			caps.MaxStreams = MESA_MAX_STREAM;
+			caps.MaxStreams = HAL3D_MAX_STREAM;
 			caps.MaxStreamStride = 65536;
 			caps.VertexShaderVersion = D3DVS_VERSION(0, 0);
 			caps.MaxVertexShaderConst = 0;
@@ -922,7 +467,6 @@ DDENTRY_FPUSAVE(GetAvailDriverMemory32, LPDDHAL_GETAVAILDRIVERMEMORYDATA, pgadmd
 	pgadmd->ddRVal = DD_OK;
 	return DDHAL_DRIVER_HANDLED;
 }
-
 
 #define COPY_INFO(_in, _s, _t) do{ \
 	DWORD size = min(_in->dwExpectedSize, sizeof(_t)); \
@@ -1093,14 +637,14 @@ DDENTRY_FPUSAVE(GetDriverInfo32, LPDDHAL_GETDRIVERINFODATA, lpInput)
 		dxcaps.dwMaxStippleWidth  = 32;
 		dxcaps.dwMaxStippleHeight = 32;
 
-		dxcaps.dwFVFCaps                   = MESA_TMU_CNT(); /* low 4 bits: 0 implies TLVERTEX only, 1..8 imply FVF aware */
-    dxcaps.wMaxTextureBlendStages      = MESA_TMU_CNT();
-    dxcaps.wMaxSimultaneousTextures    = MESA_TMU_CNT();
+		dxcaps.dwFVFCaps                   = HAL3D_TMU_CNT; /* low 4 bits: 0 implies TLVERTEX only, 1..8 imply FVF aware */
+    dxcaps.wMaxTextureBlendStages      = HAL3D_TMU_CNT;
+    dxcaps.wMaxSimultaneousTextures    = HAL3D_TMU_CNT;
     dxcaps.dwMaxTextureRepeat          = env.texture_max_width;
-    dxcaps.dwMaxTextureAspectRatio     = env.texture_max_width;
+    dxcaps.dwMaxTextureAspectRatio     = env.texture_max_height;
     dxcaps.dwTextureOpCaps = MYTEXOPCAPS;
-  	dxcaps.wMaxTextureBlendStages      = MESA_TMU_CNT();
-    dxcaps.wMaxSimultaneousTextures    = MESA_TMU_CNT();
+  	dxcaps.wMaxTextureBlendStages      = HAL3D_TMU_CNT;
+    dxcaps.wMaxSimultaneousTextures    = HAL3D_TMU_CNT;
 
 		// this need also Clear2 callback
 		dxcaps.dwStencilCaps = MYSTENCIL_CAPS;
@@ -1124,7 +668,7 @@ DDENTRY_FPUSAVE(GetDriverInfo32, LPDDHAL_GETDRIVERINFODATA, lpInput)
 			dxcaps.wMaxVertexBlendMatrices = 0;
 
 			if(env.vertexblend)
-				dxcaps.wMaxVertexBlendMatrices = MESA_WORLDS_MAX;
+				dxcaps.wMaxVertexBlendMatrices = HAL3D_WORLDS_MAX;
 				//^ this need GL_ARB_vertex_blend or some extra CPU power
 
 			dxcaps.dwVertexProcessingCaps = MYVERTEXPROCCAPS;
@@ -1224,13 +768,8 @@ DDENTRY_FPUSAVE(GetDriverInfo32, LPDDHAL_GETDRIVERINFODATA, lpInput)
 	}
 	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_D3DParseUnknownCommandCallback) && env.ddi >= 6) 
 	{
-		mesa3d_entry_t *entry = Mesa3DGet(GetCurrentProcessId(), TRUE);
-		if(entry)
-		{
-			entry->D3DParseUnknownCommand = (DWORD)(lpInput->lpvData);
-			lpInput->ddRVal = DD_OK;
-			TRACE("GUID_D3DParseUnknownCommandCallback loaded");
-		}
+		USER_LIB(ParseUnknownCommandCallback, lpInput->lpvData);
+		lpInput->ddRVal = DD_OK;
 	}
 	else if(IsEqualIID(&(lpInput->guidInfo), &GUID_NonLocalVidMemCaps) && env.ddi >= 6)
 	{
@@ -1359,387 +898,72 @@ DDENTRY(ContextCreate32, LPD3DHAL_CONTEXTCREATEDATA, pccd)
 	TRACE_ENTRY
 
 	pccd->ddrval = D3DHAL_OUTOFCONTEXTS; /* error state */
-
-	mesa3d_entry_t *entry = Mesa3DGet(pccd->dwPID, TRUE);
-	if(entry)
-	{
-		mesa3d_ctx_t *ctx = NULL;
-		
-		entry->runtime_ver = 5;
-		if(entry->env.dx6 && entry->env.ddi >= 6)
-		{
-			entry->runtime_ver = 6;
-		}
-
-		if(entry->env.dx7 && entry->env.ddi >= 7)
-		{
-			entry->runtime_ver = 7;
-		}
-		
-		surface_id dds_sid = 0;
-		surface_id ddz_sid = 0;
-
-		if(entry->runtime_ver >= 7)
-		{
-			TRACE("ContextCreate32 DX7+");
-			if(pccd->lpDDSLcl)
-			{
-				dds_sid = pccd->lpDDSLcl->dwReserved1;
-			}
-
-			if(pccd->lpDDSZLcl)
-			{
-				ddz_sid = pccd->lpDDSZLcl->dwReserved1;
-			}
-			
-			if(dds_sid)
-			{
-				ctx = MesaCreateCtx(entry, dds_sid,  ddz_sid);
-				ctx->surfaces = MesaSurfacesTableGet(entry, pccd->lpDDLcl, SURFACES_TABLE_POOL-1);
-				TRACE("ContextCreate32 lpDDLcl=%X", pccd->lpDDLcl);
-			}
-		}
-		else
-		{
-			TRACE("ContextCreate32 -DX6");
-			
-			LPDDRAWI_DDRAWSURFACE_INT dds_int = (LPDDRAWI_DDRAWSURFACE_INT)pccd->lpDDS;
-			LPDDRAWI_DDRAWSURFACE_INT ddz_int = (LPDDRAWI_DDRAWSURFACE_INT)pccd->lpDDSZ;
-			
-			if(dds_int && dds_int->lpLcl)
-			{
-				dds_sid = dds_int->lpLcl->dwReserved1;
-			}
-			
-			if(ddz_int && ddz_int->lpLcl)
-			{
-				ddz_sid = ddz_int->lpLcl->dwReserved1;
-			}
-
-			if(dds_sid)
-			{
-				ctx = MesaCreateCtx(entry, dds_sid, ddz_sid);
-			}
-		}
-
-		if(ctx)
-		{
-			SurfaceAttachCtx(ctx);
-			// Return to the runtime the D3D context id that will be used to
-			// identify calls for this context from now on. Store prev value
-			// since that tells us which API are we being called from
-			// (5=DX9, 4=DX8, 3=DX7, 2=DX6, 1=DX5, 0=DX3)
-			ctx->dxif = pccd->dwhContext; // in: DX API version
-			
-			pccd->dwhContext = MESA_CTX_TO_HANDLE(ctx);
-			pccd->ddrval = DD_OK;
-
-			if(entry->runtime_ver >= 7)
-				ctx->dd = NULL;
-			else
-				ctx->dd = pccd->lpDDGbl;
-
-			if(ctx->dxif < MESA_CTX_IF_DX7)
-			{
-				ctx->matrix.zscale = 0.99;
-			}
-		}
-	}
-
-	if(pccd->ddrval != DD_OK || pccd->dwhContext == 0)
-	{
-		ERR("ContextCreate32 FAILED");
-	}
-
+	USER_LIB(ContextCreate32, pccd);
 	return DDHAL_DRIVER_HANDLED;
 }
 
 DDENTRY(ContextDestroy32, LPD3DHAL_CONTEXTDESTROYDATA, pcdd)
 {
 	TRACE_ENTRY
-
-	mesa3d_ctx_t *ctx = MESA_HANDLE_TO_CTX(pcdd->dwhContext);
-	SurfaceDeattachCtx(ctx);
-	MesaDestroyCtx(ctx);
-
-	pcdd->dwhContext = 0;
-
-	pcdd->ddrval = DD_OK;
+	VALIDATE(pcdd)
+	USER_LIB(ContextDestroy32, pcdd);
 	return DDHAL_DRIVER_HANDLED;
 }
 
 DDENTRY(ContextDestroyAll32, LPD3DHAL_CONTEXTDESTROYALLDATA, pcdd)
 {
 	TRACE_ENTRY
-	
-	pcdd->ddrval = DD_OK;
+	USER_LIB(ContextDestroyAll32, pcdd);
 	return DDHAL_DRIVER_HANDLED;
 }
 
 DDENTRY(RenderState32, LPD3DHAL_RENDERSTATEDATA, prd)
 {
 	TRACE_ENTRY
-	
 	VALIDATE(prd)
-	
-	int i;
-
-	GL_BLOCK_BEGIN(prd->dwhContext)
-		LPBYTE lpData = (LPBYTE)(((LPDDRAWI_DDRAWSURFACE_INT)prd->lpExeBuf)->lpLcl->lpGbl->fpVidMem);
-		LPD3DSTATE lpState = (LPD3DSTATE) (lpData + prd->dwOffset);
-		
-		for(i = 0; i < prd->dwCount; i++)
-		{
-			D3DHAL_DP2RENDERSTATE rstate;
-			rstate.RenderState = lpState->drstRenderStateType;
-			rstate.dwState = lpState->dwArg[0];
-			MesaSetRenderState(ctx, &rstate, NULL);
-			lpState++;
-		}
-		MesaDrawRefreshState(ctx);
-	GL_BLOCK_END
-	
-	prd->ddrval = DD_OK;
+	USER_LIB(RenderState32, prd);
 	return DDHAL_DRIVER_HANDLED;
 }
 
 DDENTRY(RenderPrimitive32, LPD3DHAL_RENDERPRIMITIVEDATA, prd)
 {
 	TRACE_ENTRY
-
 	VALIDATE(prd)
-
-	GL_BLOCK_BEGIN(prd->dwhContext)
-		LPBYTE lpData = (LPBYTE)(((LPDDRAWI_DDRAWSURFACE_INT)prd->lpExeBuf)->lpLcl->lpGbl->fpVidMem);
-  	LPD3DINSTRUCTION lpIns = &prd->diInstruction;
-  	LPBYTE prim = lpData + prd->dwOffset;
-  	LPBYTE vertices = NULL;
-
-  	if(prd->lpTLBuf != NULL)
-  	{
-  		LPBYTE lpVData = (LPBYTE)(((LPDDRAWI_DDRAWSURFACE_INT)prd->lpTLBuf)->lpLcl->lpGbl->fpVidMem);
-  		vertices = lpVData + prd->dwTLOffset;
-  	}
-
-		if(ctx->state.zvisible)
-		{
-			/* DDK98: If you don't implement Z visibility testing, just do this. */
-			prd->dwStatus &= ~D3DSTATUS_ZNOTVISIBLE;
-			break;
-		}
-		
-		MesaDraw3(ctx, lpIns->bOpcode, prim, vertices);
-	GL_BLOCK_END
-
-	prd->ddrval = DD_OK;
+	USER_LIB(RenderPrimitive32, prd);
 	return DDHAL_DRIVER_HANDLED;
 }
 
 DDENTRY(TextureCreate32, LPD3DHAL_TEXTURECREATEDATA, ptcd)
 {
 	TRACE_ENTRY
-	
 	VALIDATE(ptcd)
-	
-	surface_id sid = 0;
-	
-	ptcd->ddrval = DDERR_OUTOFVIDEOMEMORY;
-	LPDDRAWI_DDRAWSURFACE_INT dds = (LPDDRAWI_DDRAWSURFACE_INT)ptcd->lpDDS;
-	if(dds && dds->lpLcl)
-	{
-		sid = dds->lpLcl->dwReserved1;
-	}
-
-	if(sid)
-	{
-		GL_BLOCK_BEGIN(ptcd->dwhContext)
-			mesa3d_texture_t *tex = MesaCreateTexture(ctx, sid);
-			if(tex)
-			{
-				ptcd->dwHandle = MESA_TEX_TO_HANDLE(tex);
-				TRACE("new texture: %X", ptcd->dwHandle);
-				ptcd->ddrval = DD_OK;
-			}
-			else
-			{
-				/* set NULL handle */
-				ptcd->dwHandle = 0;
-				ptcd->ddrval = DDERR_GENERIC;
-			}
-		GL_BLOCK_END
-	}
-
+	USER_LIB(TextureCreate32, ptcd);
 	return DDHAL_DRIVER_HANDLED;
 }
 
 DDENTRY(TextureDestroy32, LPD3DHAL_TEXTUREDESTROYDATA, ptcd)
 {
 	TRACE_ENTRY
-
 	VALIDATE(ptcd)
-	
-	if(!ptcd->dwHandle)
-	{
-		ptcd->ddrval = DDERR_GENERIC;
-		return DDHAL_DRIVER_HANDLED;
-	}
-
-	GL_BLOCK_BEGIN(ptcd->dwhContext)
-		MesaDestroyTexture(MESA_HANDLE_TO_TEX(ptcd->dwHandle), FALSE, 0);
-	GL_BLOCK_END
-
-	ptcd->ddrval = DD_OK;
+	USER_LIB(TextureDestroy32, ptcd);
 	return DDHAL_DRIVER_HANDLED;
 }
 
 DDENTRY(TextureSwap32, LPD3DHAL_TEXTURESWAPDATA, ptsd)
 {
 	TRACE_ENTRY
-	
 	VALIDATE(ptsd)
-	
-	mesa3d_texture_t *tex1 = MESA_HANDLE_TO_TEX(ptsd->dwHandle1);
-	mesa3d_texture_t *tex2 = MESA_HANDLE_TO_TEX(ptsd->dwHandle2);
-	
-	if(tex1 && tex2)
-	{
-		mesa3d_texture_t cp;
-		memcpy(&cp, tex2, sizeof(mesa3d_texture_t));
-		memcpy(tex2, tex1, sizeof(mesa3d_texture_t));
-		memcpy(tex1, &cp, sizeof(mesa3d_texture_t));
-		ptsd->ddrval = DD_OK;
-	}
-	else
-	{
-		WARN("TextureSwap32: DDERR_INVALIDPARAMS");
-		ptsd->ddrval = DDERR_INVALIDPARAMS;
-	}
-
+	USER_LIB(TextureSwap32, ptsd);
 	return DDHAL_DRIVER_HANDLED;
 }
 
 DDENTRY(TextureGetSurf32, LPD3DHAL_TEXTUREGETSURFDATA, ptgd)
 {
 	TRACE_ENTRY
-	
 	VALIDATE(ptgd)
-	
-	mesa3d_texture_t *tex = MESA_HANDLE_TO_TEX(ptgd->dwHandle);
-	if(tex)
-	{
-		ptgd->lpDDS  = (DWORD)SurfaceGetLCL_DX7(tex->data_sid[0][0]);
-		ptgd->ddrval = DD_OK;
-	}
-	else
-	{
-		WARN("TextureGetSurf32: DDERR_INVALIDPARAMS");
-		ptgd->ddrval = DDERR_INVALIDPARAMS;
-	}
-
+	USER_LIB(TextureGetSurf32, ptgd);
 	return DDHAL_DRIVER_HANDLED;
 }
-
-#if 0
-/* Templates for DDI 3, not ever called! */
-#define GL_MATRIX_SIZE sizeof(GLfloat[16])
-DWORD __stdcall MatrixCreate32(LPD3DHAL_MATRIXCREATEDATA pmcd)
-{
-	TRACE_ENTRY
-	
-	GLfloat *ptr = hal_calloc(HEAP_NORMAL, GL_MATRIX_SIZE, 0);
-	if(ptr)
-	{
-		pmcd->ddrval = DD_OK;
-		pmcd->dwHandle = MESA_MTX_TO_HANDLE(ptr);
-	}
-	return DDHAL_DRIVER_HANDLED;
-}
-
-DWORD __stdcall MatrixDestroy32(LPD3DHAL_MATRIXDESTROYDATA pmdd)
-{
-	TRACE_ENTRY
-	
-	GLfloat *ptr = MESA_HANDLE_TO_MTX(pmdd->dwHandle);
-	if(ptr)
-	{
-		pmdd->ddrval = DD_OK;
-		hal_free(HEAP_NORMAL, ptr);
-	}
-
-	return DDHAL_DRIVER_HANDLED;
-}
-
-DWORD __stdcall MatrixSetData32(LPD3DHAL_MATRIXSETDATADATA pmsd)
-{
-	TRACE_ENTRY
-	
-	GLfloat *ptr = MESA_HANDLE_TO_MTX(pmsd->dwHandle);
-	if(ptr)
-	{
-		memcpy(ptr, &pmsd->dmMatrix._11, GL_MATRIX_SIZE);
-		
-		pmsd->ddrval = DD_OK;
-	}
-
-	return DDHAL_DRIVER_HANDLED;
-}
-
-DWORD __stdcall MatrixGetData32(LPD3DHAL_MATRIXGETDATADATA pmsd)
-{
-	TRACE_ENTRY
-	
-	GLfloat *ptr = MESA_HANDLE_TO_MTX(pmsd->dwHandle);
-	if(ptr)
-	{
-		memcpy(&pmsd->dmMatrix._11, ptr, GL_MATRIX_SIZE);
-		
-		pmsd->ddrval = DD_OK;
-	}
-	
-	return DDHAL_DRIVER_HANDLED;
-
-}
-
-DWORD __stdcall SetViewportData32(LPD3DHAL_SETVIEWPORTDATADATA psvd)
-{
-	TRACE_ENTRY
-	
-	psvd->ddrval = DD_OK;
-	return DDHAL_DRIVER_HANDLED;
-}
-
-DWORD __stdcall MaterialCreate32(LPD3DHAL_MATERIALCREATEDATA pmcd)
-{
-	TRACE_ENTRY
-	
-	pmcd->ddrval = DD_OK;
-	return DDHAL_DRIVER_HANDLED;
-}
-
-DWORD __stdcall MaterialDestroy32(LPD3DHAL_MATERIALDESTROYDATA pmdd)
-{
-	TRACE_ENTRY
-	
-	pmdd->ddrval = DD_OK;
-	return DDHAL_DRIVER_HANDLED;
-}
-
-DWORD __stdcall MaterialSetData32(LPD3DHAL_MATERIALSETDATADATA pmsd)
-{
-	TRACE_ENTRY
-	
-	pmsd->ddrval = DD_OK;
-	return DDHAL_DRIVER_HANDLED;
-}
-
-DWORD __stdcall MaterialGetData32(LPD3DHAL_MATERIALGETDATADATA pmgd)
-{
-	TRACE_ENTRY
-	
-	pmgd->ddrval = DD_OK;
-	return (DDHAL_DRIVER_HANDLED);
-}
-#endif /* unused templates */
 
 DDENTRY(GetState32, LPD3DHAL_GETSTATEDATA, pgsd)
 {
@@ -1760,34 +984,15 @@ DDENTRY(GetState32, LPD3DHAL_GETSTATEDATA, pgsd)
 DDENTRY(SceneCapture32, LPD3DHAL_SCENECAPTUREDATA, scdata)
 {
 	TRACE_ENTRY
-
 	VALIDATE(scdata)
-	
-	TOPIC("GL", "SceneCapture32: %d", scdata->dwFlag);
-	TOPIC("TEX", "SceneCapture32: %d", scdata->dwFlag);
-	
-	GL_BLOCK_BEGIN(scdata->dwhContext)
-	switch(scdata->dwFlag)
-	{
-		case D3DHAL_SCENE_CAPTURE_START:
-			MesaSceneBegin(ctx);
-			break;
-		case D3DHAL_SCENE_CAPTURE_END:
-			MesaSceneEnd(ctx);
-			break;
-	}
-	GL_BLOCK_END
-
-	scdata->ddrval = DD_OK;
+	USER_LIB(SceneCapture32, scdata);
 	return DDHAL_DRIVER_HANDLED;
 }
 
 DDENTRY(CanCreateExecuteBuffer32, LPDDHAL_CANCREATESURFACEDATA, csd)
 {
 	TRACE_ENTRY
-
 	/* asume we can create the buffer every time */
-
 	csd->ddRVal = DD_OK;
 	return DDHAL_DRIVER_HANDLED;
 }
@@ -1798,9 +1003,6 @@ DDENTRY_FPUSAVE(CreateExecuteBuffer32, LPDDHAL_CREATESURFACEDATA, csd)
 
 	int i;
 	LPDDRAWI_DDRAWSURFACE_LCL *lplpSList = csd->lplpSList;
-
-	VMHAL_enviroment_t *env = GlobalVMHALenv();
-
 	for(i = 0; i < (int)csd->dwSCnt; i++)
 	{
 		LPDDRAWI_DDRAWSURFACE_LCL surf = lplpSList[i];
@@ -1819,10 +1021,7 @@ DDENTRY_FPUSAVE(CreateExecuteBuffer32, LPDDHAL_CREATESURFACEDATA, csd)
 				 * explicit vertex buffers with the DDSCAPS_WRITEONLY flag set
 				 * can be safely placed in video memory
 				 */
-				if(!env->sysmem)
-				{
-					alloc_vram = TRUE;
-				}
+				alloc_vram = TRUE;
 			}
 		}
 
@@ -1835,23 +1034,32 @@ DDENTRY_FPUSAVE(CreateExecuteBuffer32, LPDDHAL_CREATESURFACEDATA, csd)
 		/* alloc buffer in video memory */
 		surf->lpGbl->dwBlockSizeX = surf->lpGbl->dwLinearSize;
 		surf->lpGbl->dwBlockSizeY = 1;
-		surf->lpGbl->fpVidMem = DDHAL_PLEASEALLOC_BLOCKSIZE;
-
-		if(SurfaceCreate(surf) == 0)
+		if(alloc_vram)
 		{
-			csd->ddRVal = DDERR_OUTOFMEMORY;
-			return DDHAL_DRIVER_HANDLED;
+			surf->lpGbl->fpVidMem = DDHAL_PLEASEALLOC_BLOCKSIZE;
 		}
-
-		TOPIC("MEMORY", "new exec buffer (VRAM=%d) sid=%d, mem=0x%08X, caps=0x%X, caps2=0x%X, size=%d",
-			alloc_vram,
-			surf->dwReserved1, surf->lpGbl->fpVidMem,
-			surf->ddsCaps.dwCaps, surf->lpSurfMore->ddsCapsEx.dwCaps2,
-			surf->lpGbl->dwLinearSize);
-	}
+		else
+		{
+			surf->lpGbl->fpVidMem = DDHAL_PLEASEALLOC_USERMEM;
+		}
+	} // for
 
 	csd->ddRVal = DD_OK;
 	return DDHAL_DRIVER_HANDLED;
+}
+
+static BOOL IsVram(void *flat)
+{
+	FBHDA_t *hda = FBHDA_setup();
+	if(hda)
+	{
+		if((BYTE*)flat >= (BYTE*)hda->vram_pm32 && 
+			(BYTE*)flat < ((BYTE*)hda->vram_pm32 + hda->vram_size_virt))
+		{
+			return TRUE;
+		}
+	}
+	return FALSE;
 }
 
 DDENTRY_FPUSAVE(DestroyExecuteBuffer32, LPDDHAL_DESTROYSURFACEDATA, dsd)
@@ -1862,7 +1070,11 @@ DDENTRY_FPUSAVE(DestroyExecuteBuffer32, LPDDHAL_DESTROYSURFACEDATA, dsd)
 		dsd->lpDDSurface->lpGbl->fpVidMem
 		);
 
-	SurfaceDelete(dsd->lpDDSurface->dwReserved1);
+	void *flat = (void*)dsd->lpDDSurface->lpGbl->fpVidMem;
+	if(IsVram(flat))
+	{
+		FBHDA_DD_surface_delete(flat);
+	}
 
 	dsd->ddRVal = DD_OK;
 	return DDHAL_DRIVER_HANDLED;
@@ -1877,20 +1089,14 @@ DDENTRY(LockExecuteBuffer32, LPDDHAL_LOCKDATA, lock)
 	lock->ddRVal = DD_OK;
 	
 	return DDHAL_DRIVER_HANDLED;
-	//return DDHAL_DRIVER_NOTHANDLED; /* let the lock processed */
 }
 
 DDENTRY(UnlockExecuteBuffer32, LPDDHAL_UNLOCKDATA, lock)
 {
 	TRACE_ENTRY
-	/* nop */
-	//lock->ddRVal = DD_OK;
-	
 	lock->ddRVal = DD_OK;
 	
 	return DDHAL_DRIVER_HANDLED;
-
-//	return DDHAL_DRIVER_NOTHANDLED; /* let the unlock processed */
 }
 
 /* GLOBAL hal */
@@ -1976,6 +1182,7 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, LP
 	myGlobalD3DHal.dwNumClipVertices = 0;
 	myGlobalD3DHal.dwNumTextureFormats = (sizeof(myTextureFormats) / sizeof(DDSURFACEDESC));
 	myGlobalD3DHal.lpTextureFormats = &myTextureFormats[0];
+
 	VMHAL_enviroment_t env;
 	GetVMHALenv(&env);
 
@@ -2046,7 +1253,7 @@ BOOL __stdcall D3DHALCreateDriver(DWORD *lplpGlobal, DWORD *lplpHALCallbacks, LP
 //	lpHALFlags->caps2 = DDCAPS2_NO2DDURING3DSCENE | DDCAPS2_CANMANAGETEXTURE;
 
 	/* buffer allocation is done in driver only when this flag is set */
-	lpHALFlags->ddscaps |= DDSCAPS_EXECUTEBUFFER;
+	//lpHALFlags->ddscaps |= DDSCAPS_EXECUTEBUFFER;
 
 	return TRUE;
 }

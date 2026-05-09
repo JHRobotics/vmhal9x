@@ -7,5 +7,11 @@ EXPORTS
 	FBHDA_clean
 	FBHDA_page_modify
 	FBHDA_mode_query
+	FBHDA_DD_surface_get
+	FBHDA_DD_surface_set
+	FBHDA_DD_surface_delete
+	FBHDA_DD_surface_modify
+	FBHDA_DD_surface_watch
+	FBHDA_DD_surface_notify
 	vmhal_setup_str
 	vmhal_setup_dw

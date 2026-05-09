@@ -46,12 +46,11 @@ void Mesa3DCalibrate(BOOL loadonly)
 
 	if(env->scanned)
 		return;
-	
-	DWORD pid = GetCurrentProcessId();
+
 	mesa3d_ctx_t *ctx_ptr = NULL;
 	BOOL restart_os = FALSE;
 	BOOL only_2d = FALSE;
-	mesa3d_entry_t *full_entry = Mesa3DGet(pid, TRUE);
+	mesa3d_entry_t *full_entry = Mesa3DGet(TRUE);
 
 	env->s3tc_bug = TRUE;
 
@@ -85,13 +84,11 @@ void Mesa3DCalibrate(BOOL loadonly)
 				restart_os = TRUE;
 				break;
 			}
-
-			GL_BLOCK_BEGIN(ctx_ptr)
-				if(entry->gl_major < 2 || (entry->gl_major == 2 && entry->gl_minor < 1))
-				{
-					restart_os = TRUE;
-				}
-			GL_BLOCK_END
+			
+			if(full_entry->gl_major < 2 || (full_entry->gl_major == 2 && full_entry->gl_minor < 1))
+			{
+				restart_os = TRUE;
+			}
 		}
 		else
 		{
@@ -104,13 +101,13 @@ void Mesa3DCalibrate(BOOL loadonly)
 
 	if(full_entry)
 	{
-		Mesa3DFree(pid, TRUE);
+		Mesa3DFree(TRUE);
 	}
 
 	if(restart_os)
 	{
 		env->forceos = TRUE;
-		full_entry = Mesa3DGet(pid, TRUE);
+		full_entry = Mesa3DGet(TRUE);
 		
 		do
 		{
@@ -134,7 +131,7 @@ void Mesa3DCalibrate(BOOL loadonly)
 
 		if(full_entry)
 		{
-			Mesa3DFree(pid, TRUE);
+			Mesa3DFree(TRUE);
 		}
 	}
 	
