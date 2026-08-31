@@ -2720,8 +2720,8 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 
 			if(vertex_coords || ts->coordscalc_used > 0)
 			{
+				GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_CUBE_MAP));
 				GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
-				GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_CUBE_MAP));
 				GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, image->tex->gltex));
 				GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_CUBE_MAP, 0));	
 				ts->active = TRUE;
@@ -2734,7 +2734,7 @@ static void ApplyTextureState(mesa3d_entry_t *entry, mesa3d_ctx_t *ctx, int tmu)
 
 			if(vertex_coords || ts->coordscalc_used > 0)
 			{
-			GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
+			GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_2D));
 			GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_CUBE_MAP));
 			GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_2D, 0));
 			GL_CHECK(entry->proc.pglBindTexture(GL_TEXTURE_CUBE_MAP, image->tex->gltex));
