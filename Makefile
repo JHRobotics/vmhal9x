@@ -42,8 +42,12 @@ DEPS= Makefile config.mk vmhal9x.h mesa3d.h mesa3d_api.h surfindex.h x86.h memor
 RUNPATH=$(if $(filter $(OS),Windows_NT),.\,./)
 
 HOST_SUFFIX=
+HOST_CFLAGS=
 ifeq ($(filter $(OS),Windows_NT),Windows_NT)
   HOST_SUFFIX=.exe
+else
+  HOST_SUFFIX=.bin
+  HOST_CFLAGS+=-Dstricmp=strcasecmp
 endif
 
 DLLFLAGS = -o $@ -shared -Wl,--dll,--out-implib,lib$(@:dll=a),--exclude-all-symbols,--exclude-libs=pthread,--disable-dynamicbase,--disable-nxcompat,--subsystem,windows,--image-base,$(BASE_$@)$(TUNE_LD)
@@ -126,7 +130,7 @@ WINETRAY_OBJ = $(NOCRT_OBJS) nocrt/nocrt_exe.c.o tray/tray3d.c.o tray/monitor.c.
 VESAMODE_OBJ = $(NOCRT_OBJS) nocrt/nocrt_exe.c.o vesa/vesamode.c.o vesa/regdelnode.c.o 3d_accel.c.o debug.c.o vesa/vesamode.res
 
 fixlink$(HOST_SUFFIX):
-	$(HOST_CC) -std=$(CSTD) fixlink/fixlink.c -o fixlink$(HOST_SUFFIX)
+	$(HOST_CC) -std=$(CSTD) $(HOST_CFLAGS) fixlink/fixlink.c -o fixlink$(HOST_SUFFIX)
 
 vmdisp9x.dll: $(VMDISP9X_OBJS)
 	$(CC) $(LDFLAGS) $(VMDISP9X_OBJS) vmdisp9x.def $(LIBS) $(DLLFLAGS)
