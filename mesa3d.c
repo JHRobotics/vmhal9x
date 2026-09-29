@@ -51,6 +51,7 @@ static const GLfloat black[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 
 #define MESA_LIB_SW_NAME "mesa3d.dll"
 #define MESA_LIB_SVGA_NAME "vmwsgl32.dll"
+#define MESA_LIB_QEMU3DFX_NAME "qmfxgl32.dll"
 
 #define OS_WIDTH   320
 #define OS_HEIGHT  240
@@ -70,6 +71,11 @@ static char *MesaLibName()
 			{
 				return MESA_LIB_SVGA_NAME;
 			}
+
+			if(hda->flags & FB_ACCEL_QEMU3DFX)
+			{
+				return MESA_LIB_QEMU3DFX_NAME;
+			}
 		}
 	}
 
@@ -77,7 +83,9 @@ static char *MesaLibName()
 }
 
 #define MESA_API(_n, _t, _p) \
-	mesa->proc.p ## _n = (_n ## _h)mesa->GetProcAddress(#_n); if(!mesa->proc.p ## _n){valid = FALSE; ERR("GetProcAddress fail for %s", #_n); break;}
+	mesa->proc.p ## _n = (_n ## _h)mesa->GetProcAddress(#_n); \
+	if(!mesa->proc.p ## _n){mesa->proc.p ## _n = (_n ## _h)GetProcAddress(mesa->lib, #_n);} \
+	if(!mesa->proc.p ## _n){valid = FALSE; ERR("GetProcAddress fail for %s", #_n); break;}
 
 #define MESA_API_OS(_n, _t, _p) \
 	if(mesa->os){MESA_API(_n, _t, _p)}else{mesa->proc.p ## _n = NULL;}
