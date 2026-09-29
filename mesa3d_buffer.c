@@ -637,8 +637,16 @@ NUKED_LOCAL void MesaBufferTextureLoad(mesa3d_ctx_t *ctx, DWORD dxid, int tmu, B
 		return;
 	}
 
-	GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_CUBE_MAP));
-	GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
+	if(se->dd->level & DDSURFACE_CUBE_MASK)
+	{
+		GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_2D));
+		GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_CUBE_MAP));
+	}
+	else
+	{
+		GL_CHECK(entry->proc.pglDisable(GL_TEXTURE_CUBE_MAP));
+		GL_CHECK(entry->proc.pglEnable(GL_TEXTURE_2D));
+	}
 
 	if(se->tex->gltex == 0)
 	{
