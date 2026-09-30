@@ -302,7 +302,7 @@ static void GetDriverInfo2(DD_GETDRIVERINFO2DATA* pgdi2, LONG *lpRVal, DWORD *lp
 				D3DDEVCAPS_EXECUTEVIDEOMEMORY | // Device can use execute buffers from video memory. 
 				//D3DDEVCAPS_NPATCHES | // Device supports N patches. 
 				D3DDEVCAPS_PUREDEVICE | // Device can support rasterization, transform, lighting, and shading in hardware. (no need for final version of runtime)
-				//D3DDEVCAPS_QUINTICRTPATCHES | // Device supports quintic béziers and B-splines. 
+				//D3DDEVCAPS_QUINTICRTPATCHES | // Device supports quintic beziers and B-splines. 
 				//D3DDEVCAPS_RTPATCHES | // Device supports rectangular and triangular patches. 
 				//D3DDEVCAPS_RTPATCHHANDLEZERO | // When this device capability is set, the hardware architecture does not require caching of any information, and uncached patches (handle zero) will be drawn as efficiently as cached ones. Note that setting D3DDEVCAPS_RTPATCHHANDLEZERO does not mean that a patch with handle zero can be drawn. A handle-zero patch can always be drawn whether this cap is set or not. 
 				//D3DDEVCAPS_SEPARATETEXTUREMEMORIES | // Device is texturing from separate memory pools. (HWTL)
@@ -468,6 +468,37 @@ DDENTRY_FPUSAVE(GetAvailDriverMemory32, LPDDHAL_GETAVAILDRIVERMEMORYDATA, pgadmd
 	return DDHAL_DRIVER_HANDLED;
 }
 
+DDENTRY_FPUSAVE(GetHeapAlignment32, LPDDHAL_GETHEAPALIGNMENTDATA, lpGhaData)
+{
+	lpGhaData->ddRVal = DD_OK;
+	
+	if(lpGhaData->dwHeap != 0)
+	{
+		lpGhaData->ddRVal = DDERR_INVALIDPARAMS;
+		return DDHAL_DRIVER_NOTHANDLED;
+	}
+	
+	lpGhaData->Alignment.ddsCaps.dwCaps = DDSCAPS_OFFSCREENPLAIN | DDSCAPS_EXECUTEBUFFER | \
+		DDSCAPS_OVERLAY | DDSCAPS_TEXTURE | DDSCAPS_ZBUFFER | DDSCAPS_ALPHA | DDSCAPS_FLIP;
+	
+	lpGhaData->Alignment.ExecuteBuffer.Linear.dwStartAlignment = FBHDA_ROW_ALIGN;
+	lpGhaData->Alignment.ExecuteBuffer.Linear.dwPitchAlignment = FBHDA_ROW_ALIGN;
+	lpGhaData->Alignment.Overlay.Rectangular.dwXAlignment      = FBHDA_ROW_ALIGN;
+	lpGhaData->Alignment.Overlay.Rectangular.dwYAlignment      = FBHDA_ROW_ALIGN;
+	lpGhaData->Alignment.Texture.Rectangular.dwXAlignment      = FBHDA_ROW_ALIGN;
+	lpGhaData->Alignment.Texture.Rectangular.dwYAlignment      = FBHDA_ROW_ALIGN;
+	lpGhaData->Alignment.ZBuffer.Rectangular.dwXAlignment      = FBHDA_ROW_ALIGN;
+	lpGhaData->Alignment.ZBuffer.Rectangular.dwYAlignment      = FBHDA_ROW_ALIGN;
+	lpGhaData->Alignment.AlphaBuffer.Rectangular.dwXAlignment  = FBHDA_ROW_ALIGN;
+	lpGhaData->Alignment.AlphaBuffer.Rectangular.dwYAlignment  = FBHDA_ROW_ALIGN;
+	lpGhaData->Alignment.Offscreen.Linear.dwStartAlignment     = FBHDA_ROW_ALIGN;
+	lpGhaData->Alignment.Offscreen.Linear.dwPitchAlignment     = FBHDA_ROW_ALIGN;
+	lpGhaData->Alignment.FlipTarget.Rectangular.dwXAlignment   = 4096; /* align flip surfaces to page boundary */
+	lpGhaData->Alignment.FlipTarget.Rectangular.dwYAlignment   = FBHDA_ROW_ALIGN;
+	
+	return DDHAL_DRIVER_HANDLED;
+}
+
 #define COPY_INFO(_in, _s, _t) do{ \
 	DWORD size = min(_in->dwExpectedSize, sizeof(_t)); \
 	_in->dwActualSize = sizeof(_t); \
@@ -559,9 +590,10 @@ DDENTRY_FPUSAVE(GetDriverInfo32, LPDDHAL_GETDRIVERINFODATA, lpInput)
 		DDHAL_DDMISCELLANEOUSCALLBACKS misccb;
 		memset(&misccb, 0, sizeof(DDHAL_DDMISCELLANEOUSCALLBACKS));
 		misccb.dwSize = sizeof(DDHAL_DDMISCELLANEOUSCALLBACKS);
-		misccb.dwFlags = DDHAL_MISCCB32_GETSYSMEMBLTSTATUS | DDHAL_MISCCB32_GETAVAILDRIVERMEMORY;
+		misccb.dwFlags = DDHAL_MISCCB32_GETSYSMEMBLTSTATUS | DDHAL_MISCCB32_GETAVAILDRIVERMEMORY | DDHAL_MISCCB32_GETHEAPALIGNMENT;
 		misccb.GetSysmemBltStatus = GetBltStatus32;
 		misccb.GetAvailDriverMemory = GetAvailDriverMemory32;
+		misccb.GetHeapAlignment = GetHeapAlignment32;
 		
 		VMHALenv_RuntimeVer(5);
 

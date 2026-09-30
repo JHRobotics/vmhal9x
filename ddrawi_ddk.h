@@ -492,4 +492,52 @@ typedef DD_MOTIONCOMPCALLBACKS *PDD_MOTIONCOMPCALLBACKS;
 #define DDHAL_MOCOMP32_QUERYSTATUS              0x00000100
 #define DDHAL_MOCOMP32_DESTROY                  0x00000200
 
+
+typedef struct _SURFACEALIGNMENT
+{
+	union
+	{
+		struct
+		{
+			DWORD       dwStartAlignment;
+			DWORD       dwPitchAlignment;
+			DWORD       dwReserved1;
+			DWORD       dwReserved2;
+		} Linear;
+		struct
+		{
+			DWORD       dwXAlignment;
+			DWORD       dwYAlignment;
+			DWORD       dwReserved1;
+			DWORD       dwReserved2;
+		} Rectangular;
+	};
+} SURFACEALIGNMENT;
+
+typedef struct _HEAPALIGNMENT
+{
+	DWORD              dwSize;
+	DDSCAPS            ddsCaps;       /* Indicates which alignment fields are valid.*/
+	DWORD              dwReserved;
+	SURFACEALIGNMENT   ExecuteBuffer; /* Surfaces tagged with DDSCAPS_EXECUTEBUFFER */
+	SURFACEALIGNMENT   Overlay;       /* Surfaces tagged with DDSCAPS_OVERLAY       */
+	SURFACEALIGNMENT   Texture;       /* Surfaces tagged with DDSCAPS_TEXTURE       */
+	SURFACEALIGNMENT   ZBuffer;       /* Surfaces tagged with DDSCAPS_ZBUFFER       */
+	SURFACEALIGNMENT   AlphaBuffer;   /* Surfaces tagged with DDSCAPS_ALPHA         */
+	SURFACEALIGNMENT   Offscreen;     /* Surfaces tagged with DDSCAPS_OFFSCREENPLAIN*/
+	SURFACEALIGNMENT   FlipTarget;    /* Surfaces whose bits are potential primaries i.e. back buffers*/
+} HEAPALIGNMENT;
+
+/*
+ * Heap Alignment Data Structures
+ */
+typedef struct _DDHAL_GETHEAPALIGNMENTDATA
+{
+    DWORD                      dwInstance;         // driver context as returned from 32-bit driver init routine
+    DWORD                      dwHeap;             // heap index passed by DirectDraw
+    HRESULT                    ddRVal;             // return value
+    LPDDHAL_GETHEAPALIGNMENT   GetHeapAlignment;   // PRIVATE: ptr to callback.
+    HEAPALIGNMENT              Alignment;          // Filled in by driver. Defined in dmemmgr.h
+} DDHAL_GETHEAPALIGNMENTDATA;
+
 #endif /* __DDRAWI_DDK_H__INCLUDED__ */

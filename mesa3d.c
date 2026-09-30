@@ -705,8 +705,10 @@ NUKED_LOCAL BOOL MesaSetEmptyTarget(mesa3d_ctx_t *ctx, BOOL create)
 
 NUKED_LOCAL void MesaTextureRoll(DWORD id, void *target, void *data)
 {
-	mesa3d_ctx_t *ctx = data;
+	//mesa3d_ctx_t *ctx = data;
 	gldata_tex_t *tex = target;
+	
+	hal3d_free((void**)&tex);
 	
 	//ht_delete_more(ctx->entry->ht_flat, DW_FLAT(dd->flatptr), target);
 	

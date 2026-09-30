@@ -359,47 +359,6 @@ NUKED_LOCAL void MesaBufferDownloadDepth(mesa3d_ctx_t *ctx, void *dst)
 	TOPIC("READBACK", "%X -> download depth!", dst);
 }
 
-#if 0
-static DWORD GLType2bpp(GLenum format, GLenum type)
-{
-	switch(type)
-	{
-		case GL_UNSIGNED_SHORT_4_4_4_4_REV:
-		case GL_UNSIGNED_SHORT_4_4_4_4:
-		case GL_UNSIGNED_SHORT_5_5_5_1:
-		case GL_UNSIGNED_SHORT_1_5_5_5_REV:
-		case GL_UNSIGNED_SHORT_5_6_5:
-			return 16;
-		case GL_UNSIGNED_INT_8_8_8_8_REV:
-			return 32;
-		case GL_ALPHA:
-			return 8;
-		case GL_UNSIGNED_BYTE:
-			switch(format)
-			{
-				case GL_ALPHA:
-				case GL_LUMINANCE:
-					return 8;
-				case GL_LUMINANCE8_ALPHA8:
-					return 16;
-				case GL_RGBA:
-				case GL_BGRA:
-					return 32;
-				case GL_RGB:
-				case GL_BGR:
-					return 24;
-			}
-			break;
-	}
-	
-	WARN("Uknown format size format=0x%X type=0x%X",
-		format, type);
-
-	return 32;
-}
-#endif
-
-
 static mesa_fbo_t *fbo_find_empty(mesa3d_ctx_t *ctx)
 {
 	unsigned int i;
@@ -549,7 +508,7 @@ NUKED_LOCAL BOOL MesaBufferFBOSetup(mesa3d_ctx_t *ctx, int width, int height, in
  */
 static void MesaBufferTextureDestroy(mesa3d_ctx_t *ctx, DWORD dxid)
 {
-	TOPIC("surfex", "Destroy texture: %d", dxid);
+	TOPIC("SURFEX", "Destroy texture: %d", dxid);
 	surfaceex_t *se = surfex_get(ctx, dxid, FALSE, FALSE);
 	if(se)
 	{
@@ -567,6 +526,8 @@ static void MesaBufferTextureDestroy(mesa3d_ctx_t *ctx, DWORD dxid)
 			se->tex->gltex = 0;
 		}
 	}
+	
+	// FIXME: loop other context and destroy texture in them
 	ddsurf_destroy(ctx, dxid);
 }
 
